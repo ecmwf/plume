@@ -15,7 +15,7 @@ Architecture
  * Plugin Data: data transferred from the application to the plugin
  * Plugin: a dynamically-loadable plugin that implement specific calculations/algorithms
 
-Plume offers API to this mechanism, available in multiple languages (currently C, C++ and Fortran)
+plume offers API to this mechanism, available in multiple languages (currently C, C++ and Fortran)
 
 License
 -------
