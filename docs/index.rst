@@ -26,7 +26,7 @@ plume offers API to this mechanism, available in multiple languages (currently C
 
 License
 -------
-**plume** is available under the open source `Apache License`__. In applying this licence, ECMWF does not waive
+**plume** is available under the open source `Apache License Version 2`__. In applying this licence, ECMWF does not waive
 the privileges and immunities granted to it by virtue of its status as an intergovernmental organisation nor
 does it submit to any jurisdiction.
 
