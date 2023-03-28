@@ -1,0 +1,35 @@
+/*
+ * (C) Copyright 2023- ECMWF.
+ *
+ * This software is licensed under the terms of the Apache Licence Version 2.0
+ * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * In applying this licence, ECMWF does not waive the privileges and immunities
+ * granted to it by virtue of its status as an intergovernmental organisation nor
+ * does it submit to any jurisdiction.
+ */
+#pragma once
+
+#define plume_VERSION_STR "@plume_VERSION_STR@"
+#define plume_VERSION     "@plume_VERSION@"
+
+#define plume_VERSION_MAJOR @plume_VERSION_MAJOR@
+#define plume_VERSION_MINOR @plume_VERSION_MINOR@
+#define plume_VERSION_PATCH @plume_VERSION_PATCH@
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+const char * plume_version();
+
+unsigned int plume_version_int();
+
+const char * plume_version_str();
+
+const char * plume_git_sha1();
+
+#ifdef __cplusplus
+}
+#endif

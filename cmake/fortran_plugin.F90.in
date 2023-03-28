@@ -1,0 +1,51 @@
+! (C) Copyright 2023- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation nor
+! does it submit to any jurisdiction.
+module plugin_interface_module__@PLUGIN_NAME@
+
+use iso_c_binding, only : c_ptr, c_null_char, c_loc
+
+! wrapper of model data
+use plume_module, only : plume_check
+use plume_data_module, only : plume_data
+
+! this module contains the user-methods
+! that will be executed by the plugin
+!  1. kernel_setup
+!  2. kernel_run
+!  3. kernel_teardown
+use user_plugin_module__@PLUGIN_NAME@
+
+implicit none
+private
+
+! Model data available for the kernel
+type(plume_data), public :: @PLUGIN_NAME@_data
+
+contains
+
+! Forward to user-defined methods
+subroutine internal_kernel_setup__@KERNEL_NAME@(data_cptr) &
+bind(C, name="kernel_setup__@PLUGIN_NAME@__@KERNEL_NAME@")
+    type(c_ptr), intent(in), value :: data_cptr
+    call plume_check(@PLUGIN_NAME@_data%initialise_from_ptr(data_cptr))
+    call kernel_setup__@PLUGIN_NAME@(@PLUGIN_NAME@_data)
+end subroutine
+
+subroutine internal_kernel_run__@KERNEL_NAME@() &
+bind(C, name="kernel_run__@PLUGIN_NAME@__@KERNEL_NAME@")
+    call kernel_run__@PLUGIN_NAME@(@PLUGIN_NAME@_data)
+end subroutine
+
+subroutine internal_kernel_teardown__@KERNEL_NAME@() &
+bind(C, name="kernel_teardown__@PLUGIN_NAME@__@KERNEL_NAME@")
+    call kernel_teardown__@PLUGIN_NAME@(@PLUGIN_NAME@_data)
+end subroutine
+
+
+end module

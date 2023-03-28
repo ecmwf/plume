@@ -1,0 +1,42 @@
+#!/bin/bash
+
+exe_dir=@CMAKE_BINARY_DIR@/bin
+plume_config=@CMAKE_CURRENT_SOURCE_DIR@/plume_config.yml
+
+# ===================== Example 1 =====================
+# example 1: demonstrate how to configure plume data
+# and run the plume manager from C, C++ or Fortran.
+# In this example, parameters are unconditionally inserted
+# into the Plume data.
+
+# Example C
+$exe_dir/plume_example1_c.x $plume_config
+
+# Example C++
+$exe_dir/plume_example1_cpp.x $plume_config
+
+# Example Fortran
+$exe_dir/plume_example1_fort.x $plume_config
+
+
+
+# ===================== Example 2 =====================
+# example 2: Similar to example 1, but this time some parameters
+# are inserted into the data only if actually requested by plugins
+
+# Example C++
+$exe_dir/plume_example2_cpp.x $plume_config
+
+# Example Fortran
+$exe_dir/plume_example2_fort.x $plume_config
+
+
+# ===================== Example 3 =====================
+# example 3: Similar to example 1, but this time some parameters
+# are "created" and then updated by the model during the run
+
+# Example C++
+$exe_dir/plume_example3_cpp.x $plume_config
+
+# Example Fortran
+$exe_dir/plume_example3_fort.x $plume_config

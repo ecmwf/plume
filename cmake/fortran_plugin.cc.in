@@ -1,0 +1,35 @@
+/*
+ * (C) Copyright 2023- ECMWF.
+ *
+ * This software is licensed under the terms of the Apache Licence Version 2.0
+ * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * In applying this licence, ECMWF does not waive the privileges and immunities
+ * granted to it by virtue of its status as an intergovernmental organisation nor
+ * does it submit to any jurisdiction.
+ */
+#include "fortran_plugin.h"
+#include <iostream>
+
+
+namespace interface_plugin {
+
+REGISTER_LIBRARY(InterfacePlugin__@PLUGIN_NAME@)
+
+InterfacePlugin__@PLUGIN_NAME@::InterfacePlugin__@PLUGIN_NAME@() : Plugin(InterfacePlugin__@PLUGIN_NAME@::name()) {}
+InterfacePlugin__@PLUGIN_NAME@::~InterfacePlugin__@PLUGIN_NAME@() {}
+
+const InterfacePlugin__@PLUGIN_NAME@& InterfacePlugin__@PLUGIN_NAME@::instance() {
+    static InterfacePlugin__@PLUGIN_NAME@ instance;
+    return instance;
+}
+//--------------------------------------------------------------
+
+// InterfaceKernel__@KERNEL_NAME@
+static plume::KernelBuilder<InterfaceKernel__@KERNEL_NAME@> kernel_Interface_Builder__@KERNEL_NAME@;
+InterfaceKernel__@KERNEL_NAME@::InterfaceKernel__@KERNEL_NAME@(const eckit::Configuration& conf) : Kernel(conf) {}
+InterfaceKernel__@KERNEL_NAME@::~InterfaceKernel__@KERNEL_NAME@() {}
+//--------------------------------------------------------------
+
+
+}  // namespace interface_plugin

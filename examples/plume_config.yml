@@ -1,0 +1,19 @@
+{
+  "required-atlas-version": "0.10.0",
+  "verbose": true,
+  "plugins": [
+    {
+      "name": "PluginFoo",
+      "lib": "plugin_foo"
+    },
+    {
+      "name": "PluginBar",
+      "lib": "plugin_bar",    
+      "kernel-config": {
+        "exceptions-dump-trace": true,
+        "key-2": "val-2",
+        "key-3": "val-3"
+      }
+    }    
+  ]
+}

@@ -1,0 +1,87 @@
+/*
+ * (C) Copyright 2023- ECMWF.
+ *
+ * This software is licensed under the terms of the Apache Licence Version 2.0
+ * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * In applying this licence, ECMWF does not waive the privileges and immunities
+ * granted to it by virtue of its status as an intergovernmental organisation nor
+ * does it submit to any jurisdiction.
+ */
+#include <iostream>
+#include <string>
+
+#include "eckit/utils/StringTools.h"
+#include "plume/Plugin.h"
+#include "plume/Kernel.h"
+
+
+// ** Implemented in the concrete Fortran plugin **
+
+// kernel
+extern "C" void kernel_setup__@PLUGIN_NAME@__@KERNEL_NAME@(void* modelData);
+extern "C" void kernel_run__@PLUGIN_NAME@__@KERNEL_NAME@(void* modelData);
+extern "C" void kernel_teardown__@PLUGIN_NAME@__@KERNEL_NAME@(void* modelData);
+
+
+namespace interface_plugin {
+
+/// @brief Interface kernel: forwards method calls to the Fortran plugin
+class InterfaceKernel__@KERNEL_NAME@ : public plume::Kernel {
+public:
+    InterfaceKernel__@KERNEL_NAME@(const eckit::Configuration& conf);
+    ~InterfaceKernel__@KERNEL_NAME@();
+    
+    void run() override { 
+        eckit::Log::info() << "Running a " << type() << "..." << std::endl;
+        kernel_run__@PLUGIN_NAME@__@KERNEL_NAME@(&modelData());
+    }
+
+    virtual void setup() override {
+        kernel_setup__@PLUGIN_NAME@__@KERNEL_NAME@(&modelData());
+    }
+
+    virtual void teardown() override {
+        kernel_teardown__@PLUGIN_NAME@__@KERNEL_NAME@(&modelData());
+    }
+    
+    // Return the name..
+    static const char* type() { return "@KERNEL_NAME@"; }
+
+};
+// ------------------------------------------------------
+
+// ------------------------------------------------------
+class InterfacePlugin__@PLUGIN_NAME@ : public plume::Plugin {
+
+public:
+    InterfacePlugin__@PLUGIN_NAME@();
+    ~InterfacePlugin__@PLUGIN_NAME@();
+
+    // Name set in the Fortran interface
+    static const char* name() { 
+        return "@PLUGIN_NAME@";
+    }
+
+    plume::Protocol negotiate() override {
+        plume::Protocol protocol;
+        @REQUIRED_PARAM_LIST@
+        return protocol;
+    }
+
+    // Return the static instance
+    static const InterfacePlugin__@PLUGIN_NAME@& instance();
+
+    std::string version() const override { 
+        return "@PLUGIN_VERSION@";
+    }
+
+    std::string gitsha1(unsigned int count) const override { 
+        return "@PLUGIN_SHA@";
+    }
+
+    virtual std::string kernelName() const override { return InterfaceKernel__@KERNEL_NAME@::type(); }
+};
+// ------------------------------------------------------
+
+}  // namespace interface_plugin
