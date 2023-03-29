@@ -16,8 +16,8 @@ ecbuild_add_test( TARGET   plume_test_plugin
 )
 
 
-ecbuild_add_test( TARGET   plume_test_kernel
-                  SOURCES  test_kernel.cc
+ecbuild_add_test( TARGET   plume_test_plugincore
+                  SOURCES  test_plugincore.cc
                   LIBS
                     plume_plugin_manager
                     plume_plugin

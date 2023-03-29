@@ -27,14 +27,14 @@ const SimplePlugin& SimplePlugin::instance() {
 //--------------------------------------------------------------
 
 
-// SimpleKernel
-static plume::KernelBuilder<SimpleKernel> runnable_kernel_FooBuilder_;
+// SimplePluginCore
+static plume::PluginCoreBuilder<SimplePluginCore> runnable_plugincore_FooBuilder_;
 
-SimpleKernel::SimpleKernel(const eckit::Configuration& conf) : Kernel(conf) {}
+SimplePluginCore::SimplePluginCore(const eckit::Configuration& conf) : PluginCore(conf) {}
 
-SimpleKernel::~SimpleKernel() {}
+SimplePluginCore::~SimplePluginCore() {}
 
-void SimpleKernel::run() {
+void SimplePluginCore::run() {
     eckit::Log::info() << "Consuming parameters: (" 
                        << "I=" << modelData().getInt("I") << ", "
                        << "J=" << modelData().getInt("J") << ", "

@@ -20,27 +20,27 @@ PluginHandler::~PluginHandler() {
 
 }
 
-void PluginHandler::activate(plume::Kernel* kernelPtr) {
+void PluginHandler::activate(plume::PluginCore* plugincorePtr) {
 
-    // kernel ptr must not be null
-    ASSERT(kernelPtr);
+    // plugincore ptr must not be null
+    ASSERT(plugincorePtr);
 
-    // the plugin is not active and associated to a kernel
-    kernelPtr_ = kernelPtr;
+    // the plugin is not active and associated to a plugincore
+    plugincorePtr_ = plugincorePtr;
 }
 
 void PluginHandler::deactivate() {
 
-    // disassociate from the kernel
-    kernelPtr_ = nullptr;
+    // disassociate from the plugincore
+    plugincorePtr_ = nullptr;
 }
 
 bool PluginHandler::isActive() const {    
-    return (kernelPtr_ != nullptr);
+    return (plugincorePtr_ != nullptr);
 }
 
-Kernel* PluginHandler::kernel() const {
-    return kernelPtr_;
+PluginCore* PluginHandler::plugincore() const {
+    return plugincorePtr_;
 }
 
 Plugin* PluginHandler::plugin() const {

@@ -9,19 +9,19 @@
  * does it submit to any jurisdiction.
  */
 #include <string>
-#include "plume/Kernel.h"
+#include "plume/PluginCore.h"
 #include "plume/Plugin.h"
 
 namespace plume_example_plugin {
 
 
-// ------ Foo runnable kernel that self-registers! -------
-class SimpleKernel : public plume::Kernel {
+// ------ Foo runnable plugincore that self-registers! -------
+class SimplePluginCore : public plume::PluginCore {
 public:
-    SimpleKernel(const eckit::Configuration& conf);
-    ~SimpleKernel();
+    SimplePluginCore(const eckit::Configuration& conf);
+    ~SimplePluginCore();
     void run() override;
-    constexpr static const char* type() { return "simple-kernel"; }
+    constexpr static const char* type() { return "simple-plugincore"; }
 };
 // ------------------------------------------------------
 
@@ -49,7 +49,7 @@ public:
 
     std::string gitsha1(unsigned int count) const override { return "undefined"; }
 
-    virtual std::string kernelName() const override { return SimpleKernel::type(); }
+    virtual std::string plugincoreName() const override { return SimplePluginCore::type(); }
 };
 // ------------------------------------------------------
 

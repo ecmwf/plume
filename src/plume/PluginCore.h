@@ -23,27 +23,27 @@
 namespace plume {
 
 /**
- * @brief A kernel that contains calculations/algorithms
+ * @brief A plugincore that contains calculations/algorithms
  * to perform on model data. It is implemented inside a plugin
  * and loaded at runtime
  * 
  */
-class Kernel {
+class PluginCore {
 
 public:
 
     /**
-     * @brief Construct a new Kernel object
+     * @brief Construct a new PluginCore object
      * 
      * @param config 
      */
-    Kernel(const eckit::Configuration& config);
+    PluginCore(const eckit::Configuration& config);
 
     /**
-     * @brief Destroy the Kernel object
+     * @brief Destroy the PluginCore object
      * 
      */
-    virtual ~Kernel();
+    virtual ~PluginCore();
 
     /**
      * @brief 
@@ -57,7 +57,7 @@ public:
      * 
      * @return constexpr const char* 
      */
-    constexpr static const char* type() { return "Base Runnable kernel"; }
+    constexpr static const char* type() { return "Base Runnable plugincore"; }
 
     /**
      * @brief Grab the necessary data that it needs from available data
@@ -99,57 +99,57 @@ private:
 
 
 // fwd declaration
-class KernelBuilderBase;
+class PluginCoreBuilderBase;
 
 
 // factory (registers/deregisters builders and calls "build")
-class KernelFactory {
+class PluginCoreFactory {
 
 public:  // methods
-    static KernelFactory& instance();
+    static PluginCoreFactory& instance();
 
-    void enregister(const std::string& name, const KernelBuilderBase& builder);
+    void enregister(const std::string& name, const PluginCoreBuilderBase& builder);
     void deregister(const std::string& name);
     std::vector<std::string> list_registered();
 
-    Kernel* build(const std::string& name, const eckit::Configuration& config) const;
+    PluginCore* build(const std::string& name, const eckit::Configuration& config) const;
 
 private:  // methods
     // Only one instance can be built, inside instance()
-    KernelFactory();
-    ~KernelFactory();
+    PluginCoreFactory();
+    ~PluginCoreFactory();
 
 private:  // members
     mutable std::mutex mutex_;
 
-    std::map<std::string, std::reference_wrapper<const KernelBuilderBase>> builders_;
+    std::map<std::string, std::reference_wrapper<const PluginCoreBuilderBase>> builders_;
 };
 
 
 // base builder
-class KernelBuilderBase {
+class PluginCoreBuilderBase {
 public:  // methods
     // Only instantiate from subclasses
-    KernelBuilderBase(const std::string& name);
-    virtual ~KernelBuilderBase();
+    PluginCoreBuilderBase(const std::string& name);
+    virtual ~PluginCoreBuilderBase();
 
-    virtual Kernel* make(const eckit::Configuration& config) const = 0;
+    virtual PluginCore* make(const eckit::Configuration& config) const = 0;
 
 public:  // members
     std::string name_;
 };
 
 
-// a concrete builder for a specific Kernel type
+// a concrete builder for a specific PluginCore type
 template <typename T>
-class KernelBuilder : public KernelBuilderBase {
+class PluginCoreBuilder : public PluginCoreBuilderBase {
 public:  // methods
     // The name of the builder is taken from the type of the built object
-    KernelBuilder() : KernelBuilderBase(T::type()) {}
+    PluginCoreBuilder() : PluginCoreBuilderBase(T::type()) {}
 
-    ~KernelBuilder() override {}
+    ~PluginCoreBuilder() override {}
 
-    Kernel* make(const eckit::Configuration& config) const override { return new T(config); }
+    PluginCore* make(const eckit::Configuration& config) const override { return new T(config); }
 };
 
 

@@ -11,13 +11,13 @@
 #pragma once
 
 #include "plume/Plugin.h"
-#include "plume/Kernel.h"
+#include "plume/PluginCore.h"
 
 
 namespace plume {
 
 /**
- * @brief Handles a Plugin (and its association to a Kernel)
+ * @brief Handles a Plugin (and its association to a PluginCore)
  * 
  */
 class PluginHandler {
@@ -36,12 +36,12 @@ public:
      */
     bool isActive() const ;
 
-    /** Activate this plugin (associating it to a kernel)
+    /** Activate this plugin (associating it to a plugincore)
      * @brief 
      * 
-     * @param kernelPtr 
+     * @param plugincorePtr 
      */
-    void activate(Kernel* kernelPtr);
+    void activate(PluginCore* plugincorePtr);
 
     /**
      * @brief deactivate the plugin
@@ -50,11 +50,11 @@ public:
     void deactivate();
 
     /**
-     * @brief Get the kernel pointer
+     * @brief Get the plugincore pointer
      * 
-     * @return plume::Kernel* 
+     * @return plume::PluginCore* 
      */
-    plume::Kernel* kernel() const ;
+    plume::PluginCore* plugincore() const ;
 
 
     /**
@@ -69,8 +69,8 @@ private:
     // internal Plugin ptr
     Plugin* pluginPtr_;
 
-    // internal Kernel ptr
-    Kernel* kernelPtr_;
+    // internal PluginCore ptr
+    PluginCore* plugincorePtr_;
 };
 
 }  // namespace plume

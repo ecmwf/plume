@@ -77,11 +77,11 @@ public:
     std::string gitsha1(unsigned int count) const override { return "undefined"; }
 
     /**
-     * @brief Name of the kernel available in the plugin
+     * @brief Name of the plugincore available in the plugin
      * 
      * @return std::string 
      */
-    virtual std::string kernelName() const = 0;
+    virtual std::string plugincoreName() const = 0;
 
 };
 

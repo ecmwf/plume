@@ -27,14 +27,14 @@ const PluginBar& PluginBar::instance() {
 //--------------------------------------------------------------
 
 
-// KernelBar
-static plume::KernelBuilder<KernelBar> runnable_kernel_BarBuilder_;
+// PluginCoreBar
+static plume::PluginCoreBuilder<PluginCoreBar> runnable_plugincore_BarBuilder_;
 
-KernelBar::KernelBar(const eckit::Configuration& conf) : Kernel(conf) {}
+PluginCoreBar::PluginCoreBar(const eckit::Configuration& conf) : PluginCore(conf) {}
 
-KernelBar::~KernelBar() {}
+PluginCoreBar::~PluginCoreBar() {}
 
-void KernelBar::run() {
+void PluginCoreBar::run() {
     eckit::Log::info() << "Plugin Bar consuming parameters: (" 
                        << "K=" << modelData().getInt("K") << ", "
                        << "field=" << modelData().getAtlasFieldShared("field_dummy_1") << ") "

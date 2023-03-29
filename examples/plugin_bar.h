@@ -9,22 +9,22 @@
  * does it submit to any jurisdiction.
  */
 #include <string>
-#include "plume/Kernel.h"
+#include "plume/PluginCore.h"
 #include "plume/Plugin.h"
 
 namespace plugin_bar {
 
 
 /**
- * @brief Kernel simple example
+ * @brief PluginCore simple example
  * 
  */
-class KernelBar : public plume::Kernel {
+class PluginCoreBar : public plume::PluginCore {
 public:
-    KernelBar(const eckit::Configuration& conf);
-    ~KernelBar();
+    PluginCoreBar(const eckit::Configuration& conf);
+    ~PluginCoreBar();
     void run() override;
-    constexpr static const char* type() { return "kernel-bar"; }
+    constexpr static const char* type() { return "plugincore-bar"; }
 };
 
 
@@ -52,7 +52,7 @@ public:
 
     std::string gitsha1(unsigned int count) const override { return "undefined"; }
 
-    virtual std::string kernelName() const override { return KernelBar::type(); }
+    virtual std::string plugincoreName() const override { return PluginCoreBar::type(); }
 };
 
 

@@ -9,22 +9,22 @@
  * does it submit to any jurisdiction.
  */
 #include <string>
-#include "plume/Kernel.h"
+#include "plume/PluginCore.h"
 #include "plume/Plugin.h"
 
 namespace plugin_foo {
 
 
 /**
- * @brief Kernel simple example
+ * @brief PluginCore simple example
  * 
  */
-class KernelFoo : public plume::Kernel {
+class PluginCoreFoo : public plume::PluginCore {
 public:
-    KernelFoo(const eckit::Configuration& conf);
-    ~KernelFoo();
+    PluginCoreFoo(const eckit::Configuration& conf);
+    ~PluginCoreFoo();
     void run() override;
-    constexpr static const char* type() { return "kernel-foo"; }
+    constexpr static const char* type() { return "plugincore-foo"; }
 };
 
 
@@ -52,7 +52,7 @@ public:
 
     std::string gitsha1(unsigned int count) const override { return "undefined"; }
 
-    virtual std::string kernelName() const override { return KernelFoo::type(); }
+    virtual std::string plugincoreName() const override { return PluginCoreFoo::type(); }
 };
 
 

@@ -25,10 +25,10 @@ const InterfacePlugin__@PLUGIN_NAME@& InterfacePlugin__@PLUGIN_NAME@::instance()
 }
 //--------------------------------------------------------------
 
-// InterfaceKernel__@KERNEL_NAME@
-static plume::KernelBuilder<InterfaceKernel__@KERNEL_NAME@> kernel_Interface_Builder__@KERNEL_NAME@;
-InterfaceKernel__@KERNEL_NAME@::InterfaceKernel__@KERNEL_NAME@(const eckit::Configuration& conf) : Kernel(conf) {}
-InterfaceKernel__@KERNEL_NAME@::~InterfaceKernel__@KERNEL_NAME@() {}
+// InterfacePluginCore__@PLUGINCORE_NAME@
+static plume::PluginCoreBuilder<InterfacePluginCore__@PLUGINCORE_NAME@> plugincore_Interface_Builder__@PLUGINCORE_NAME@;
+InterfacePluginCore__@PLUGINCORE_NAME@::InterfacePluginCore__@PLUGINCORE_NAME@(const eckit::Configuration& conf) : PluginCore(conf) {}
+InterfacePluginCore__@PLUGINCORE_NAME@::~InterfacePluginCore__@PLUGINCORE_NAME@() {}
 //--------------------------------------------------------------
 
 

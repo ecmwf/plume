@@ -16,35 +16,35 @@ use plume_data_module, only : plume_data
 
 ! this module contains the user-methods
 ! that will be executed by the plugin
-!  1. kernel_setup
-!  2. kernel_run
-!  3. kernel_teardown
+!  1. plugincore_setup
+!  2. plugincore_run
+!  3. plugincore_teardown
 use user_plugin_module__@PLUGIN_NAME@
 
 implicit none
 private
 
-! Model data available for the kernel
+! Model data available for the plugincore
 type(plume_data), public :: @PLUGIN_NAME@_data
 
 contains
 
 ! Forward to user-defined methods
-subroutine internal_kernel_setup__@KERNEL_NAME@(data_cptr) &
-bind(C, name="kernel_setup__@PLUGIN_NAME@__@KERNEL_NAME@")
+subroutine internal_plugincore_setup__@PLUGINCORE_NAME@(data_cptr) &
+bind(C, name="plugincore_setup__@PLUGIN_NAME@__@PLUGINCORE_NAME@")
     type(c_ptr), intent(in), value :: data_cptr
     call plume_check(@PLUGIN_NAME@_data%initialise_from_ptr(data_cptr))
-    call kernel_setup__@PLUGIN_NAME@(@PLUGIN_NAME@_data)
+    call plugincore_setup__@PLUGIN_NAME@(@PLUGIN_NAME@_data)
 end subroutine
 
-subroutine internal_kernel_run__@KERNEL_NAME@() &
-bind(C, name="kernel_run__@PLUGIN_NAME@__@KERNEL_NAME@")
-    call kernel_run__@PLUGIN_NAME@(@PLUGIN_NAME@_data)
+subroutine internal_plugincore_run__@PLUGINCORE_NAME@() &
+bind(C, name="plugincore_run__@PLUGIN_NAME@__@PLUGINCORE_NAME@")
+    call plugincore_run__@PLUGIN_NAME@(@PLUGIN_NAME@_data)
 end subroutine
 
-subroutine internal_kernel_teardown__@KERNEL_NAME@() &
-bind(C, name="kernel_teardown__@PLUGIN_NAME@__@KERNEL_NAME@")
-    call kernel_teardown__@PLUGIN_NAME@(@PLUGIN_NAME@_data)
+subroutine internal_plugincore_teardown__@PLUGINCORE_NAME@() &
+bind(C, name="plugincore_teardown__@PLUGIN_NAME@__@PLUGINCORE_NAME@")
+    call plugincore_teardown__@PLUGIN_NAME@(@PLUGIN_NAME@_data)
 end subroutine
 
 

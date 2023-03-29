@@ -25,7 +25,7 @@ set(PLUGIN_FILES_H
     Plugin.h
     PluginHandler.h
     Protocol.h
-    Kernel.h
+    PluginCore.h
     Configurable.h
     data/ModelData.h
     data/ParameterCatalogue.h
@@ -37,7 +37,7 @@ set(PLUGIN_FILES_CC
     Plugin.cc
     PluginHandler.cc
     Protocol.cc   
-    Kernel.cc
+    PluginCore.cc
     Configurable.cc
     data/ModelData.cc
     data/ParameterCatalogue.cc

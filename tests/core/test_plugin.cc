@@ -23,7 +23,7 @@ public:
     virtual plume::Protocol negotiate() override {return plume::Protocol();};
     std::string version() const override { return "version-0.0.1"; }
     std::string gitsha1(unsigned int count) const override { return "dummy_sha"; }
-    virtual std::string kernelName() const override {return "dummy-kernel";};
+    virtual std::string plugincoreName() const override {return "dummy-plugincore";};
 };
 
 CASE("test plugin 1") {
@@ -32,12 +32,12 @@ CASE("test plugin 1") {
     std::string name = plugin.name();
     std::string version = plugin.version();
     std::string sha = plugin.gitsha1(0);
-    std::string kernelName = plugin.kernelName();
+    std::string plugincoreName = plugin.plugincoreName();
 
     EXPECT_EQUAL(name,    "dummy_plugin");
     EXPECT_EQUAL(version, "version-0.0.1");
     EXPECT_EQUAL(sha,     "dummy_sha");
-    EXPECT_EQUAL(kernelName, "dummy-kernel");
+    EXPECT_EQUAL(plugincoreName, "dummy-plugincore");
 
     EXPECT_NO_THROW(plugin.init());
     EXPECT_NO_THROW(plugin.finalise());

@@ -9,54 +9,54 @@
  * granted to it by virtue of its status as an intergovernmental organisation nor
  * does it submit to any jurisdiction.
  */
-#include "plume/Kernel.h"
+#include "plume/PluginCore.h"
 
 
 namespace plume {
 
-Kernel::Kernel(const eckit::Configuration& config) {}
+PluginCore::PluginCore(const eckit::Configuration& config) {}
 
-Kernel::~Kernel() {}
+PluginCore::~PluginCore() {}
 
-std::string Kernel::name() const {
+std::string PluginCore::name() const {
     return type();
 }
 
 // grab the data that it needs
-void Kernel::grabData(const data::ModelData& data) {
+void PluginCore::grabData(const data::ModelData& data) {
     modelData_ = data;
 };
 
 
-data::ModelData& Kernel::modelData() {
+data::ModelData& PluginCore::modelData() {
     return modelData_;
 }
 
 
 // ---------------------------------------------------------
-KernelFactory::KernelFactory() {}
+PluginCoreFactory::PluginCoreFactory() {}
 
-KernelFactory::~KernelFactory() {}
+PluginCoreFactory::~PluginCoreFactory() {}
 
-KernelFactory& KernelFactory::instance() {
-    static KernelFactory theinstance;
+PluginCoreFactory& PluginCoreFactory::instance() {
+    static PluginCoreFactory theinstance;
     return theinstance;
 }
 
-void KernelFactory::enregister(const std::string& name, const KernelBuilderBase& builder) {
+void PluginCoreFactory::enregister(const std::string& name, const PluginCoreBuilderBase& builder) {
     std::lock_guard<std::mutex> lock(mutex_);
     ASSERT(builders_.find(name) == builders_.end());
     builders_.emplace(std::make_pair(name, std::ref(builder)));
 }
 
-void KernelFactory::deregister(const std::string& name) {
+void PluginCoreFactory::deregister(const std::string& name) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = builders_.find(name);
     ASSERT(it != builders_.end());
     builders_.erase(it);
 }
 
-std::vector<std::string> KernelFactory::list_registered() {
+std::vector<std::string> PluginCoreFactory::list_registered() {
     std::lock_guard<std::mutex> lock(mutex_);
     std::vector<std::string> reg_;
     for (const auto& b : builders_) {
@@ -65,7 +65,7 @@ std::vector<std::string> KernelFactory::list_registered() {
     return reg_;
 }
 
-Kernel* KernelFactory::build(const std::string& name, const eckit::Configuration& config) const {
+PluginCore* PluginCoreFactory::build(const std::string& name, const eckit::Configuration& config) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
     auto it = builders_.find(name);
@@ -76,12 +76,12 @@ Kernel* KernelFactory::build(const std::string& name, const eckit::Configuration
     return it->second.get().make(config);
 }
 
-KernelBuilderBase::KernelBuilderBase(const std::string& name) : name_(name) {
-    KernelFactory::instance().enregister(name, *this);
+PluginCoreBuilderBase::PluginCoreBuilderBase(const std::string& name) : name_(name) {
+    PluginCoreFactory::instance().enregister(name, *this);
 }
 
-KernelBuilderBase::~KernelBuilderBase() {
-    KernelFactory::instance().deregister(name_);
+PluginCoreBuilderBase::~PluginCoreBuilderBase() {
+    PluginCoreFactory::instance().deregister(name_);
 }
 
 }  // namespace plume

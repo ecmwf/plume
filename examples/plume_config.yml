@@ -9,7 +9,7 @@
     {
       "name": "PluginBar",
       "lib": "plugin_bar",    
-      "kernel-config": {
+      "plugincore-config": {
         "exceptions-dump-trace": true,
         "key-2": "val-2",
         "key-3": "val-3"

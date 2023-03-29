@@ -24,7 +24,7 @@ function( plume_plugin_interface )
         PLUGIN_NAME
         PLUGIN_VERSION
         PLUGIN_SHA
-        KERNEL_NAME
+        PLUGINCORE_NAME
     )
 
     set(multi_value_args
@@ -40,7 +40,7 @@ function( plume_plugin_interface )
     set(PLUGIN_NAME ${_PAR_PLUGIN_NAME})
     set(PLUGIN_VERSION ${_PAR_PLUGIN_VERSION})
     set(PLUGIN_SHA ${_PAR_PLUGIN_SHA})
-    set(KERNEL_NAME ${_PAR_KERNEL_NAME})
+    set(PLUGINCORE_NAME ${_PAR_PLUGINCORE_NAME})
     set(PLUGIN_REQUIRED_PARAMS ${_PAR_PLUGIN_REQUIRED_PARAMS})
 
     # list of required parameters
@@ -65,7 +65,7 @@ function( plume_plugin_interface )
 
     get_filename_component( PLUGIN_TEMPLATE_FILENAME ${_PAR_PLUGIN_TEMPLATE} NAME)
     get_filename_component( GENERATED_USER_SOURCE_FILE ${_PAR_PLUGIN_TEMPLATE} NAME_WLE)
-    message("Plugin: ${PLUGIN_NAME}; Kernel {KERNEL_NAME}; Source: ${PLUGIN_TEMPLATE_FILENAME}")
+    message("Plugin: ${PLUGIN_NAME}; PluginCore {PLUGINCORE_NAME}; Source: ${PLUGIN_TEMPLATE_FILENAME}")
 
     # pre-process user source-template
     ecbuild_configure_file(

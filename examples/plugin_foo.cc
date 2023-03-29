@@ -27,14 +27,14 @@ const PluginFoo& PluginFoo::instance() {
 //--------------------------------------------------------------
 
 
-// KernelFoo
-static plume::KernelBuilder<KernelFoo> runnable_kernel_FooBuilder_;
+// PluginCoreFoo
+static plume::PluginCoreBuilder<PluginCoreFoo> runnable_plugincore_FooBuilder_;
 
-KernelFoo::KernelFoo(const eckit::Configuration& conf) : Kernel(conf) {}
+PluginCoreFoo::PluginCoreFoo(const eckit::Configuration& conf) : PluginCore(conf) {}
 
-KernelFoo::~KernelFoo() {}
+PluginCoreFoo::~PluginCoreFoo() {}
 
-void KernelFoo::run() {
+void PluginCoreFoo::run() {
     eckit::Log::info() << "Plugin Foo consuming parameters: (" 
                        << "I=" << modelData().getInt("I") << ", "
                        << "J=" << modelData().getInt("J") << ") "

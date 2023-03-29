@@ -22,7 +22,7 @@
 
 #include "plume/plume.h"
 #include "plume/utils.h"
-#include "plume/Kernel.h"
+#include "plume/PluginCore.h"
 #include "plume/PluginHandler.h"
 #include "plume/data/ParameterCatalogue.h"
 #include "plume/data/DataChecker.h"
@@ -47,29 +47,29 @@ public:
     }
 
     ~PluginRegistry() {
-        // Destroy the active kernels (i.e. kernels built when the corresponding plugins were set as active)
+        // Destroy the active plugincores (i.e. plugincores built when the corresponding plugins were set as active)
         for (plume::PluginHandler pluginHandle : PluginRegistry::instance().getActivePlugins()) {
             
-            plume::Kernel* kernelPtr = pluginHandle.kernel();
+            plume::PluginCore* plugincorePtr = pluginHandle.plugincore();
 
             // Plugin is now disassociated
             pluginHandle.deactivate();
 
-            // delete the kernel
-            delete kernelPtr;
+            // delete the plugincore
+            delete plugincorePtr;
 
         }
     }
 
     void setActive(Plugin& plugin, const eckit::Configuration& config) {
 
-        std::string name = plugin.kernelName();
-        eckit::LocalConfiguration kernelConfig = config.getSubConfiguration("kernel-config");
-        plume::Kernel* kernelPtr  = plume::KernelFactory::instance().build(name, kernelConfig);
+        std::string name = plugin.plugincoreName();
+        eckit::LocalConfiguration plugincoreConfig = config.getSubConfiguration("plugincore-config");
+        plume::PluginCore* plugincorePtr  = plume::PluginCoreFactory::instance().build(name, plugincoreConfig);
 
         PluginHandler pluginHandle(&plugin);
 
-        pluginHandle.activate(kernelPtr);
+        pluginHandle.activate(plugincorePtr);
 
         // plugin added to the active plugin list
         PluginRegistry::instance().pluginHandlers_.push_back(pluginHandle);
@@ -178,29 +178,29 @@ void Manager::feedPlugins(const data::ModelData& data) {
     // check data
     Manager::checkData(data);
 
-    // Run each Kernel for every active plugin
+    // Run each PluginCore for every active plugin
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
 
-        // get the share of run data needed to run the kernel
+        // get the share of run data needed to run the plugincore
         auto requiredParams          = pluginHandler.plugin()->negotiate().requiredParamNames();
         data::ModelData requiredData = data.filter(requiredParams);
 
-        // get the associated kernel
-        plume::Kernel* kernel  = pluginHandler.kernel();
+        // get the associated plugincore
+        plume::PluginCore* plugincore  = pluginHandler.plugincore();
 
         // grab data
-        kernel->grabData(requiredData);
+        plugincore->grabData(requiredData);
 
         // setup
-        kernel->setup();
+        plugincore->setup();
     }
 }
 
 
-// Run all active kernels
+// Run all active plugincores
 void Manager::run() {
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
-        pluginHandler.kernel()->run();
+        pluginHandler.plugincore()->run();
     }
 };
 
@@ -208,8 +208,8 @@ void Manager::run() {
 // Teardown all active plugins
 void Manager::teardown() {
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
-        // teardown the kernel first
-        pluginHandler.kernel()->teardown();
+        // teardown the plugincore first
+        pluginHandler.plugincore()->teardown();
     }
 };
 

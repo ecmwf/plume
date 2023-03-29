@@ -10,7 +10,7 @@
  */
 #include "eckit/testing/Test.h"
 #include "eckit/config/LocalConfiguration.h"
-#include "plume/Kernel.h"
+#include "plume/PluginCore.h"
 
 
 using namespace eckit::testing;
@@ -19,12 +19,12 @@ namespace eckit {
 namespace test {
 
 
-// A dummy Kernel
-class DummyKernel : public plume::Kernel {
+// A dummy PluginCore
+class DummyPluginCore : public plume::PluginCore {
 public:
-    DummyKernel(const eckit::Configuration& config): plume::Kernel(config) {};
-    virtual ~DummyKernel() {};
-    constexpr static const char* type() { return "dummy_kernel"; }
+    DummyPluginCore(const eckit::Configuration& config): plume::PluginCore(config) {};
+    virtual ~DummyPluginCore() {};
+    constexpr static const char* type() { return "dummy_plugincore"; }
     virtual void setup() override {};
     virtual void teardown() override {};
     virtual void run() override {};
@@ -33,11 +33,11 @@ public:
 
 CASE("test plugin 1") {
 
-    DummyKernel kernel{eckit::LocalConfiguration()};
+    DummyPluginCore plugincore{eckit::LocalConfiguration()};
 
-    EXPECT_NO_THROW( kernel.setup() );
-    EXPECT_NO_THROW( kernel.run() );
-    EXPECT_NO_THROW( kernel.teardown() );
+    EXPECT_NO_THROW( plugincore.setup() );
+    EXPECT_NO_THROW( plugincore.run() );
+    EXPECT_NO_THROW( plugincore.teardown() );
 
 }
 
