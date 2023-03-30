@@ -19,9 +19,9 @@
 // ** Implemented in the concrete Fortran plugin **
 
 // plugincore
-extern "C" void plugincore_setup__@PLUGIN_NAME@__@PLUGINCORE_NAME@(void* modelData);
-extern "C" void plugincore_run__@PLUGIN_NAME@__@PLUGINCORE_NAME@(void* modelData);
-extern "C" void plugincore_teardown__@PLUGIN_NAME@__@PLUGINCORE_NAME@(void* modelData);
+extern "C" void plugincore_setup__@PLUGIN_NAME@__@PLUGINCORE_NAME@(void* config, void* modelData);
+extern "C" void plugincore_run__@PLUGIN_NAME@__@PLUGINCORE_NAME@(void* config, void* modelData);
+extern "C" void plugincore_teardown__@PLUGIN_NAME@__@PLUGINCORE_NAME@(void* config, void* modelData);
 
 
 namespace interface_plugin {
@@ -32,21 +32,24 @@ public:
     InterfacePluginCore__@PLUGINCORE_NAME@(const eckit::Configuration& conf);
     ~InterfacePluginCore__@PLUGINCORE_NAME@();
     
-    void run() override { 
-        eckit::Log::info() << "Running a " << type() << "..." << std::endl;
-        plugincore_run__@PLUGIN_NAME@__@PLUGINCORE_NAME@(&modelData());
+    virtual void setup() override {
+        plugincore_setup__@PLUGIN_NAME@__@PLUGINCORE_NAME@(&config_, &modelData());
     }
 
-    virtual void setup() override {
-        plugincore_setup__@PLUGIN_NAME@__@PLUGINCORE_NAME@(&modelData());
+    void run() override { 
+        plugincore_run__@PLUGIN_NAME@__@PLUGINCORE_NAME@(&config_, &modelData());
     }
 
     virtual void teardown() override {
-        plugincore_teardown__@PLUGIN_NAME@__@PLUGINCORE_NAME@(&modelData());
+        plugincore_teardown__@PLUGIN_NAME@__@PLUGINCORE_NAME@(&config_, &modelData());
     }
     
     // Return the name..
     static const char* type() { return "@PLUGINCORE_NAME@"; }
+
+private:
+
+    eckit::LocalConfiguration config_;
 
 };
 // ------------------------------------------------------

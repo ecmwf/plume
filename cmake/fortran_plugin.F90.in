@@ -11,6 +11,7 @@ module plugin_interface_module__@PLUGIN_NAME@
 use iso_c_binding, only : c_ptr, c_null_char, c_loc
 
 ! wrapper of model data
+use fckit_configuration_module, only : fckit_configuration
 use plume_module, only : plume_check
 use plume_data_module, only : plume_data
 
@@ -26,25 +27,37 @@ private
 
 ! Model data available for the plugincore
 type(plume_data), public :: @PLUGIN_NAME@_data
+type(fckit_configuration), public :: @PLUGIN_NAME@_configuration
 
 contains
 
 ! Forward to user-defined methods
-subroutine internal_plugincore_setup__@PLUGINCORE_NAME@(data_cptr) &
+subroutine internal_plugincore_setup__@PLUGINCORE_NAME@(conf_cptr, data_cptr) &
 bind(C, name="plugincore_setup__@PLUGIN_NAME@__@PLUGINCORE_NAME@")
     type(c_ptr), intent(in), value :: data_cptr
+    type(c_ptr), intent(in), value :: conf_cptr
+
+    ! initialise plume data from C ptr
     call plume_check(@PLUGIN_NAME@_data%initialise_from_ptr(data_cptr))
-    call plugincore_setup__@PLUGIN_NAME@(@PLUGIN_NAME@_data)
+
+    ! initialise fckit configuration from C ptr
+    call @PLUGIN_NAME@_configuration%reset_c_ptr(conf_cptr)
+
+    ! now we can call the user-provided functions
+    call plugincore_setup__@PLUGIN_NAME@(@PLUGIN_NAME@_configuration, @PLUGIN_NAME@_data)
 end subroutine
 
 subroutine internal_plugincore_run__@PLUGINCORE_NAME@() &
 bind(C, name="plugincore_run__@PLUGIN_NAME@__@PLUGINCORE_NAME@")
-    call plugincore_run__@PLUGIN_NAME@(@PLUGIN_NAME@_data)
+    call plugincore_run__@PLUGIN_NAME@(@PLUGIN_NAME@_configuration, @PLUGIN_NAME@_data)
 end subroutine
 
 subroutine internal_plugincore_teardown__@PLUGINCORE_NAME@() &
 bind(C, name="plugincore_teardown__@PLUGIN_NAME@__@PLUGINCORE_NAME@")
-    call plugincore_teardown__@PLUGIN_NAME@(@PLUGIN_NAME@_data)
+    call plugincore_teardown__@PLUGIN_NAME@(@PLUGIN_NAME@_configuration, @PLUGIN_NAME@_data)
+
+    ! finalise the data structure
+    call plume_check(@PLUGIN_NAME@_data%finalise())
 end subroutine
 
 
