@@ -64,7 +64,7 @@ public:
     void setActive(Plugin& plugin, const eckit::Configuration& config) {
 
         std::string name = plugin.plugincoreName();
-        eckit::LocalConfiguration plugincoreConfig = config.getSubConfiguration("plugincore-config");
+        eckit::LocalConfiguration plugincoreConfig = config.getSubConfiguration("core-config");
         plume::PluginCore* plugincorePtr  = plume::PluginCoreFactory::instance().build(name, plugincoreConfig);
 
         PluginHandler pluginHandle(&plugin);
