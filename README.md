@@ -51,7 +51,10 @@ mkdir $builddir
 cd $builddir
 
 # 2. Run CMake
-ecbuild --prefix=$installdir -- -DECKIT_PATH=<path/to/eckit/install> $srcdir
+ecbuild --prefix=$installdir -- \
+  -Deckit_ROOT=<path/to/eckit/install> \
+  -Dfckit_ROOT=<path/to/fckit/install> \
+  -Datlas_ROOT=<path/to/atlas/install> $srcdir
 
 # 3. Compile / Install
 make -j10
