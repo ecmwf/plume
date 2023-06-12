@@ -3,5 +3,7 @@ dependencies: |
   ecmwf/eckit
   ecmwf/atlas
   ecmwf/fckit
+dependency_cmake_options: |
+  ecmwf/atlas: "-DENABLE_FORTRAN=ON"
 dependency_branch: develop
 parallelism_factor: 8
