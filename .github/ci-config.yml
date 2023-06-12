@@ -1,8 +1,8 @@
 dependencies: |
   ecmwf/ecbuild
   ecmwf/eckit
-  ecmwf/atlas
   ecmwf/fckit
+  ecmwf/atlas
 dependency_cmake_options: |
   ecmwf/atlas: "-DENABLE_FORTRAN=ON"
 dependency_branch: develop

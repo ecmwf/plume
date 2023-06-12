@@ -4,8 +4,8 @@ build:
   dependencies:
     - ecmwf/ecbuild@develop
     - ecmwf/eckit@develop
-    - ecmwf/atlas@develop
     - ecmwf/fckit@develop
+    - ecmwf/atlas@develop
   dependency_cmake_options:
     - ecmwf/atlas:-DENABLE_FORTRAN=ON
   parallel: 64
