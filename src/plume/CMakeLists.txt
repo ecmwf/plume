@@ -71,9 +71,6 @@ install( FILES ${PLUGIN_FILES_H} DESTINATION include )
 
 # #################### PLUME plugin manager ######################
 set(PLUME_PLUGIN_MANAGER_SOURCES
-    plume_config.h
-    plume_version.h
-    plume_version.cc
     Manager.h
     Manager.cc
     Protocol.h
