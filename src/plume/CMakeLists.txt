@@ -54,7 +54,7 @@ ecbuild_add_library(
     TARGET plume_plugin
     INSTALL_HEADERS LISTED
     HEADER_DESTINATION
-        ${INSTALL_INCLUDE_DIR}
+        ${INSTALL_INCLUDE_DIR}/plume
     SOURCES
         ${PLUME_PLUGIN_SOURCES}
     PUBLIC_INCLUDES
@@ -66,8 +66,6 @@ ecbuild_add_library(
         atlas
         eckit
 )
-
-install( FILES ${PLUGIN_FILES_H} DESTINATION include )
 
 # #################### PLUME plugin manager ######################
 set(PLUME_PLUGIN_MANAGER_SOURCES
@@ -91,7 +89,7 @@ ecbuild_add_library(
     TARGET plume_plugin_manager
     INSTALL_HEADERS LISTED
     HEADER_DESTINATION
-        ${INSTALL_INCLUDE_DIR}
+        ${INSTALL_INCLUDE_DIR}/plume
     SOURCES
         ${PLUME_PLUGIN_MANAGER_SOURCES}
     PUBLIC_INCLUDES
