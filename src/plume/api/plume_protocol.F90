@@ -9,6 +9,7 @@
 module plume_protocol_module
 
     use iso_c_binding
+    use fckit_c_interop_module, only : c_str
     use plume_utils_module, only : fortranise_cstr
     
     implicit none
@@ -53,9 +54,9 @@ module plume_protocol_module
         & bind(C,name="plume_protocol_offer_int")
         use iso_c_binding, only: c_ptr, c_char, c_int
         type(c_ptr), intent(in), value :: handle_impl
-        character(c_char), intent(in) :: name
-        character(c_char), intent(in) :: avail
-        character(c_char), intent(in) :: comment
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
         integer(c_int) :: err
     end function
 
@@ -63,9 +64,9 @@ module plume_protocol_module
         & bind(C,name="plume_protocol_offer_bool")
         use iso_c_binding, only: c_ptr, c_char, c_int
         type(c_ptr), intent(in), value :: handle_impl
-        character(c_char), intent(in) :: name
-        character(c_char), intent(in) :: avail
-        character(c_char), intent(in) :: comment
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
         integer(c_int) :: err
     end function
 
@@ -73,9 +74,9 @@ module plume_protocol_module
         & bind(C,name="plume_protocol_offer_float")
         use iso_c_binding, only: c_ptr, c_char, c_int
         type(c_ptr), intent(in), value :: handle_impl
-        character(c_char), intent(in) :: name
-        character(c_char), intent(in) :: avail
-        character(c_char), intent(in) :: comment
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
         integer(c_int) :: err
     end function
     
@@ -83,9 +84,9 @@ module plume_protocol_module
         & bind(C,name="plume_protocol_offer_double")
         use iso_c_binding, only: c_ptr, c_char, c_int
         type(c_ptr), intent(in), value :: handle_impl
-        character(c_char), intent(in) :: name
-        character(c_char), intent(in) :: avail
-        character(c_char), intent(in) :: comment
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
         integer(c_int) :: err
     end function
     
@@ -93,9 +94,9 @@ module plume_protocol_module
         & bind(C,name="plume_protocol_offer_atlas_field")
         use iso_c_binding, only: c_ptr, c_char, c_int
         type(c_ptr), intent(in), value :: handle_impl
-        character(c_char), intent(in) :: name
-        character(c_char), intent(in) :: avail
-        character(c_char), intent(in) :: comment
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
         integer(c_int) :: err
     end function    
 
@@ -112,53 +113,53 @@ module plume_protocol_module
     end function
 
     function plume_protocol_offer_int( handle, name, avail, comment ) result(err)
-        use iso_c_binding, only: c_ptr, c_char, c_int, c_null_char
+        use iso_c_binding, only: c_ptr, c_char, c_int
         class(plume_protocol), intent(inout) :: handle
-        character(*), intent(in) :: name
-        character(*), intent(in) :: avail
-        character(*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in) :: name
+        character(kind=c_char,len=*), intent(in) :: avail
+        character(kind=c_char,len=*), intent(in) :: comment
         integer(c_int) :: err
-        err = plume_protocol_offer_int_interf(handle%impl, name//c_null_char, avail//c_null_char, comment//c_null_char )
+        err = plume_protocol_offer_int_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
     end function
 
     function plume_protocol_offer_bool( handle, name, avail, comment ) result(err)
-        use iso_c_binding, only: c_ptr, c_char, c_int, c_null_char
+        use iso_c_binding, only: c_ptr, c_char, c_int
         class(plume_protocol), intent(inout) :: handle
-        character(*), intent(in) :: name
-        character(*), intent(in) :: avail
-        character(*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in) :: name
+        character(kind=c_char,len=*), intent(in) :: avail
+        character(kind=c_char,len=*), intent(in) :: comment
         integer(c_int) :: err
-        err = plume_protocol_offer_bool_interf(handle%impl, name//c_null_char, avail//c_null_char, comment//c_null_char )
+        err = plume_protocol_offer_bool_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
     end function
 
     function plume_protocol_offer_float( handle, name, avail, comment ) result(err)
-        use iso_c_binding, only: c_ptr, c_char, c_int, c_null_char
+        use iso_c_binding, only: c_ptr, c_char, c_int
         class(plume_protocol), intent(inout) :: handle
-        character(*), intent(in) :: name
-        character(*), intent(in) :: avail
-        character(*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in) :: name
+        character(kind=c_char,len=*), intent(in) :: avail
+        character(kind=c_char,len=*), intent(in) :: comment
         integer(c_int) :: err
-        err = plume_protocol_offer_float_interf(handle%impl, name//c_null_char, avail//c_null_char, comment//c_null_char )
+        err = plume_protocol_offer_float_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
     end function
     
     function plume_protocol_offer_double( handle, name, avail, comment ) result(err)
-        use iso_c_binding, only: c_ptr, c_char, c_int, c_null_char
+        use iso_c_binding, only: c_ptr, c_char, c_int
         class(plume_protocol), intent(inout) :: handle
-        character(*), intent(in) :: name
-        character(*), intent(in) :: avail
-        character(*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in) :: name
+        character(kind=c_char,len=*), intent(in) :: avail
+        character(kind=c_char,len=*), intent(in) :: comment
         integer(c_int) :: err
-        err = plume_protocol_offer_double_interf(handle%impl, name//c_null_char, avail//c_null_char, comment//c_null_char )
+        err = plume_protocol_offer_double_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
     end function
     
     function plume_protocol_offer_atlas_field( handle, name, avail, comment ) result(err)
-        use iso_c_binding, only: c_ptr, c_char, c_int, c_null_char
+        use iso_c_binding, only: c_ptr, c_char, c_int
         class(plume_protocol), intent(inout) :: handle
-        character(*), intent(in) :: name
-        character(*), intent(in) :: avail
-        character(*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in) :: name
+        character(kind=c_char,len=*), intent(in) :: avail
+        character(kind=c_char,len=*), intent(in) :: comment
         integer(c_int) :: err
-        err = plume_protocol_offer_atlas_field_interf(handle%impl, name//c_null_char, avail//c_null_char, comment//c_null_char )
+        err = plume_protocol_offer_atlas_field_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
     end function    
 
     function plume_protocol_delete_handle( handle ) result(err)

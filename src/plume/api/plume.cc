@@ -173,35 +173,35 @@ int plume_protocol_create_handle(plume_protocol_handle_t** h) {
     });
 }
 
-int plume_protocol_offer_int(plume_protocol_handle_t* h, const char name[], const char avail[], const char comment[]) {
+int plume_protocol_offer_int(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
     return wrapApiFunction([h, name, avail, comment] {
         ASSERT(h);
         ASSERT((h)->impl_);
         h->impl_->offerInt(name, avail, comment);
     });
 }
-int plume_protocol_offer_bool(plume_protocol_handle_t* h, const char name[], const char avail[], const char comment[]) {
+int plume_protocol_offer_bool(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
     return wrapApiFunction([h, name, avail, comment] {
         ASSERT(h);
         ASSERT((h)->impl_);
         h->impl_->offerBool(name, avail, comment);
     });
 }
-int plume_protocol_offer_float(plume_protocol_handle_t* h, const char name[], const char avail[], const char comment[]) {
+int plume_protocol_offer_float(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
     return wrapApiFunction([h, name, avail, comment] {
         ASSERT(h);
         ASSERT((h)->impl_);
         h->impl_->offerFloat(name, avail, comment);
     });
 }
-int plume_protocol_offer_double(plume_protocol_handle_t* h, const char name[], const char avail[], const char comment[]) {
+int plume_protocol_offer_double(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
     return wrapApiFunction([h, name, avail, comment] {
         ASSERT(h);
         ASSERT((h)->impl_);
         h->impl_->offerDouble(name, avail, comment);
     });
 }
-int plume_protocol_offer_atlas_field(plume_protocol_handle_t* h, const char name[], const char avail[], const char comment[]) {
+int plume_protocol_offer_atlas_field(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
     return wrapApiFunction([h, name, avail, comment] {
         ASSERT(h);
         ASSERT((h)->impl_);
@@ -232,7 +232,7 @@ int plume_manager_create_handle(plume_manager_handle_t** h) {
     });
 }
 
-int plume_manager_configure(plume_manager_handle_t* h, const char config_path[]) {
+int plume_manager_configure(plume_manager_handle_t* h, const char* config_path) {
 
         return wrapApiFunction([h, config_path] {
         ASSERT(h);
@@ -297,13 +297,14 @@ int plume_manager_active_data_catalogue(plume_manager_handle_t* h, void** active
     });
 }
 
-int plume_manager_is_param_requested(plume_manager_handle_t* h, const char name[], bool* requested) {
+int plume_manager_is_param_requested(plume_manager_handle_t* h, const char* name, bool* requested) {
     return wrapApiFunction([h, name, &requested] {
         ASSERT(h);
         ASSERT((h)->impl_);
  
         std::string namestr{name};
         *requested = h->impl_->isParamRequested(namestr);
+        std::cout << "-->>> param: " << name << " requested? : " << *requested << std::endl;
     });
 }
 

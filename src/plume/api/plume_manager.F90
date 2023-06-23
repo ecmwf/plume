@@ -10,6 +10,7 @@ module plume_manager_module
 
 use iso_c_binding
 use fckit_configuration_module, only : fckit_configuration
+use fckit_c_interop_module, only : c_str
 
 use plume_utils_module, only : fortranise_cstr
 use plume_data_module, only : plume_data
@@ -53,7 +54,7 @@ function plume_manager_configure_interf(handle_impl, config_str) result(err) &
     & bind(C,name="plume_manager_configure")
     use iso_c_binding, only: c_char, c_int, c_ptr
     type(c_ptr), intent(in), value :: handle_impl
-    character(c_char) :: config_str
+    character(c_char), dimension(*) :: config_str
     integer(c_int) :: err
 end function
 
@@ -85,7 +86,7 @@ function plume_manager_is_param_requested_interf(handle_impl, name, is_param) re
     & bind(C, name="plume_manager_is_param_requested")
     use iso_c_binding, only: c_ptr, c_char, c_bool
     type(c_ptr), intent(in), value :: handle_impl
-    character(c_char) :: name
+    character(c_char), dimension(*) :: name
     logical(c_bool), intent(inout) :: is_param
     integer :: err
 end function
@@ -134,9 +135,9 @@ end function
 function plume_manager_configure(handle, config_str) result(err)
     use iso_c_binding, only: c_null_char, c_char
     class(plume_manager), intent(inout) :: handle
-    character(c_char) :: config_str
+    character(kind=c_char,len=*), intent(in) :: config_str
     integer :: err
-    err = plume_manager_configure_interf(handle%impl, config_str)
+    err = plume_manager_configure_interf(handle%impl, c_str(config_str))
 end function
 
 function plume_manager_negotiate(handle, protocol_handle) result(err)
@@ -189,10 +190,10 @@ end function
 function plume_manager_is_param_requested(handle, name, is_param) result(err)
     use iso_c_binding, only: c_ptr, c_char, c_bool
     class(plume_manager), intent(inout) :: handle
-    character(c_char) :: name
+    character(kind=c_char,len=*), intent(in) :: name
     logical(c_bool) :: is_param
     integer :: err
-    err = plume_manager_is_param_requested_interf(handle%impl, name, is_param)
+    err = plume_manager_is_param_requested_interf(handle%impl, c_str(name), is_param)
 end function
 
 function plume_manager_finalise(handle) result(err)

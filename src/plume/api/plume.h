@@ -93,11 +93,11 @@ int plume_finalise();
 
 /* --- Plume Protocol --- */
 int plume_protocol_create_handle(plume_protocol_handle_t** h);
-int plume_protocol_offer_int(plume_protocol_handle_t* h, const char name[], const char avail[], const char comment[]);
-int plume_protocol_offer_bool(plume_protocol_handle_t* h, const char name[], const char avail[], const char comment[]);
-int plume_protocol_offer_float(plume_protocol_handle_t* h, const char name[], const char avail[], const char comment[]);
-int plume_protocol_offer_double(plume_protocol_handle_t* h, const char name[], const char avail[], const char comment[]);
-int plume_protocol_offer_atlas_field(plume_protocol_handle_t* h, const char name[], const char avail[], const char comment[]);
+int plume_protocol_offer_int(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
+int plume_protocol_offer_bool(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
+int plume_protocol_offer_float(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
+int plume_protocol_offer_double(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
+int plume_protocol_offer_atlas_field(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
 int plume_protocol_delete_handle(plume_protocol_handle_t* h);
 
 /* --- Plume Manager --- */
@@ -125,7 +125,7 @@ int plume_manager_create_handle(plume_manager_handle_t** h);
 int plume_data_create_handle_from_ptr(plume_data_handle_t** h, void* cptr);
 
 
-int plume_manager_configure(plume_manager_handle_t* h, const char config_path[]);
+int plume_manager_configure(plume_manager_handle_t* h, const char* config_path);
 
 /**
  * @brief Load all the plugins
@@ -173,7 +173,7 @@ int plume_manager_active_data_catalogue(plume_manager_handle_t* h, void** active
  * @param requested 
  * @return int 
  */
-int plume_manager_is_param_requested(plume_manager_handle_t* h, const char name[], bool* requested);
+int plume_manager_is_param_requested(plume_manager_handle_t* h, const char* name, bool* requested);
 
 /**
  * @brief Run all plugins

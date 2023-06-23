@@ -9,6 +9,8 @@
 module plume_data_module
 
 use iso_c_binding
+use fckit_c_interop_module, only : c_str
+
 use atlas_module
 
 ! PLUME data ("C"-handle wrapper)
@@ -81,7 +83,7 @@ function plume_data_create_int_interf( handle_impl, name, value ) result(err) &
   & bind(C,name="plume_data_create_int")
   use iso_c_binding, only: c_ptr, c_char, c_int
   type(c_ptr), intent(in), value :: handle_impl
-  character(c_char), intent(in) :: name
+  character(c_char), dimension(*) :: name
   integer(c_int), intent(in), value :: value
   integer(c_int) :: err
 end function
@@ -91,7 +93,7 @@ function plume_data_create_bool_interf( handle_impl, name, value ) result(err) &
   & bind(C,name="plume_data_create_bool")
   use iso_c_binding, only: c_ptr, c_char, c_bool, c_int
   type(c_ptr), intent(in), value :: handle_impl
-  character(c_char), intent(in) :: name
+  character(c_char), dimension(*) :: name
   logical(c_bool), intent(in), value :: value
   integer(c_int) :: err
 end function    
@@ -101,7 +103,7 @@ function plume_data_create_float_interf( handle_impl, name, value ) result(err) 
   & bind(C,name="plume_data_create_float")
   use iso_c_binding, only: c_ptr, c_char, c_float, c_int
   type(c_ptr), intent(in), value :: handle_impl
-  character(c_char), intent(in) :: name
+  character(c_char), dimension(*) :: name
   real(c_float), intent(in), value :: value
   integer(c_int) :: err
 end function
@@ -111,7 +113,7 @@ function plume_data_create_double_interf( handle_impl, name, value ) result(err)
   & bind(C,name="plume_data_create_double")
   use iso_c_binding, only: c_ptr, c_char, c_double, c_int
   type(c_ptr), intent(in), value :: handle_impl
-  character(c_char), intent(in) :: name
+  character(c_char), dimension(*) :: name
   real(c_double), intent(in), value :: value
   integer(c_int) :: err
 end function
@@ -123,7 +125,7 @@ function plume_data_update_int_interf( handle_impl, name, value ) result(err) &
   & bind(C,name="plume_data_update_int")
   use iso_c_binding, only: c_ptr, c_char, c_int
   type(c_ptr), intent(in), value :: handle_impl
-  character(c_char), intent(in) :: name
+  character(c_char), dimension(*) :: name
   integer(c_int), intent(in), value :: value
   integer(c_int) :: err
 end function
@@ -133,7 +135,7 @@ function plume_data_update_bool_interf( handle_impl, name, value ) result(err) &
   & bind(C,name="plume_data_update_bool")
   use iso_c_binding, only: c_ptr, c_char, c_bool, c_int
   type(c_ptr), intent(in), value :: handle_impl
-  character(c_char), intent(in) :: name
+  character(c_char), dimension(*) :: name
   logical(c_bool), intent(in), value :: value
   integer(c_int) :: err
 end function    
@@ -143,7 +145,7 @@ function plume_data_update_float_interf( handle_impl, name, value ) result(err) 
   & bind(C,name="plume_data_update_float")
   use iso_c_binding, only: c_ptr, c_char, c_float, c_int
   type(c_ptr), intent(in), value :: handle_impl
-  character(c_char), intent(in) :: name
+  character(c_char), dimension(*) :: name
   real(c_float), intent(in), value :: value
   integer(c_int) :: err
 end function
@@ -153,7 +155,7 @@ function plume_data_update_double_interf( handle_impl, name, value ) result(err)
   & bind(C,name="plume_data_update_double")
   use iso_c_binding, only: c_ptr, c_char, c_double, c_int
   type(c_ptr), intent(in), value :: handle_impl
-  character(c_char), intent(in) :: name
+  character(c_char), dimension(*) :: name
   real(c_double), intent(in), value :: value
   integer(c_int) :: err
 end function
@@ -166,7 +168,7 @@ function plume_data_provide_int_interf( handle_impl, name, value ) result(err) &
     & bind(C,name="plume_data_provide_int")
     use iso_c_binding, only: c_ptr, c_char, c_int
     type(c_ptr), intent(in), value :: handle_impl
-    character(c_char), intent(in) :: name
+    character(c_char), dimension(*) :: name
     integer(c_int), intent(in) :: value
     integer(c_int) :: err
 end function
@@ -176,7 +178,7 @@ function plume_data_provide_bool_interf( handle_impl, name, value ) result(err) 
     & bind(C,name="plume_data_provide_bool")
     use iso_c_binding, only: c_ptr, c_char, c_bool, c_int
     type(c_ptr), intent(in), value :: handle_impl
-    character(c_char), intent(in) :: name
+    character(c_char), dimension(*) :: name
     logical(c_bool), intent(in) :: value
     integer(c_int) :: err
 end function    
@@ -186,7 +188,7 @@ function plume_data_provide_float_interf( handle_impl, name, value ) result(err)
     & bind(C,name="plume_data_provide_float")
     use iso_c_binding, only: c_ptr, c_char, c_float, c_int
     type(c_ptr), intent(in), value :: handle_impl
-    character(c_char), intent(in) :: name
+    character(c_char), dimension(*) :: name
     real(c_float), intent(in) :: value
     integer(c_int) :: err
 end function
@@ -196,7 +198,7 @@ function plume_data_provide_double_interf( handle_impl, name, value ) result(err
     & bind(C,name="plume_data_provide_double")
     use iso_c_binding, only: c_ptr, c_char, c_double, c_int
     type(c_ptr), intent(in), value :: handle_impl
-    character(c_char), intent(in) :: name
+    character(c_char), dimension(*) :: name
     real(c_double), intent(in) :: value
     integer(c_int) :: err
 end function
@@ -206,7 +208,7 @@ function plume_data_provide_atlas_field_shared_interf( handle_impl, name, value 
     & bind(C,name="plume_data_provide_atlas_field_shared")
     use iso_c_binding, only: c_ptr, c_char, c_ptr, c_int
     type(c_ptr), intent(in), value :: handle_impl
-    character(c_char), intent(in) :: name
+    character(c_char), dimension(*) :: name
     type(c_ptr), intent(in), value :: value
     integer(c_int) :: err
 end function
@@ -224,7 +226,7 @@ function plume_data_get_shared_atlas_field_interf(handle_impl, name, field_c_ptr
   & bind(C,name="plume_data_get_shared_atlas_field")
   use iso_c_binding, only: c_ptr, c_char, c_int
   type(c_ptr), intent(in), value :: handle_impl
-  character(c_char), intent(in) :: name
+  character(c_char), dimension(*) :: name
   type(c_ptr), intent(out) :: field_c_ptr
   integer(c_int) :: err
 end function
@@ -233,7 +235,7 @@ function plume_data_get_int_interf( handle_impl, name, val ) result (err) &
   & bind(C,name="plume_data_get_int")
   use iso_c_binding, only: c_ptr, c_char, c_int
   type(c_ptr), intent(in), value :: handle_impl
-  character(c_char), intent(in) :: name
+  character(c_char), dimension(*) :: name
   integer(c_int), intent(inout) :: val
   integer(c_int) :: err
 end function
@@ -242,7 +244,7 @@ function plume_data_get_bool_interf( handle_impl, name, val ) result (err) &
   & bind(C,name="plume_data_get_bool")
   use iso_c_binding, only: c_ptr, c_char, c_bool, c_int
   type(c_ptr), intent(in), value :: handle_impl
-  character(c_char), intent(in) :: name
+  character(c_char), dimension(*) :: name
   logical(c_bool), intent(inout) :: val
   integer(c_int) :: err
 end function
@@ -251,7 +253,7 @@ function plume_data_get_float_interf( handle_impl, name, val ) result (err) &
   & bind(C,name="plume_data_get_float")
   use iso_c_binding, only: c_ptr, c_char, c_float, c_int
   type(c_ptr), intent(in), value :: handle_impl
-  character(c_char), intent(in) :: name
+  character(c_char), dimension(*) :: name
   real(c_float), intent(inout) :: val
   integer(c_int) :: err
 end function
@@ -260,7 +262,7 @@ function plume_data_get_double_interf( handle_impl, name, val ) result (err) &
   & bind(C,name="plume_data_get_double")
   use iso_c_binding, only: c_ptr, c_char, c_double, c_int
   type(c_ptr), intent(in), value :: handle_impl
-  character(c_char), intent(in) :: name
+  character(c_char), dimension(*) :: name
   real(c_double), intent(inout) :: val
   integer(c_int) :: err
 end function
@@ -312,39 +314,39 @@ end function
 
 
 function plume_data_create_int( handle, name, value ) result(err)
-  use iso_c_binding, only: c_ptr, c_char, c_int, c_null_char
+  use iso_c_binding, only: c_ptr, c_char, c_int
   class(plume_data), intent(inout) :: handle
-  character(len=*), intent(in) :: name
+  character(kind=c_char,len=*), intent(in) :: name
   integer(c_int), intent(in) :: value
   integer(c_int) :: err
-  err = plume_data_create_int_interf(handle%impl, name//c_null_char, value )
+  err = plume_data_create_int_interf(handle%impl, c_str(name), value )
 end function
 
 function plume_data_create_bool( handle, name, value ) result(err)
-  use iso_c_binding, only: c_ptr, c_char, c_bool, c_int, c_null_char
+  use iso_c_binding, only: c_ptr, c_char, c_bool, c_int
   class(plume_data), intent(inout) :: handle
-  character(len=*), intent(in) :: name
+  character(kind=c_char,len=*), intent(in) :: name
   logical(c_bool), intent(in) :: value
   integer(c_int) :: err
-  err = plume_data_create_bool_interf(handle%impl, name//c_null_char, value)
+  err = plume_data_create_bool_interf(handle%impl, c_str(name), value)
 end function
 
 function plume_data_create_float( handle, name, value ) result(err)
-  use iso_c_binding, only: c_ptr, c_char, c_float, c_int, c_null_char
+  use iso_c_binding, only: c_ptr, c_char, c_float, c_int
   class(plume_data), intent(inout) :: handle
-  character(len=*), intent(in) :: name
+  character(kind=c_char,len=*), intent(in) :: name
   real(c_float), intent(in) :: value
   integer(c_int) :: err
-  err = plume_data_create_float_interf(handle%impl, name//c_null_char, value)
+  err = plume_data_create_float_interf(handle%impl, c_str(name), value)
 end function
 
 function plume_data_create_double( handle, name, value ) result(err)
-  use iso_c_binding, only: c_ptr, c_char, c_double, c_int, c_null_char
+  use iso_c_binding, only: c_ptr, c_char, c_double, c_int
   class(plume_data), intent(inout) :: handle
-  character(len=*), intent(in) :: name
+  character(kind=c_char,len=*), intent(in) :: name
   real(c_double), intent(in) :: value
   integer(c_int) :: err
-  err = plume_data_create_double_interf(handle%impl, name//c_null_char, value)
+  err = plume_data_create_double_interf(handle%impl, c_str(name), value)
 end function
 
 
@@ -352,39 +354,39 @@ end function
 
 
 function plume_data_update_int( handle, name, value ) result(err)
-  use iso_c_binding, only: c_ptr, c_char, c_int, c_null_char
+  use iso_c_binding, only: c_ptr, c_char, c_int
   class(plume_data), intent(inout) :: handle
-  character(len=*), intent(in) :: name
+  character(kind=c_char,len=*), intent(in) :: name
   integer(c_int), intent(in) :: value
   integer(c_int) :: err
-  err = plume_data_update_int_interf(handle%impl, name//c_null_char, value )
+  err = plume_data_update_int_interf(handle%impl, c_str(name), value )
 end function
 
 function plume_data_update_bool( handle, name, value ) result(err)
-  use iso_c_binding, only: c_ptr, c_char, c_bool, c_int, c_null_char
+  use iso_c_binding, only: c_ptr, c_char, c_bool, c_int
   class(plume_data), intent(inout) :: handle
-  character(len=*), intent(in) :: name
+  character(kind=c_char,len=*), intent(in) :: name
   logical(c_bool), intent(in) :: value
   integer(c_int) :: err
-  err = plume_data_update_bool_interf(handle%impl, name//c_null_char, value)
+  err = plume_data_update_bool_interf(handle%impl, c_str(name), value)
 end function
 
 function plume_data_update_float( handle, name, value ) result(err)
-  use iso_c_binding, only: c_ptr, c_char, c_float, c_int, c_null_char
+  use iso_c_binding, only: c_ptr, c_char, c_float, c_int
   class(plume_data), intent(inout) :: handle
-  character(len=*), intent(in) :: name
+  character(kind=c_char,len=*), intent(in) :: name
   real(c_float), intent(in) :: value
   integer(c_int) :: err
-  err = plume_data_update_float_interf(handle%impl, name//c_null_char, value)
+  err = plume_data_update_float_interf(handle%impl, c_str(name), value)
 end function
 
 function plume_data_update_double( handle, name, value ) result(err)
-  use iso_c_binding, only: c_ptr, c_char, c_double, c_int, c_null_char
+  use iso_c_binding, only: c_ptr, c_char, c_double, c_int
   class(plume_data), intent(inout) :: handle
-  character(len=*), intent(in) :: name
+  character(kind=c_char,len=*), intent(in) :: name
   real(c_double), intent(in) :: value
   integer(c_int) :: err
-  err = plume_data_update_double_interf(handle%impl, name//c_null_char, value)
+  err = plume_data_update_double_interf(handle%impl, c_str(name), value)
 end function
 
 
@@ -392,54 +394,54 @@ end function
 
 
 function plume_data_provide_int( handle, name, value ) result(err)
-  use iso_c_binding, only: c_ptr, c_char, c_int, c_null_char
+  use iso_c_binding, only: c_ptr, c_char, c_int
   class(plume_data), intent(inout) :: handle
-  character(len=*), intent(in) :: name
+  character(kind=c_char,len=*), intent(in) :: name
   integer(c_int), intent(in) :: value
   integer(c_int) :: err
-  err = plume_data_provide_int_interf(handle%impl, name//c_null_char, value )
+  err = plume_data_provide_int_interf(handle%impl, c_str(name), value )
 end function
 
 function plume_data_provide_bool( handle, name, value ) result(err)
-  use iso_c_binding, only: c_ptr, c_char, c_bool, c_int, c_null_char
+  use iso_c_binding, only: c_ptr, c_char, c_bool, c_int
   class(plume_data), intent(inout) :: handle
-  character(len=*), intent(in) :: name
+  character(kind=c_char,len=*), intent(in) :: name
   logical(c_bool), intent(in) :: value
   integer(c_int) :: err
-  err = plume_data_provide_bool_interf(handle%impl, name//c_null_char, value)
+  err = plume_data_provide_bool_interf(handle%impl, c_str(name), value)
 end function
 
 function plume_data_provide_float( handle, name, value ) result(err)
-  use iso_c_binding, only: c_ptr, c_char, c_float, c_int, c_null_char
+  use iso_c_binding, only: c_ptr, c_char, c_float, c_int
   class(plume_data), intent(inout) :: handle
-  character(len=*), intent(in) :: name
+  character(kind=c_char,len=*), intent(in) :: name
   real(c_float), intent(in) :: value
   integer(c_int) :: err
-  err = plume_data_provide_float_interf(handle%impl, name//c_null_char, value)
+  err = plume_data_provide_float_interf(handle%impl, c_str(name), value)
 end function
 
 function plume_data_provide_double( handle, name, value ) result(err)
-  use iso_c_binding, only: c_ptr, c_char, c_double, c_int, c_null_char
+  use iso_c_binding, only: c_ptr, c_char, c_double, c_int
   class(plume_data), intent(inout) :: handle
-  character(len=*), intent(in) :: name
+  character(kind=c_char,len=*), intent(in) :: name
   real(c_double), intent(in) :: value
   integer(c_int) :: err
-  err = plume_data_provide_double_interf(handle%impl, name//c_null_char, value)
+  err = plume_data_provide_double_interf(handle%impl, c_str(name), value)
 end function
 
 ! insert an atlas field
 function plume_data_provide_atlas_field_shared( handle, name, value ) result(err)
-  use iso_c_binding, only: c_ptr, c_char, c_int, c_null_char
+  use iso_c_binding, only: c_ptr, c_char, c_int
   class(plume_data), intent(inout) :: handle
-  character(len=*), intent(in) :: name
+  character(kind=c_char,len=*), intent(in) :: name
   type(atlas_Field), intent(in) :: value
   integer(c_int) :: err
-  err = plume_data_provide_atlas_field_shared_interf(handle%impl, name//c_null_char, value%c_ptr())
+  err = plume_data_provide_atlas_field_shared_interf(handle%impl, c_str(name), value%c_ptr())
 end function
 
 ! this function returns a field from a requested field name
 function plume_data_get_shared_atlas_field( handle, name, field ) result (err)
-  use iso_c_binding, only: c_ptr, c_char, c_int, c_null_char
+  use iso_c_binding, only: c_ptr, c_char, c_int
   class(plume_data), intent(inout) :: handle
   character(*), intent(in) :: name
   type(atlas_field), intent(inout) :: field
@@ -447,45 +449,45 @@ function plume_data_get_shared_atlas_field( handle, name, field ) result (err)
   integer(c_int) :: err
 
   ! Set the internal c_ptr of the field
-  err = plume_data_get_shared_atlas_field_interf(handle%impl, name//c_null_char, field_ptr)
+  err = plume_data_get_shared_atlas_field_interf(handle%impl, c_str(name), field_ptr)
   call field%reset_c_ptr(field_ptr)
 end function
 
 ! this function returns a metadata parameter (int)
 function plume_data_get_int( handle, name, val ) result (err)
-  use iso_c_binding, only: c_int, c_null_char
+  use iso_c_binding, only: c_int
   class(plume_data), intent(inout) :: handle
   character(*), intent(in) :: name
   integer(c_int), intent(inout) :: val
   integer(c_int) :: err
-  err = plume_data_get_int_interf(handle%impl, name//c_null_char, val)
+  err = plume_data_get_int_interf(handle%impl, c_str(name), val)
 end function
 
 function plume_data_get_bool( handle, name, val ) result (err)
-  use iso_c_binding, only: c_bool, c_int, c_null_char
+  use iso_c_binding, only: c_bool, c_int
   class(plume_data), intent(inout) :: handle
   character(*), intent(in) :: name
   logical(c_bool), intent(inout) :: val
   integer(c_int) :: err
-  err = plume_data_get_bool_interf(handle%impl, name//c_null_char, val)
+  err = plume_data_get_bool_interf(handle%impl, c_str(name), val)
 end function
 
 function plume_data_get_float( handle, name, val ) result (err)
-  use iso_c_binding, only: c_float, c_int, c_null_char
+  use iso_c_binding, only: c_float, c_int
   class(plume_data), intent(inout) :: handle
   character(*), intent(in) :: name
   real(c_float), intent(inout) :: val
   integer(c_int) :: err
-  err = plume_data_get_float_interf(handle%impl, name//c_null_char, val)
+  err = plume_data_get_float_interf(handle%impl, c_str(name), val)
 end function
 
 function plume_data_get_double( handle, name, val ) result (err)
-  use iso_c_binding, only: c_double, c_int, c_null_char
+  use iso_c_binding, only: c_double, c_int
   class(plume_data), intent(inout) :: handle
   character(*), intent(in) :: name
   real(c_double), intent(inout) :: val
   integer(c_int) :: err
-  err = plume_data_get_double_interf(handle%impl, name//c_null_char, val)
+  err = plume_data_get_double_interf(handle%impl, c_str(name), val)
 end function
 
 function plume_data_print( handle ) result(err)
