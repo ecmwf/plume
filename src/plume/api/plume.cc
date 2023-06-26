@@ -304,7 +304,6 @@ int plume_manager_is_param_requested(plume_manager_handle_t* h, const char* name
  
         std::string namestr{name};
         *requested = h->impl_->isParamRequested(namestr);
-        std::cout << "-->>> param: " << name << " requested? : " << *requested << std::endl;
     });
 }
 
