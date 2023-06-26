@@ -290,7 +290,7 @@ void Manager::checkData(const data::ModelData& data) {
     data::DataChecker::checkAllParams(data, PluginRegistry::instance().getActiveDataCatalogue(), plume::data::CheckPolicyWarning{} );
 
     // Check that all the "always" params are present
-    data::DataChecker::checkAllParams(data, PluginRegistry::instance().getDataCatalogue(), plume::data::CheckPolicyWarning{});
+    data::DataChecker::checkAlwaysAvailParams(data, PluginRegistry::instance().getDataCatalogue(), plume::data::CheckPolicyWarning{});
 
     eckit::Log::info() << "--- Plume manager has checked data." << std::endl;
 }
