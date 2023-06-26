@@ -10,6 +10,8 @@
  */
 #include <algorithm>
 #include "plume/Protocol.h"
+#include "plume/plume_version.h"
+#include "atlas/library/version.h"
 
 
 
@@ -18,8 +20,8 @@ namespace plume {
 
 Protocol::Protocol()  : requestedPlumeVersion_{"0.0.0"}, 
                         requestedAtlasVersion_{"0.0.0"},
-                        offeredPlumeVersion_{"0.0.0"}, 
-                        offeredAtlasVersion_{"0.0.0"} {
+                        offeredPlumeVersion_{ plume_VERSION }, 
+                        offeredAtlasVersion_{ atlas::library::version() } {
 }
 
 

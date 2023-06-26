@@ -225,7 +225,7 @@ bool Manager::decideOnPlugin(const Protocol& offers, const Protocol& requires) {
                        <<  " VS Actual Atlas version "<< offers.offeredAtlasVersion() << std::endl;
     
     // Check Plume version
-    if (LibVersion(requires.requiredPlumeVersion()) > LibVersion(plume_VERSION)) {
+    if (LibVersion(requires.requiredPlumeVersion()) > LibVersion( plume_VERSION )) {
         return false;
     }
 
