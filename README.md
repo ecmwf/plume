@@ -68,3 +68,7 @@ To test plume installation:
 cd $builddir
 make test
 ```
+
+### Example Plugins
+Additional example plugins can be found in https://github.com/ecmwf/plume-examples
+
