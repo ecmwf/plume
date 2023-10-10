@@ -34,4 +34,4 @@ __ http://www.apache.org/licenses/LICENSE-2.0.html
 
 :Authors:
     Antonino Bonanni, James Hawkes, Tiago Quintino
-:Version: 0.1.0
+:Version: 0.2.0
