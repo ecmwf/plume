@@ -15,7 +15,7 @@ ecbuild_add_library(
     INSTALL_HEADERS LISTED
 
     HEADER_DESTINATION
-        ${INSTALL_INCLUDE_DIR}/plume/api
+        ${INSTALL_INCLUDE_DIR}/plume
 
     SOURCES
         plume.h
@@ -34,8 +34,6 @@ ecbuild_add_library(
         atlas
         plume_plugin_manager
 )
-install( FILES ${CMAKE_CURRENT_SOURCE_DIR}/plume.h DESTINATION include/plume/plume.h )
-
 
 
 # plume Fortran-API
@@ -46,7 +44,7 @@ ecbuild_add_library(
     INSTALL_HEADERS LISTED
 
     HEADER_DESTINATION
-        ${INSTALL_INCLUDE_DIR}/plume/api
+        ${INSTALL_INCLUDE_DIR}/plume
 
     SOURCES
         plume.F90
