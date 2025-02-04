@@ -14,14 +14,17 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 #include "eckit/config/LocalConfiguration.h"
 #include "eckit/memory/NonCopyable.h"
 #include "eckit/system/LibraryManager.h"
 
 #include "plume/Plugin.h"
+#include "plume/PluginDecision.h"
 #include "plume/data/ParameterCatalogue.h"
 #include "plume/data/ModelData.h"
+#include "plume/ManagerConfig.h"
 
 
 namespace plume {
@@ -82,7 +85,7 @@ public:
      * 
      * @return data::ParamList 
      */
-    static std::vector<std::string> getActiveParams();
+    static std::unordered_set<std::string> getActiveParams();
 
     /**
      * @brief subset of Data Catalogue for active params
@@ -101,17 +104,17 @@ public:
     static bool isParamRequested(const std::string& name);
 
     static bool isConfigured();
+
 private:
 
     /**
-     * @brief Make a decision on each plugins, to establish which ones will run
+     * @brief Load a plugin from a shared library
      * 
-     * @param dataConfig 
-     * @param protocol 
-     * @return true 
-     * @return false 
+     * @param lib 
+     * @param name 
+     * @return Plugin& 
      */
-    static bool decideOnPlugin(const Protocol& offers, const Protocol& requires);
+    static Plugin& loadPlugin(const std::string& lib, const std::string& name);
 
     /**
      * @brief Check data before feeding plugins
@@ -120,7 +123,8 @@ private:
      */
     static void checkData(const data::ModelData& data);
 
-    static eckit::LocalConfiguration config_;
+    static ManagerConfig managerConfig_;
+
     static bool isConfigured_;
 
 };

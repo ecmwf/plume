@@ -47,13 +47,25 @@ int main(int argc, char** argv) {
     offers.offerInt("I", "always", "this is param I");
     offers.offerInt("J", "always", "this is param J");
     offers.offerInt("K", "always", "this is param K");
+
     offers.offerAtlasField("field_dummy_1", "on-request", "this is dummy_field");
+
+    offers.offerInt("config-param-1", "on-request", "this is param config-param-1");
+    offers.offerDouble("config-param-2", "on-request", "this is param config-param-2");
+    offers.offerAtlasField("config-param-3", "on-request", "this is param config-param-3");
+
     plume::Manager::negotiate(offers);
 
     // data
     int param_i = 0;
     int param_j = 10;
     int param_k = 100;
+    atlas::Field field_dummy;
+
+    int config_param_1 = 9;
+    double config_param_2 = 99.99;
+    atlas::Field config_param_3;
+
     plume::data::ModelData data;
 
     // Insert some int parameters (regardless of whether 
@@ -69,12 +81,29 @@ int main(int argc, char** argv) {
     // => This information can be used to insert "on-request" params 
     //    (i.e parameters that are inserted only if requested by plugins)
     //
-    // For example, if "field_dummy_1" has been requested, then insert it:
-    std::string name = "field_dummy_1";
-    atlas::Field field;
+    // For example, if "field_dummy_1" has been requested, then insert it:    
+    std::string name;
+
+    name = "field_dummy_1";
     if ( plume::Manager::isParamRequested(name) ) {
-        field = createAtlasField(name);
-        data.provideAtlasFieldShared(name, field.get());
+        field_dummy = createAtlasField(name);
+        data.provideAtlasFieldShared(name, field_dummy.get());
+    }
+    
+    name = "config-param-1";
+    if ( plume::Manager::isParamRequested(name) ) {
+        data.provideInt(name, &config_param_1);
+    }
+
+    name = "config-param-2";
+    if ( plume::Manager::isParamRequested(name) ) {
+        data.provideDouble(name, &config_param_2);
+    }
+
+    name = "config-param-3";
+    if ( plume::Manager::isParamRequested(name) ) {
+        config_param_3 = createAtlasField(name);
+        data.provideAtlasFieldShared(name, config_param_3.get());
     }
 
     // Once data is ready.. feed the plugins!

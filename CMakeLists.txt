@@ -18,7 +18,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ############################################################################################
 ### dependencies and options
-ecbuild_find_package( NAME eckit  VERSION  1.18 REQUIRED )
+ecbuild_find_package( NAME eckit  VERSION  1.28.0 REQUIRED )
 ecbuild_find_package( NAME atlas )
 ecbuild_find_package( NAME eccodes )
 

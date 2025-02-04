@@ -18,8 +18,6 @@ REGISTER_LIBRARY(PluginBar)
 
 PluginBar::PluginBar() : Plugin("PluginBar"){};
 
-PluginBar::~PluginBar(){};
-
 const PluginBar& PluginBar::instance() {
     static PluginBar instance;
     return instance;
@@ -32,9 +30,21 @@ static plume::PluginCoreBuilder<PluginCoreBar> runnable_plugincore_BarBuilder_;
 
 PluginCoreBar::PluginCoreBar(const eckit::Configuration& conf) : PluginCore(conf) {}
 
-PluginCoreBar::~PluginCoreBar() {}
-
 void PluginCoreBar::run() {
+
+    eckit::Log::info() << "Plugin Bar running..." << std::endl;
+
+    eckit::Log::info() << " ---> data contains parameters: " << std::endl;
+    modelData().print();
+
+
+    // list all available parameters of type "atlas_field"
+    eckit::Log::info() << " ---> data contains parameters of type 'atlas_field': " << std::endl;
+    for (const auto& key : modelData().listAvailableParameters("ATLAS_FIELD")) {
+        eckit::Log::info() << "Param: " << key << std::endl;
+    }
+
+
     eckit::Log::info() << "Plugin Bar consuming parameters: (" 
                        << "K=" << modelData().getInt("K") << ", "
                        << "field=" << modelData().getAtlasFieldShared("field_dummy_1") << ") "

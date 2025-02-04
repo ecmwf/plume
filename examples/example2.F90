@@ -8,7 +8,7 @@
 ! does it submit to any jurisdiction.
 program my_program
 
-use iso_c_binding, only : c_bool, c_null_char
+use iso_c_binding, only : c_bool, c_null_char, c_double
 use plume_module
 use atlas_module, only : atlas_Field, atlas_integer
 
@@ -27,6 +27,11 @@ integer :: param_k = 100
 character(*), parameter :: field_name = "field_dummy_1"//c_null_char
 type(atlas_Field) :: field
 
+integer :: config_param_1 = 9
+real(c_double) :: config_param_2 = 99.99
+type(atlas_Field) :: config_param_3
+
+
 logical(c_bool) :: is_param_requested
 integer :: iter
 
@@ -44,6 +49,11 @@ call plume_check(offers%offer_int("I", "always", "this is param I"))
 call plume_check(offers%offer_int("J", "always", "this is param J"))
 call plume_check(offers%offer_int("K", "always", "this is param K"))
 call plume_check(offers%offer_atlas_field(field_name, "on-request", "this is an atlas field"))
+
+call plume_check(offers%offer_int("config-param-1", "always", "this is param config-param-1"))
+call plume_check(offers%offer_double("config-param-2", "always", "this is param config-param-2"))
+call plume_check(offers%offer_atlas_field("config-param-3", "always", "this is param config-param-3"))
+
 
 ! negotiate
 call plume_check(manager%initialise())
@@ -69,6 +79,12 @@ if ( is_param_requested .eqv. .true. ) then
   field = atlas_Field(field_name, atlas_integer(), (/0,10/))
   call plume_check( data%provide_atlas_field_shared(field_name, field) )
 endif
+
+config_param_3 = atlas_Field("config-param-3", atlas_integer(), (/0,10/))
+call plume_check(data%provide_int("config-param-1", config_param_1) )
+call plume_check(data%provide_double("config-param-2", config_param_2) )
+call plume_check(data%provide_atlas_field_shared("config-param-3", config_param_3) )
+
 
 call plume_check(data%print())
 

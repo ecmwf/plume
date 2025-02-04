@@ -73,3 +73,23 @@ ecbuild_add_test( TARGET   plume_test_parameter
                   LIBS                    
                     plume_plugin_manager
 )
+
+ecbuild_add_test( TARGET   plume_test_negotiator
+                  SOURCES  test_negotiator.cc
+                  LIBS                    
+                    plume_plugin_manager
+)
+
+ecbuild_add_test( TARGET   plume_test_configs
+                  SOURCES  test_configs.cc
+                  LIBS                    
+                    plume_plugin_manager
+)
+
+
+ecbuild_add_test( TARGET   plume_test_plugin_params
+                  SOURCES  test_plugin_params.cc
+                  LIBS
+                    plume_plugin_manager
+                    eckit
+)

@@ -34,7 +34,7 @@ eckit::LocalConfiguration parameterOptions() {
 }
  
 
-Parameter::Parameter(const eckit::Configuration& config) : CheckedConfigurable(config, std::vector<std::string>{"name", "type"}, parameterOptions() ) {
+Parameter::Parameter(const eckit::Configuration& config) : CheckedConfigurable(config, {"name", "type"}, {"available", "comment"} ) {
 
     // setup from config
     name_ = config.getString("name");

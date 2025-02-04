@@ -68,7 +68,7 @@ public:
 
     bool hasParam(const std::string& name) const;
 
-    ParameterCatalogue filter(const std::vector<std::string>& params) const;
+    ParameterCatalogue filter(const std::unordered_set<std::string>& params) const;
 
 private:
 

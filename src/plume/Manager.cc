@@ -13,6 +13,7 @@
 #include <functional>
 #include <map>
 #include <algorithm>
+#include <memory>
 
 #include "eckit/config/LocalConfiguration.h"
 #include "eckit/exception/Exceptions.h"
@@ -23,12 +24,14 @@
 #include "plume/plume.h"
 #include "plume/utils.h"
 #include "plume/PluginCore.h"
+#include "plume/PluginConfig.h"
 #include "plume/PluginHandler.h"
 #include "plume/data/ParameterCatalogue.h"
 #include "plume/data/DataChecker.h"
 #include "plume/Protocol.h"
 
 #include "plume/Manager.h"
+#include "plume/Negotiator.h"
 
 
 
@@ -46,45 +49,30 @@ public:
         return reg;
     }
 
-    ~PluginRegistry() {
-        // Destroy the active plugincores (i.e. plugincores built when the corresponding plugins were set as active)
-        for (plume::PluginHandler pluginHandle : PluginRegistry::instance().getActivePlugins()) {
-            
-            plume::PluginCore* plugincorePtr = pluginHandle.plugincore();
-
-            // Plugin is now disassociated
-            pluginHandle.deactivate();
-
-            // delete the plugincore
-            delete plugincorePtr;
-
-        }
-    }
-
-    void setActive(Plugin& plugin, const eckit::Configuration& config) {
+    void setActive(Plugin& plugin, const PluginConfig& pconfig, const std::vector<std::string>& offeredParams) {
 
         std::string name = plugin.plugincoreName();
-        eckit::LocalConfiguration plugincoreConfig = config.getSubConfiguration("core-config");
-        plume::PluginCore* plugincorePtr  = plume::PluginCoreFactory::instance().build(name, plugincoreConfig);
 
-        PluginHandler pluginHandle(&plugin);
+        // create a plugin handler
+        PluginHandler pluginHandle(plugin, pconfig, offeredParams);
 
-        pluginHandle.activate(plugincorePtr);
+        // instantiate the plugincore (the plugin handler takes ownership of it)
+        pluginHandle.activate( std::unique_ptr<PluginCore>( plume::PluginCoreFactory::instance().build(name, pconfig.coreConfig()) ) );
 
         // plugin added to the active plugin list
-        PluginRegistry::instance().pluginHandlers_.push_back(pluginHandle);
+        PluginRegistry::instance().pluginHandlers_.push_back(std::move(pluginHandle));
     }
 
     // get the active Plugins
-    std::vector<PluginHandler> getActivePlugins() { return pluginHandlers_; }
+    std::vector<PluginHandler>& getActivePlugins() { return pluginHandlers_; }
 
 
     // Parameters requested by all active plugins collectively
-    std::vector<std::string> getActiveParams() {
-        std::vector<std::string> requiredParams;
+    std::unordered_set<std::string> getActiveParams() {
+        std::unordered_set<std::string> requiredParams;
         for (const auto& pluginHandle : pluginHandlers_) {
-            auto req_fields = pluginHandle.plugin()->negotiate().requiredParamNames();
-            requiredParams.insert(requiredParams.end(), req_fields.begin(), req_fields.end());
+            auto req_fields = pluginHandle.getRequiredParamNames();
+            requiredParams.insert(req_fields.begin(), req_fields.end());
         }
         return requiredParams;
     }
@@ -113,17 +101,33 @@ private:
 // -------------------------------------------------------------------
 
 
-eckit::LocalConfiguration Manager::config_{};
+ManagerConfig Manager::managerConfig_{};
+
 bool Manager::isConfigured_{false};
 
 
 
 void Manager::configure(const eckit::Configuration& config) {
     if (!Manager::isConfigured_){
-        eckit::LocalConfiguration tmp{config};
-        config_ = tmp;
+        managerConfig_ = ManagerConfig(config);
         Manager::isConfigured_ = true;
     }
+}
+
+// load a plugin from a shared library
+Plugin& Manager::loadPlugin(const std::string& lib, const std::string& name) {
+
+    void* libHandle = eckit::system::LibraryManager::loadLibrary(lib);
+    if (!libHandle) {
+        throw eckit::BadValue("Loading library " + lib + " failed!", Here());
+    }
+
+    eckit::Log::info() << "Loading Library: " << lib << " containing Plugin: " << name << std::endl;
+
+    // here we are loading a Plume plugin
+    Plugin& plugin = dynamic_cast<Plugin&>(eckit::system::LibraryManager::loadPlugin(name));
+
+    return plugin;
 }
 
 
@@ -133,39 +137,42 @@ void Manager::negotiate(const Protocol& offers) {
     // before negotiation, make sure the manager has been configured
     ASSERT_MSG(isConfigured_, "Plume manager needs to be configured first!");
 
-    eckit::Log::info() << "Plume config: " << config_ 
-                       << ", offers: " << offers.offeredParamNames() << std::endl;
+    eckit::Log::info() << "Plume config: " << managerConfig_ << ", offers: " << offers.offeredParamNames() << std::endl;
 
-    std::vector<eckit::LocalConfiguration> plugins = config_.getSubConfigurations("plugins");
-
+    // Negotiate with each plugin
+    Negotiator negotiator;
+    
     // Load all selected plugins as per configuration
-    for (const auto& conf : plugins) {
+    for (const auto& pconfig : managerConfig_.plugins()) {
+        
+        auto name = pconfig.name();
+        auto lib = pconfig.lib();
 
-        std::string name = conf.getString("name");
-        std::string lib  = conf.getString("lib");
+        eckit::Log::info() << std::endl << " <== Evaluating Plugin: " << name << " from Library: " << lib << std::endl;
 
-        void* libHandle = eckit::system::LibraryManager::loadLibrary(lib);
-        if (!libHandle) {
-            throw eckit::BadValue("Loading library " + lib + " failed!", Here());
-        }
+        // Load the plugin
+        Plugin& plugin = loadPlugin(lib, name);
 
-        eckit::Log::info() << "Loading Library: " << lib << " containing Plugin: " << name << std::endl;
-
-        // here we are loading a Plume plugin
-        Plugin& plugin = dynamic_cast<Plugin&>(eckit::system::LibraryManager::loadPlugin(name));
-
-        // Negotiate with each plugin
+        // check what each plugin requires
         Protocol requires = plugin.negotiate();
-        if (decideOnPlugin(offers, requires)) {
 
-            eckit::Log::info() << " ==> Plugin manager has accepted plugin: " << plugin.name() << std::endl;
+        // Check plugin parameters requested through configuration (if any)
+        auto config_params = pconfig.parameters();
+        if (config_params.size() > 0) {
+            eckit::Log::info() << "Parameters from Config: " << config_params << std::endl;
+        } else {
+            eckit::Log::info() << "No additional parameters found in Config." << std::endl;
+        }
 
-            // Evaluation of plugin successful => Plugin now set as active
-            PluginRegistry::instance().setActive(plugin, conf);
+        // negotiator handles the negotiation
+        PluginDecision decision = negotiator.negotiate(offers, requires, config_params);
+        eckit::Log::info() << decision << std::endl;
+
+        // If the plugin is accepted, set it as active
+        if (decision.accepted()) {
+            PluginRegistry::instance().setActive(plugin, pconfig, decision.offeredParams());
         }
-        else {
-            eckit::Log::info() << " ==> Plugin manager has rejected plugin: " << plugin.name() << std::endl;
-        }
+        
     }
 
     PluginRegistry::instance().setDataCatalogue(offers.offers());
@@ -182,17 +189,14 @@ void Manager::feedPlugins(const data::ModelData& data) {
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
 
         // get the share of run data needed to run the plugincore
-        auto requiredParams          = pluginHandler.plugin()->negotiate().requiredParamNames();
+        auto requiredParams = pluginHandler.getRequiredParamNames();
         data::ModelData requiredData = data.filter(requiredParams);
 
-        // get the associated plugincore
-        plume::PluginCore* plugincore  = pluginHandler.plugincore();
-
-        // grab data
-        plugincore->grabData(requiredData);
+        // grab data 
+        pluginHandler.grabData(requiredData);
 
         // setup
-        plugincore->setup();
+        pluginHandler.setup();
     }
 }
 
@@ -200,7 +204,7 @@ void Manager::feedPlugins(const data::ModelData& data) {
 // Run all active plugincores
 void Manager::run() {
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
-        pluginHandler.plugincore()->run();
+        pluginHandler.run();
     }
 };
 
@@ -209,54 +213,12 @@ void Manager::run() {
 void Manager::teardown() {
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
         // teardown the plugincore first
-        pluginHandler.plugincore()->teardown();
+        pluginHandler.teardown();
     }
 };
 
 
-bool Manager::decideOnPlugin(const Protocol& offers, const Protocol& requires) {
-
-    /// TODO: this negotiation should be done in a separate class
-
-    eckit::Log::info() << "Requesting Plume Version: " << LibVersion(requires.requiredPlumeVersion()).asString() 
-                       <<  " VS Actual Plume version "<< plume_VERSION << std::endl;
-
-    eckit::Log::info() << "Requesting Atlas Version: " << LibVersion(requires.requiredAtlasVersion()).asString() 
-                       <<  " VS Actual Atlas version "<< offers.offeredAtlasVersion() << std::endl;
-    
-    // Check Plume version
-    if (LibVersion(requires.requiredPlumeVersion()) > LibVersion( plume_VERSION )) {
-        return false;
-    }
-
-    // Check Atlas version
-    if (LibVersion(requires.requiredAtlasVersion()) > LibVersion( offers.offeredAtlasVersion() )) {        
-        return false;
-    }    
-
-    // Check requested parameters
-    eckit::Log::info() << "Requesting Parameters: [";
-    for (int i = 0; i < requires.requiredParamNames().size(); i++) {
-        if (i)
-            eckit::Log::info() << ", ";
-        eckit::Log::info() << requires.requiredParamNames()[i];
-    }
-    eckit::Log::info() << "]" << std::endl;
-
-    for (const auto& f : requires.requiredParamNames()) {
-
-        eckit::Log::info() << " - Considering Parameter: " << f << std::endl;
-
-        if (!offers.isParamOffered(f)) {
-            eckit::Log::warning() << "Parameter " << f << " not found!" << std::endl;
-            return false;
-        }
-    }
-    return true;
-};
-
-
-std::vector<std::string> Manager::getActiveParams() {
+std::unordered_set<std::string> Manager::getActiveParams() {
     return PluginRegistry::instance().getActiveParams();
 }
 
@@ -279,7 +241,6 @@ bool Manager::isParamRequested(const std::string& name) {
 bool Manager::isConfigured() {
     return Manager::isConfigured_;
 }
-
 
 
 void Manager::checkData(const data::ModelData& data) {

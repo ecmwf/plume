@@ -23,10 +23,6 @@ Configurable::Configurable(const eckit::Configuration& config) : config_{config}
 }
 
 
-Configurable::~Configurable() {
-}
-
-
 const eckit::LocalConfiguration& Configurable::config() const {
     return config_;
 }
@@ -40,46 +36,55 @@ std::ostream& operator<<(std::ostream& oss, const Configurable& obj) {
 
 
 
-CheckedConfigurable::CheckedConfigurable(const eckit::Configuration& config, const std::vector<std::string> essentialKeys, const eckit::Configuration& options) : Configurable{config} {
-    if (!isValid(config, essentialKeys, options)) {
+CheckedConfigurable::CheckedConfigurable(const eckit::Configuration& config,
+                                         const std::unordered_set<std::string>& essentialKeys,
+                                         const std::unordered_set<std::string>& optionalKeys) : Configurable{config} {
+
+    eckit::Log::debug() << "checking configuration: " << config << std::endl;
+    if (!isValid(config, essentialKeys, optionalKeys)) {
         throw eckit::BadValue("Data type configuration not valid!");
     }
 }
 
-CheckedConfigurable::~CheckedConfigurable() {
 
-}
-
-bool CheckedConfigurable::isValid(const eckit::Configuration& config, const std::vector<std::string> essentialKeys, const eckit::Configuration& options) {
+bool CheckedConfigurable::isValid(const eckit::Configuration& config,
+                                  const std::unordered_set<std::string>& essentialKeys,
+                                  const std::unordered_set<std::string>& optionalKeys) {
 
     // 1) check that the configuration contains all the essential keys
+    // 2) check that the configuration contains only valid keys (essential and/or optional)
+    return hasEssentialKeys(config, essentialKeys) && hasAllValidKeys(config, essentialKeys, optionalKeys);
+}
+
+
+// helper function to check for optional keys
+bool CheckedConfigurable::hasEssentialKeys(const eckit::Configuration& config,
+                                           const std::unordered_set<std::string>& essentialKeys) {
+    bool allKeys = true;
     for (const auto& key: essentialKeys) {
         if (!config.has(key)) {
-            return false;
+            eckit::Log::error() << "Missing essential key: " << key << std::endl;
+            allKeys = false;
         }
     }
+    return allKeys;
+}
 
-    // 2) check that all the keys in configuration are valid
+
+// helper function to check for optional keys
+bool CheckedConfigurable::hasAllValidKeys(const eckit::Configuration& config,
+                                          const std::unordered_set<std::string>& essentialKeys,
+                                          const std::unordered_set<std::string>& optionalKeys) {
+    
     for (const auto& key: config.keys()) {
-
-        // Check if key is listed in the options
-        if (!options.has(key)) {
+        if (essentialKeys.find(key) == essentialKeys.end() && optionalKeys.find(key) == optionalKeys.end()) {
+            eckit::Log::error() << "Invalid key: " << key << std::endl;
             return false;
-        }
-
-        // Check if the value is within acceptable options
-        std::string value = config.getString(key);
-        std::vector<std::string> keyOptions = options.getStringVector(key);
-
-        // an empty list of options, means all values allowed!
-        if (keyOptions.size() > 0) {
-            if (find(keyOptions.begin(), keyOptions.end(), value) == keyOptions.end()) {
-                return false;
-            }
         }
     }
     return true;
 }
+
 
 
 

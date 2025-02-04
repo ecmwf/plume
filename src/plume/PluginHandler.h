@@ -10,8 +10,11 @@
  */
 #pragma once
 
+#include <memory>
+
 #include "plume/Plugin.h"
 #include "plume/PluginCore.h"
+#include "plume/PluginConfig.h"
 
 
 namespace plume {
@@ -24,9 +27,17 @@ class PluginHandler {
 
 public:
 
-    PluginHandler(Plugin* plugin);
+    PluginHandler(Plugin& plugin, const PluginConfig& config, const std::vector<std::string>& offeredParams);
 
-    ~PluginHandler();
+    ~PluginHandler() = default;
+
+    // Delete the copy constructor and assignment operator
+    PluginHandler(const PluginHandler&) = delete;
+    PluginHandler& operator=(const PluginHandler&) = delete;
+
+    // Default move constructor and assignment operator
+    PluginHandler(PluginHandler&& other) = default;
+    PluginHandler& operator=(PluginHandler&& other) = default;
 
     /**
      * @brief is Active
@@ -41,36 +52,53 @@ public:
      * 
      * @param plugincorePtr 
      */
-    void activate(PluginCore* plugincorePtr);
+    void activate(std::unique_ptr<PluginCore> plugincorePtr);
 
     /**
-     * @brief deactivate the plugin
+     * @brief Get the Active Param Names
      * 
+     * @return std::vector<std::string> 
      */
-    void deactivate();
+    const std::vector<std::string>& getRequiredParamNames() const;
 
     /**
-     * @brief Get the plugincore pointer
+     * @brief Forward data to the plugincore
      * 
-     * @return plume::PluginCore* 
+     * @param data 
      */
-    plume::PluginCore* plugincore() const ;
-
+    void grabData(const data::ModelData& data);
 
     /**
-     * @brief get the plugin pointer
+     * @brief setup the plugincore
      * 
-     * @return plume::Plugin* 
      */
-    plume::Plugin* plugin() const ;
+    void setup();
+
+    /**
+     * @brief run the plugincore
+     * 
+     */
+    void run();
+
+    /**
+     * @brief teardown the plugincore
+     * 
+     */
+    void teardown();
 
 private:
 
-    // internal Plugin ptr
-    Plugin* pluginPtr_;
+    // internal Plugin ref
+    Plugin& pluginRef_;
+
+    // store the plugin configuration
+    PluginConfig config_;
 
     // internal PluginCore ptr
-    PluginCore* plugincorePtr_;
+    std::unique_ptr<PluginCore> plugincorePtr_;
+
+    // offered parameters
+    std::vector<std::string> offeredParams_;
 };
 
 }  // namespace plume

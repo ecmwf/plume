@@ -29,8 +29,8 @@ Protocol::Protocol(const eckit::Configuration& config) {
     setParamsFromConfig(config);
     requestedPlumeVersion_ = config.getString("requestedPlumeVersion", "0.0.0");
     requestedAtlasVersion_ = config.getString("requestedAtlasVersion", "0.0.0");
-    offeredPlumeVersion_ = config.getString("offeredPlumeVersion", "0.0.0");
-    offeredAtlasVersion_ = config.getString("offeredAtlasVersion", "0.0.0");
+    offeredPlumeVersion_ = config.getString("offeredPlumeVersion", plume_VERSION);
+    offeredAtlasVersion_ = config.getString("offeredAtlasVersion", atlas::library::version());
 }
 
 
@@ -155,6 +155,11 @@ void Protocol::setParamsFromConfig(const eckit::Configuration& config) {
         for(const auto& p: offeredParams) {
             offeredParams_.insertParam(p);
         }
+    }
+
+    // if it's neither requesting nor offering, then throw an error
+    if (!config.has("required") && !config.has("offered")) {
+        throw eckit::BadParameter("Protocol configuration must have either 'required' or 'offered' keys", Here());
     }
 }
 

@@ -41,7 +41,7 @@ CASE("test catalogue") {
     EXPECT_EQUAL(catalogue.hasParam("param-3"), true);
 
     // Filter only a subset of the catalogue
-    plume::data::ParameterCatalogue filtered = catalogue.filter(std::vector<std::string>{"param-1", "param-2"});    
+    plume::data::ParameterCatalogue filtered = catalogue.filter(std::unordered_set<std::string>{"param-1", "param-2"});
 
     // check the filtered catalogue
     EXPECT_EQUAL(filtered.hasParam("param-1"), true);

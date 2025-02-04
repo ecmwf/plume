@@ -12,40 +12,50 @@
 
 namespace plume {
 
-PluginHandler::PluginHandler(Plugin* plugin) : pluginPtr_{plugin} {
 
+    PluginHandler::PluginHandler(Plugin& plugin, const PluginConfig& config, const std::vector<std::string>& offeredParams) : 
+    pluginRef_{plugin}, config_{config}, offeredParams_{offeredParams} {
 }
 
-PluginHandler::~PluginHandler() {
 
-}
-
-void PluginHandler::activate(plume::PluginCore* plugincorePtr) {
+void PluginHandler::activate(std::unique_ptr<PluginCore> plugincorePtr) {
 
     // plugincore ptr must not be null
     ASSERT(plugincorePtr);
 
-    // the plugin is not active and associated to a plugincore
-    plugincorePtr_ = plugincorePtr;
+    // the plugin is now active and associated to a plugincore
+    plugincorePtr_ = std::move(plugincorePtr);
 }
 
-void PluginHandler::deactivate() {
-
-    // disassociate from the plugincore
-    plugincorePtr_ = nullptr;
-}
 
 bool PluginHandler::isActive() const {    
     return (plugincorePtr_ != nullptr);
 }
 
-PluginCore* PluginHandler::plugincore() const {
-    return plugincorePtr_;
+const std::vector<std::string>& PluginHandler::getRequiredParamNames() const {
+    return offeredParams_;
 }
 
-Plugin* PluginHandler::plugin() const {
-    return pluginPtr_;
+
+void PluginHandler::grabData(const data::ModelData& data) {
+    plugincorePtr_->grabData(data);
 }
+
+
+void PluginHandler::setup() {
+    plugincorePtr_->setup();
+}
+
+
+void PluginHandler::run() {
+    plugincorePtr_->run();
+}
+
+
+void PluginHandler::teardown() {
+    plugincorePtr_->teardown();
+}
+
 
 } // namespace plume
 

@@ -19,10 +19,9 @@ namespace plugin_bar {
  * @brief PluginCore simple example
  * 
  */
-class PluginCoreBar : public plume::PluginCore {
+class PluginCoreBar final : public plume::PluginCore {
 public:
     PluginCoreBar(const eckit::Configuration& conf);
-    ~PluginCoreBar();
     void run() override;
     constexpr static const char* type() { return "plugincore-bar"; }
 };
@@ -32,12 +31,10 @@ public:
  * @brief Plugin simple example
  * 
  */
-class PluginBar : public plume::Plugin {
+class PluginBar final : public plume::Plugin {
 
 public:
     PluginBar();
-
-    ~PluginBar();
 
     plume::Protocol negotiate() override {
         plume::Protocol protocol;

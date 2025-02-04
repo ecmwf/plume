@@ -16,22 +16,19 @@ namespace plume_example_plugin {
 
 
 // ------ Foo runnable plugincore that self-registers! -------
-class SimplePluginCore : public plume::PluginCore {
+class SimplePluginCore final : public plume::PluginCore {
 public:
     SimplePluginCore(const eckit::Configuration& conf);
-    ~SimplePluginCore();
     void run() override;
     constexpr static const char* type() { return "simple-plugincore"; }
 };
 // ------------------------------------------------------
 
 // ------------------------------------------------------
-class SimplePlugin : public plume::Plugin {
+class SimplePlugin final : public plume::Plugin {
 
 public:
     SimplePlugin();
-
-    ~SimplePlugin();
 
     plume::Protocol negotiate() override {
         plume::Protocol protocol;

@@ -21,13 +21,13 @@ namespace test {
 CASE("test parameter") {
 
     // valid
-    const char* valid_config = R"YAML({"name": "lat", "type": "ATLAS_FIELD", "available": "on-request", "comment": "none"})YAML";
+    std::string valid_config = R"YAML({"name": "lat", "type": "ATLAS_FIELD", "available": "on-request", "comment": "none"})YAML";
 
     // invalid
-    const char* missing_name = R"YAML({"type": "ATLAS_FIELD", "available": "on-request", "comment": "none"})YAML";
-    const char* missing_type = R"YAML({"name": "lat", "available": "on-request", "comment": "none"})YAML";
-    const char* missing_avail = R"YAML({"name": "lat", "type": "ATLAS_FIELD", "comment": "none"})YAML";
-    const char* missing_comment = R"YAML({"name": "lat", "type": "ATLAS_FIELD", "available": "on-request"})YAML";
+    std::string missing_name = R"YAML({"type": "ATLAS_FIELD", "available": "on-request", "comment": "none"})YAML";
+    std::string missing_type = R"YAML({"name": "lat", "available": "on-request", "comment": "none"})YAML";
+    std::string missing_avail = R"YAML({"name": "lat", "type": "ATLAS_FIELD", "comment": "none"})YAML";
+    std::string missing_comment = R"YAML({"name": "lat", "type": "ATLAS_FIELD", "available": "on-request"})YAML";
 
 
     eckit::YAMLConfiguration config(valid_config);    

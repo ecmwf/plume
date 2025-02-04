@@ -103,7 +103,7 @@ bool ParameterCatalogue::hasParam(const std::string& name) const {
 }
 
 
-ParameterCatalogue ParameterCatalogue::filter(const std::vector<std::string>& params) const {
+ParameterCatalogue ParameterCatalogue::filter(const std::unordered_set<std::string>& params) const {
 
     ParameterCatalogue filtered;
 
