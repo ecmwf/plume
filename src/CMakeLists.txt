@@ -8,3 +8,5 @@
 # does it submit to any jurisdiction.
 
 add_subdirectory(plume)
+
+add_subdirectory(nwp_emulator)
