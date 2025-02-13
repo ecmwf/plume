@@ -16,7 +16,7 @@
 #include "eccodes.h"
 #include "eckit/filesystem/PathName.h"
 
-#include "atlas/field/Field.h"
+#include "base_data_reader.h"
 
 namespace nwp_emulator {
 
@@ -26,21 +26,15 @@ namespace nwp_emulator {
  *
  * This class provides inputs for a NWP emulator sourced from historical data stored in GRIB format.
  * In parallel, only the root process is responsible for doing the reading to limit IO and unstability
- * due to concurrent access to source files. Atlas is used to then scatter the data across the partitions,
- * each responsible for its own share of the fields. The main reader construction determines the emulator
- * parameters : folder from which to source the GRIB files (each file is considered as a  single model step),
+ * due to concurrent access to source files. The main reader construction determines the emulator
+ * parameters : folder from which to source the GRIB files (each file is considered as a single model step),
  * number of emulator steps (smallest between file count and default/user limit), parameters offered by the
  * model & grid (derived from the first file in the source folder content).
  */
-class GRIBFileReader {
+class GRIBFileReader : public BaseDataReader {
 private:
-    std::string gridName_;
-    std::vector<std::string> params_;
     std::vector<eckit::PathName> srcFilenames_;
-    int stepCountLimit_;
-    int count_{0};
-    int step_{0};
-    FILE* currentFile_ = nullptr;
+    FILE* currentFile_  = nullptr;
     codes_handle* grib_ = nullptr;
 
     size_t rank_;
@@ -52,25 +46,45 @@ private:
      * This method stores the number of messages in the currently open file in count_.
      *
      * @param path The path of the file to open.
+     * @param exit Stops the execution if the to true and an error occurs.
      *
      * @return true if opening and decoding of first message successful, false otherwise.
      */
-    bool openGribFile(const eckit::PathName& path);
+    bool openGribFile(const eckit::PathName& path, bool exit);
 
-    // Opens file for the current step and performs some sanity checks on it
-    bool openNextFile();
-
-    // Closes current file, and resets pointers.
+    /// Closes current file, and resets pointers.
     void closeGribFile();
 
-    // Called from the constructor by the main reader
-    void setupReader(const std::string& path, bool isRoot);
+    /// Called from the constructor by the main reader
+    void setupReader(const eckit::PathName& path, bool isRoot);
+
+    /**
+     * @brief Checks that all the source files comply with emulator requirements.
+     *
+     * Checks that all source files contain the same grid, parameters, level types and levels.
+     *
+     * @param isRoot Only the root process can run the validation.
+     *
+     * @note Exits the execution if the input is not valid.
+     */
+    void validateSrcFiles(bool isRoot);
+
+    /**
+     * @brief Decodes GRIB message metadata relevant to the emulator.
+     *
+     * Parameters are represented by a string built as follow: <shortName>,<levtype>,<level>.
+     * Each string must be unique as each file source is expected to represent a single time step.
+     *
+     * @param[out] gridName String to decode the grid name into.
+     * @param[out] paramMd Metadata relevant to emulator options for the parameter stored in the message.
+     */
+    void readMsgMetadata(std::string& gridName, std::string& paramMd);
 
 public:
     /**
      * @brief Constructs a GRIBFileReader object and sets up emulator params if it is the main reader.
      *
-     * The secondary readers, which only receive their share of the data through Atlas fields,
+     * The secondary readers, which only receive their share of the data from the provider,
      * initialise the emulator options to empty defaults and wait for the main reader to broadcast
      * the necessary params.
      *
@@ -80,36 +94,32 @@ public:
      * @param stepCountLimit The number of maximum steps to run in the emulator. Defaults to 100.
      *                       Any source file beyond that number will be skipped.
      *
-     * @note The constructor uses std::exit() in case the path passed does not allow to properly
+     * @note The constructor aborts the execution in case the path passed does not allow to properly
      *       perform the emulator setup.
      */
-    GRIBFileReader(const std::string& path, size_t rank, size_t root, int stepCountLimit = 100);
+    GRIBFileReader(const eckit::PathName& inputPath, size_t rank, size_t root, int stepCountLimit = 100);
 
-    // Makes sure open files have been closed, and pointers not dereferenced already before destroying.
+    /// Makes sure open files have been closed, and pointers not dereferenced already before destroying.
     ~GRIBFileReader();
 
-    // Getters
-    const std::string& getGridName() const { return gridName_; }
-    int getStep() const { return step_; }
-    const std::vector<std::string>& getParams() const { return params_; }
-
     /**
-     * @brief Decodes the GRIB data from the next source file, and scatters it across partitionned fields.
+     * @brief Decodes the GRIB data from the next message in the current source file.
      *
-     * This method reads the next GRIB file in the source folder, performs some sanity checks on it
-     * to ensure its consistency with the emulator setup (presence of required parameters, same grid),
-     * and populates the Atlas fields with the data. The step_ counter is updated for all processes
-     * (main and secondary) to ensure emulator termination.
+     * This method reads the next GRIB file in the source folder if there isn't one currently open,
+     * The step_ and index_ counters are updated for all processes (main and secondary) to ensure termination.
      *
-     * @param fields The Atlas fields to populate with the data read from the current source file.
-     * @param glb_fields The global Atlas fields used to correctly scatter data across partitions.
+     * @param[out] shortName The name of the parameter decoded in the message for the caller use.
+     * @param[out] levtype The levtype of the message for the caller use.
+     * @param[out] level The level of the message for the caller use.
+     * @param[out] data The vector that contains the raw values for the decoded field.
      *
-     * @return true if opening and decoding of first message successful, false otherwise.
+     * @return true if the decoding is successful, false otherwise.
      */
-    bool readNextStep(std::vector<atlas::Field>& fields, std::vector<atlas::Field>& glb_fields);
+    bool nextMessage(std::string& shortName, std::string& levtype, std::string& level,
+                     std::vector<FIELD_TYPE_REAL>& data) override;
 
-    // Returns true when the GRIB file reader is done or has reached its limit
-    bool hasReadAll();
+    /// Returns true when the GRIB file reader is done or has reached its limit
+    bool done() override;
 };
 
 }  // namespace nwp_emulator

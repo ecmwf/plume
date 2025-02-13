@@ -12,8 +12,11 @@ ecbuild_add_library(
     HEADER_DESTINATION
         ${INSTALL_INCLUDE_DIR}/nwp_emulator
     SOURCES
+        base_data_reader.h
         grib_file_reader.h
         nwp_definitions.h
+        nwp_data_provider.h
+        nwp_data_provider.cc
         grib_file_reader.cc
     PUBLIC_INCLUDES
        $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/src>
