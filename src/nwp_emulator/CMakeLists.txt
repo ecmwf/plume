@@ -31,3 +31,10 @@ ecbuild_add_library(
         eccodes
         eckit
 )
+
+ecbuild_add_executable( TARGET nwp_emulator_run.x
+  SOURCES
+    nwp_emulator.cc
+  LIBS
+    plume_nwp_emulator
+)
