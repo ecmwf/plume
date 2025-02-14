@@ -30,9 +30,9 @@ NWPDataProvider::NWPDataProvider(const DataSourceType& sourceType, const eckit::
             eckit::mpi::comm().abort(1);
     }
 
-    // Some logging for sanity, TODO: use atlas log once the emulator tool is setup
-    std::cout << "Process " << rank << " has grid name " << dataReader->getGridName() << std::endl;
-    std::cout << "Process " << rank << " has params " << dataReader->getParams() << std::endl;
+    // Some logging for sanity
+    eckit::Log::info() << "Process " << rank << " has grid name " << dataReader->getGridName() << std::endl;
+    eckit::Log::info() << "Process " << rank << " has params " << dataReader->getParams() << std::endl;
 
     gridName_ = dataReader->getGridName();
     // Parse parameters into a dictionary structure

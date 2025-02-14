@@ -1,0 +1,39 @@
+emulator:
+  n_steps: 2
+  grid_identifier: "N80"
+  vertical_levels: 5
+  fields:
+    100u:
+      levtype: "sfc"
+      apply:
+        vortex_rollup:
+          area: [71.5, -25, 34.5, 45]
+          time_variation: 1.1
+    u:
+      apply:
+        levels:
+          "2":
+            random:
+              distribution: "uniform"
+              min: 1.0
+              max: 2.0
+            step:
+              area: [71.5, -25, 34.5, 45]
+              value: 10.0
+              variation: 1.0
+              translation: [1.0, 1.0]
+          "1,3":
+            sinc:
+              modes: 3
+              min: -1.0
+              max: 10.0
+              spread: 10.0
+              sink: false
+          "4:":
+            gaussian:
+              modes: 2
+              min: 1.0
+              max: 2.0
+              max_stddev: 3.0
+              sink: true
+    v: "u"
