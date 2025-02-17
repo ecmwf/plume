@@ -44,19 +44,25 @@ GRIBFileReader::GRIBFileReader(const eckit::PathName& inputPath, size_t rank, si
         gridName_ = std::string(gridNameBuffer.begin(), gridNameBuffer.end());
         gridName_.resize(strlen(gridName_.c_str()));
     }
-    // 2. Field names (parameters)
-    size_t paramCount = params_.size();
-    eckit::mpi::comm().broadcast(paramCount, root_);
-    std::vector<char> paramBuffer(64);  // Params short name are typically 1-4 chars
-    for (size_t i = 0; i < paramCount; ++i) {
-        paramBuffer.resize(64, '\0');  // clean param buffer
-        if (rank_ == root_) {
-            paramBuffer.assign(params_[i].begin(), params_[i].end());
+    // 2. Field names & metadata (parameters)
+    std::vector<char> paramBuffer;
+    if (rank_ == root_) {
+        for (size_t i = 0; i < params_.size(); i++) {
+            std::copy(params_[i].begin(), params_[i].end(), std::back_inserter(paramBuffer));
+            paramBuffer.push_back(';');
         }
-        eckit::mpi::comm().broadcast(paramBuffer, root_);
-        if (rank_ != root_) {
-            std::string param(paramBuffer.begin(), paramBuffer.end());
-            param.resize(strlen(param.c_str()));  // Trim trailing '\0's
+        paramBuffer.pop_back(); // remove last ';' separator
+    }
+    size_t paramSize = paramBuffer.size();
+    eckit::mpi::comm().broadcast(paramSize, root_);
+    paramBuffer.resize(paramSize);
+    eckit::mpi::comm().broadcast(paramBuffer, root_); // broadcast a single string to limit communication
+    if (rank_ != root_) {
+        std::string paramBufferStr(paramBuffer.begin(), paramBuffer.end());
+        paramBufferStr.resize(strlen(paramBufferStr.c_str()));
+        std::stringstream ss(paramBufferStr);
+        std::string param;
+        while (std::getline(ss, param, ';')) {
             params_.push_back(param);
         }
     }
