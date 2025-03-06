@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include "atlas/field/Field.h"
+#include "eckit/exception/Exceptions.h"
 #include "nwp_definitions.h"
 
 namespace nwp_emulator {
@@ -34,6 +36,15 @@ protected:
 public:
     BaseDataReader(int stepCountLimit) : stepCountLimit_(stepCountLimit) {}
     virtual ~BaseDataReader() = default;
+
+    /**
+     * @brief Sets the reader lon,lat area if necessary for data generation.
+     *
+     * @param lonlat The lonlat field defininf the partition grid points.
+     */
+    virtual void setReaderArea(const atlas::Field& lonlat) {
+        throw eckit::NotImplemented("This data reader does not support area definition", Here());
+    }
 
     /**
      * @brief Provides the raw values for a single levelin the next message from the data source.
