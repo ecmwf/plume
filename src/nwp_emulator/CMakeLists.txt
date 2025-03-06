@@ -14,10 +14,13 @@ ecbuild_add_library(
     SOURCES
         data_reader.h
         grib_file_reader.h
+        config_reader.h
         nwp_definitions.h
         nwp_data_provider.h
         nwp_data_provider.cc
         grib_file_reader.cc
+        config_reader.cc
+        config_reader_funcs.cc
     PUBLIC_INCLUDES
        $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/src>
        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>

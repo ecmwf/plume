@@ -22,6 +22,7 @@
 #include "atlas/grid/Distribution.h"
 
 #include "data_reader.h"
+#include "config_reader.h"
 #include "grib_file_reader.h"
 
 namespace nwp_emulator {
@@ -48,10 +49,10 @@ enum class DataSourceType
  * params_ = {"u" : {"sfc" : ["0"], "ml" : ["1","137"], "pl": ["850"]}}
  * In this example, the u component of the wind field has 4 levels in total in the emulator.
  */
-class NWPDataProvider {
+class NWPDataProvider final {
 private:
     const DataSourceType sourceType_;
-    DataReader* dataReader = nullptr;
+    std::unique_ptr<DataReader> dataReader = nullptr;
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::string>>> params_;
 
     std::string gridName_;
@@ -88,11 +89,11 @@ private:
      * @brief Utility method to find where the raw values passed by the reader should be stored.
      *
      * It is assumed that the source data can have multiple level types and levels. Ideally, the surface level
-     * should always have index 0, then next levels should be model levels (even though a 1:1 mapping cannot be 
+     * should always have index 0, then next levels should be model levels (even though a 1:1 mapping cannot be
      * assumed because we may have ml 1,5,10 which will result in a 3-model levels emulator), then other levels
      * come in alphabetical order. In the above example for params_, the levels map to these indices :
      * sfc,0 -> 0 ; ml,1 -> 1 ; ml,137 -> 2 ; pl,850 -> 3
-     * 
+     *
      * @param field The field for which to find the level index.
      * @param levtype The name of the level type.
      * @param level The name of the level.
@@ -118,9 +119,6 @@ public:
      */
     NWPDataProvider(const DataSourceType& sourceType, const eckit::PathName& inputPath, size_t rank, size_t root,
                     size_t nprocs);
-
-    /// Deletes the data reader object
-    ~NWPDataProvider();
 
     /**
      * @brief Populates Atlas fields with data for the next emulator step.
