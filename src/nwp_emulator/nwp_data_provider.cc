@@ -19,10 +19,12 @@ NWPDataProvider::NWPDataProvider(const DataSourceType& sourceType, const eckit::
     switch (sourceType_) {
         case DataSourceType::GRIB:
             eckit::Log::info() << "Emulator will use GRIB files as data source from " << inputPath << std::endl;
-            dataReader = new GRIBFileReader(inputPath, rank, root);
+            dataReader = std::make_unique<GRIBFileReader>(inputPath, rank, root);
             break;
         case DataSourceType::CONFIG:
-            eckit::Log::info() << "Config source type has not been implemented yet" << std::endl;
+            eckit::Log::info() << "Emulator will use config as source type from" << inputPath << std::endl;
+            dataReader = std::make_unique<ConfigReader>(inputPath, rank, root);
+            break;
         default:
             eckit::Log::error() << "Emulator source type '" << static_cast<int>(sourceType_) << "' not supported, exit..." << std::endl;
             eckit::mpi::comm().abort(1);
@@ -57,7 +59,7 @@ NWPDataProvider::NWPDataProvider(const DataSourceType& sourceType, const eckit::
     }
     std::map<std::string, int> fieldsMd;
     for (const auto& levtypePair : params_) {
-        fieldsMd[levtypePair.first] = 1; // 2D fields receive 1 level
+        fieldsMd[levtypePair.first] = 1;  // 2D fields receive 1 level
         if (levtypePair.second.size() > 1 || levtypePair.second.begin()->second.size() > 1) {
             // All 3D fields receive the same number of levels even if some levels remain empty for some fields
             fieldsMd[levtypePair.first] = nlevels;
@@ -65,12 +67,15 @@ NWPDataProvider::NWPDataProvider(const DataSourceType& sourceType, const eckit::
     }
 
     // Atlas grid & function space
-    eckit::mpi::comm().barrier(); // Make sure all processes start creating their function space together
+    eckit::mpi::comm().barrier();  // Make sure all processes start creating their function space together
     atlas::Grid grid(gridName_);
     // Use the default partitioner for the given grid type
     atlas::grid::Distribution distribution(grid, atlas::util::Config("type", grid.partitioner().getString("type")) |
                                                      atlas::util::Config("bands", nprocs_));
     fs_ = atlas::functionspace::StructuredColumns(grid, distribution, atlas::util::Config("levels", nlevels));
+    if (sourceType_ == DataSourceType::CONFIG) {
+        dataReader->setReaderArea(fs_.lonlat());
+    }
 
     // Create model fields
     for (const auto& fieldMd : fieldsMd) {
@@ -98,10 +103,6 @@ NWPDataProvider::NWPDataProvider(const DataSourceType& sourceType, const eckit::
         std::cout << "Process " << rank_ << " created field '" << fieldMd.first << "' with shape " << field.shape()
                   << std::endl;
     }
-}
-
-NWPDataProvider::~NWPDataProvider() {
-    delete dataReader;
 }
 
 bool NWPDataProvider::getStepData() {
