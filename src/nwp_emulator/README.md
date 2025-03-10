@@ -65,6 +65,7 @@ emulator:
             step:
               area: [71.5, -25, 34.5, 45] # rectangle represented by NW and SE (lat,lon) coordinates
               value: 10.0
+              variation: 1.0
               translation: [1.0, 1.0] # degrees of translation of the area per time step (lat, lon)
           "2":
             sinc:
