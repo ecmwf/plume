@@ -1,0 +1,14 @@
+{
+  "plugins": [
+    {
+      "name": "SimplePlugin",
+      "lib": "simple_plugin",
+      "plugincore-config": {}
+    },
+    {
+      "name": "NWPEmulatorPlugin",
+      "lib": "nwp_emulator_test_plugin",
+      "plugincore-config": {}
+    }
+  ]
+}
