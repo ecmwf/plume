@@ -133,15 +133,16 @@ void GRIBFileReader::setupReader(const eckit::PathName& inputPath, bool isRoot) 
     // For later consistency checks & emulator setup :
     openGribFile(srcPath, true);
     eckit::Log::info() << "Number of messages : " << std::to_string(count_) << std::endl;
-    char buffer[64];
-    size_t size = sizeof(buffer);
+    std::string buffer(64);
+    size_t size;
     // 1. Lock the grid name from the passed GRIB file
-    if (codes_get_string(grib(), "gridName", buffer, &size) == GRIB_NOT_FOUND) {
+    if (codes_get_string(grib(), "gridName", buffer.data(), &size) == GRIB_NOT_FOUND) {
         eckit::Log::error() << "Grid type unsupported at the moment, exit" << std::endl;
         eckit::mpi::comm().abort(1);
     }
-    eckit::Log::info() << "Grid identifier : " << std::string(buffer) << std::endl;
-    gridName_ = std::string(buffer);
+    buffer.resize(size);
+    gridName_ = buffer;
+    eckit::Log::info() << "Grid identifier : " << gridName_ << std::endl;
     // 2. Lock the parameter names
     std::string paramMd, _;
     eckit::Log::info() << "Params (name,levtype,level) : ";
@@ -212,21 +213,19 @@ void GRIBFileReader::validateSrcFiles(bool isRoot) {
 }
 
 void GRIBFileReader::readMsgMetadata(std::string& gridName, std::string& paramMd) {
-    char buffer[64];
-    size_t size    = sizeof(buffer);
-    gridName       = "";
-    int gridStatus = codes_get_string(grib(), "gridName", buffer, &size);
+    std::string buffer(64);
+    std::size_t size;
+    int gridStatus = codes_get_string(grib(), "gridName", buffer.data(), &size);
+    buffer.resize(size);
     if (gridStatus != GRIB_NOT_FOUND) {
-        gridName = std::string(buffer);
+        gridName = buffer;
     }
-    paramMd                           = "";
-    std::vector<const char*> keywords = {"shortName", "levtype", "level"};
+    paramMd.clear();
+    std::vector<const std::string> keywords = {"shortName", "levtype", "level"};
     for (const auto& keyword : keywords) {
-        std::memset(buffer, 0, 64);
-        size = sizeof(buffer);
-        codes_get_string(grib(), keyword, buffer, &size);
-        paramMd.append(buffer);
-        paramMd.append(",");  // separator
+        codes_get_string(grib(), keyword.c_str(), buffer.data(), &size);
+        buffer.resize(size);
+        paramMd += (buffer + ",");
     }
     paramMd.pop_back();  // remove last separator
 }
