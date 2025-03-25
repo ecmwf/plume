@@ -20,6 +20,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 ### dependencies and options
 ecbuild_find_package( NAME eckit  VERSION  1.18 REQUIRED )
 ecbuild_find_package( NAME atlas )
+ecbuild_find_package( NAME eccodes )
 
 ecbuild_add_option( FEATURE BUILD_TOOLS
                     DEFAULT ON
@@ -46,6 +47,15 @@ ecbuild_add_option(DEFAULT OFF
 ecbuild_info("FCKIT_FOUND ${fckit_FOUND}")
 ecbuild_info("FCKIT_LIBRARIES ${FCKIT_LIBRARIES}")
 ecbuild_info("FCKIT_INCLUDE_DIRS ${FCKIT_INCLUDE_DIRS}")
+
+############## PRECISION
+ecbuild_add_option( FEATURE NWP_EMULATOR_SINGLE_PRECISION
+                    DESCRIPTION "Single precision Atlas fields"
+                    DEFAULT OFF )
+
+if( HAVE_NWP_EMULATOR_SINGLE_PRECISION ) 
+  list(APPEND NWP_EMULATOR_DEFINITIONS WITH_NWP_EMULATOR_SINGLE_PRECISION )
+endif()
 
 add_subdirectory( src )
 add_subdirectory( tests )
