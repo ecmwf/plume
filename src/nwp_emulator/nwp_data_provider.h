@@ -58,6 +58,7 @@ private:
     std::string gridName_;
     atlas::functionspace::StructuredColumns fs_;
     atlas::FieldSet modelFieldSet_;
+    size_t nLevels_;
 
     size_t rank_;
     size_t root_;
@@ -131,5 +132,6 @@ public:
     /// Getters
     atlas::FieldSet& getModelFieldSet() { return modelFieldSet_; }
     int getStep() const { return dataReader->getStep(); }
+    size_t getLevels() const { return nLevels_; }
 };
 }  // namespace nwp_emulator

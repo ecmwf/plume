@@ -138,12 +138,16 @@ bool NWPEmulator::setupPlume(NWPDataProvider& dataProvider) {
 
     plume::Protocol offers;  /// Define data offered by Plume
     offers.offerInt("NSTEP", "always", "Simulation Step");
+    offers.offerDouble("TSTEP", "always", "Simulation Time Step");
+    offers.offerInt("NFLEVG", "always", "Number of vertical levels");
     auto fields = dataProvider.getModelFieldSet();
     for (const auto& field: fields) {
         offers.offerAtlasField(field.name(), "on-request", field.name());
     }
     plume::Manager::negotiate(offers);
     plumeData_.createInt("NSTEP", 0);  /// Initialise parameters
+    plumeData_.createDouble("TSTEP", 900.0);
+    plumeData_.createInt("NFLEVG", dataProvider.getLevels());
     for (auto& field: fields) {
         if (plume::Manager::isParamRequested(field.name())) {
             plumeData_.provideAtlasFieldShared(field.name(), field.get());
@@ -155,8 +159,8 @@ bool NWPEmulator::setupPlume(NWPDataProvider& dataProvider) {
 }
 
 void NWPEmulator::runPlume(int step) {
-    plumeData_.updateInt("NSTEP", step);
     plume::Manager::run();
+    plumeData_.updateInt("NSTEP", step);
 }
 
 int main(int argc, char** argv) {
