@@ -49,20 +49,20 @@ NWPDataProvider::NWPDataProvider(const DataSourceType& sourceType, const eckit::
     }
 
     // Find the maximum number of levels across all params
-    size_t nlevels = 1;
+    nLevels_ = 1;
     for (const auto& levtypePair : params_) {
         size_t paramlevels = 0;
         for (const auto& levelPair : levtypePair.second) {
             paramlevels += levelPair.second.size();
         }
-        nlevels = std::max(nlevels, paramlevels);
+        nLevels_ = std::max(nLevels_, paramlevels);
     }
     std::map<std::string, int> fieldsMd;
     for (const auto& levtypePair : params_) {
         fieldsMd[levtypePair.first] = 1;  // 2D fields receive 1 level
         if (levtypePair.second.size() > 1 || levtypePair.second.begin()->second.size() > 1) {
             // All 3D fields receive the same number of levels even if some levels remain empty for some fields
-            fieldsMd[levtypePair.first] = nlevels;
+            fieldsMd[levtypePair.first] = nLevels_;
         }
     }
 
@@ -72,7 +72,7 @@ NWPDataProvider::NWPDataProvider(const DataSourceType& sourceType, const eckit::
     // Use the default partitioner for the given grid type
     atlas::grid::Distribution distribution(grid, atlas::util::Config("type", grid.partitioner().getString("type")) |
                                                      atlas::util::Config("bands", nprocs_));
-    fs_ = atlas::functionspace::StructuredColumns(grid, distribution, atlas::util::Config("levels", nlevels));
+    fs_ = atlas::functionspace::StructuredColumns(grid, distribution, atlas::util::Config("levels", nLevels_));
     if (sourceType_ == DataSourceType::CONFIG) {
         dataReader->setReaderArea(fs_.lonlat());
     }

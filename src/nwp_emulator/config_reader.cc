@@ -115,6 +115,10 @@ bool ConfigReader::nextMessage(std::string& shortName, std::string& levtype, std
     }
     if (readerConfig_.has(fieldConfigStr + ".levels")) {
         std::string levelKey = getLevelConfigKey(level, fieldConfigStr + ".levels");
+        if (levelKey.empty()) { // this level should be filled with zeros
+            ++index_;
+            return true;
+        }
         fieldConfigStr += ".levels." + levelKey;
     }
     readerConfig_.get(fieldConfigStr, fieldConfig);
@@ -162,7 +166,7 @@ std::string ConfigReader::getLevelConfigKey(const std::string& level, const std:
             return key;
         }
     }
-    return "";  // should never happen if the config has been properly validated
+    return "";  // can be empty if the level should be only zeros
 }
 
 //----------------------------------------------------------------------------------------------------------------------
