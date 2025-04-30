@@ -20,7 +20,7 @@ namespace test {
 
 CASE("test protocol - required params") {
 
-    const char* text = R"YAML(
+    std::string text = R"YAML(
 ---
 required: 
   - name: param-1
@@ -67,7 +67,7 @@ required:
 
 CASE("test protocol - offered params") {
 
-    const char* text = R"YAML(
+    std::string text = R"YAML(
 ---
 offered: 
   - name: param-1

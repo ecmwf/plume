@@ -79,7 +79,11 @@ public:
     ModelData filter(ParameterCatalogue params) const ;
 
     // check if a parameter is in the data
+    bool hasParameter(const std::string& name) const ;
     bool hasParameter(const std::string& name, const ParameterType& type) const ;
+
+    // list available parameters of a certain type
+    std::vector<std::string> listAvailableParameters(std::string type_string) const ;
 
     void print() const;
 

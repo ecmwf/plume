@@ -13,12 +13,7 @@
 namespace plume {
 
 Plugin::Plugin(const std::string& name, const std::string& libname) : eckit::system::Plugin(name, libname) {
-
     eckit::Log::debug() << "Instantiating " << this->name() << std::endl;
-}
-
-Plugin::~Plugin() {
-    eckit::Log::debug() << "Destroying " << name() << std::endl;
 }
 
 }  // namespace plume

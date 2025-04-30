@@ -185,9 +185,16 @@ ModelData ModelData::filter(std::vector<std::string> params) const {
     return filteredData;
 }
 
+
 // Return a subset of the ModelData (from catalogue)
 ModelData ModelData::filter(ParameterCatalogue params) const {
     return filter(params.getParamNames());
+}
+
+
+// Check if a parameter is in the data
+bool ModelData::hasParameter(const std::string& name) const {
+    return valueMap_.find(name) != valueMap_.end();
 }
 
 
@@ -207,6 +214,20 @@ void ModelData::print() const {
         eckit::Log::info() << "Param: " << k.first << std::endl;
     }
 }
+
+
+std::vector<std::string> ModelData::listAvailableParameters(std::string type_string) const {
+    ParameterType type = ParameterTypeConverter::fromString(type_string);
+    std::vector<std::string> keys;
+    for (const auto& key : valueMap_) {
+        if (key.second->type() == type) {
+            keys.push_back(key.first);
+        }
+    }
+    return keys;
+}
+
+
 
 
 // -------- private

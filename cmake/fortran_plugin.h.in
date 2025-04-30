@@ -30,7 +30,6 @@ namespace interface_plugin {
 class InterfacePluginCore__@PLUGINCORE_NAME@ : public plume::PluginCore {
 public:
     InterfacePluginCore__@PLUGINCORE_NAME@(const eckit::Configuration& conf);
-    ~InterfacePluginCore__@PLUGINCORE_NAME@();
     
     virtual void setup() override {
         plugincore_setup__@PLUGIN_NAME@__@PLUGINCORE_NAME@(&config_, &modelData());
@@ -59,7 +58,6 @@ class InterfacePlugin__@PLUGIN_NAME@ : public plume::Plugin {
 
 public:
     InterfacePlugin__@PLUGIN_NAME@();
-    ~InterfacePlugin__@PLUGIN_NAME@();
 
     // Name set in the Fortran interface
     static const char* name() { 

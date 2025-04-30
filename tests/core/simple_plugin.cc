@@ -18,8 +18,6 @@ REGISTER_LIBRARY(SimplePlugin)
 
 SimplePlugin::SimplePlugin() : Plugin("SimplePlugin"){};
 
-SimplePlugin::~SimplePlugin(){};
-
 const SimplePlugin& SimplePlugin::instance() {
     static SimplePlugin instance;
     return instance;
@@ -31,8 +29,6 @@ const SimplePlugin& SimplePlugin::instance() {
 static plume::PluginCoreBuilder<SimplePluginCore> runnable_plugincore_FooBuilder_;
 
 SimplePluginCore::SimplePluginCore(const eckit::Configuration& conf) : PluginCore(conf) {}
-
-SimplePluginCore::~SimplePluginCore() {}
 
 void SimplePluginCore::run() {
     eckit::Log::info() << "Consuming parameters: (" 

@@ -18,8 +18,6 @@ REGISTER_LIBRARY(PluginFoo)
 
 PluginFoo::PluginFoo() : Plugin("PluginFoo"){};
 
-PluginFoo::~PluginFoo(){};
-
 const PluginFoo& PluginFoo::instance() {
     static PluginFoo instance;
     return instance;
@@ -32,9 +30,12 @@ static plume::PluginCoreBuilder<PluginCoreFoo> runnable_plugincore_FooBuilder_;
 
 PluginCoreFoo::PluginCoreFoo(const eckit::Configuration& conf) : PluginCore(conf) {}
 
-PluginCoreFoo::~PluginCoreFoo() {}
-
 void PluginCoreFoo::run() {
+
+    eckit::Log::info() << "Plugin Foo running..." << std::endl;
+    eckit::Log::info() << " ---> data contains parameters: " << std::endl;
+    modelData().print();
+
     eckit::Log::info() << "Plugin Foo consuming parameters: (" 
                        << "I=" << modelData().getInt("I") << ", "
                        << "J=" << modelData().getInt("J") << ") "

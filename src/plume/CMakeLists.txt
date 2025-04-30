@@ -23,6 +23,7 @@ install(FILES
 # #################### Plume plugin ######################
 set(PLUGIN_FILES_H    
     Plugin.h
+    PluginDecision.h
     PluginHandler.h
     Protocol.h
     PluginCore.h
@@ -71,10 +72,14 @@ ecbuild_add_library(
 set(PLUME_PLUGIN_MANAGER_SOURCES
     Manager.h
     Manager.cc
+    ManagerConfig.h
+    Negotiator.h
+    Negotiator.cc
     Protocol.h
     Protocol.cc
     Configurable.h
     Configurable.cc
+    PluginConfig.h
     data/ModelData.h
     data/ModelData.cc
     data/ParameterCatalogue.h

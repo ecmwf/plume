@@ -38,12 +38,6 @@ public:
     Plugin(const std::string& name, const std::string& libname = "");
 
     /**
-     * @brief Destroy the Plugin object
-     * 
-     */
-    virtual ~Plugin() override;
-
-    /**
      * @brief Negotiate its run according to a protocol
      * 
      */

@@ -17,7 +17,6 @@ namespace interface_plugin {
 REGISTER_LIBRARY(InterfacePlugin__@PLUGIN_NAME@)
 
 InterfacePlugin__@PLUGIN_NAME@::InterfacePlugin__@PLUGIN_NAME@() : Plugin(InterfacePlugin__@PLUGIN_NAME@::name()) {}
-InterfacePlugin__@PLUGIN_NAME@::~InterfacePlugin__@PLUGIN_NAME@() {}
 
 const InterfacePlugin__@PLUGIN_NAME@& InterfacePlugin__@PLUGIN_NAME@::instance() {
     static InterfacePlugin__@PLUGIN_NAME@ instance;
@@ -28,7 +27,6 @@ const InterfacePlugin__@PLUGIN_NAME@& InterfacePlugin__@PLUGIN_NAME@::instance()
 // InterfacePluginCore__@PLUGINCORE_NAME@
 static plume::PluginCoreBuilder<InterfacePluginCore__@PLUGINCORE_NAME@> plugincore_Interface_Builder__@PLUGINCORE_NAME@;
 InterfacePluginCore__@PLUGINCORE_NAME@::InterfacePluginCore__@PLUGINCORE_NAME@(const eckit::Configuration& conf) : PluginCore(conf), config_{conf} {}
-InterfacePluginCore__@PLUGINCORE_NAME@::~InterfacePluginCore__@PLUGINCORE_NAME@() {}
 //--------------------------------------------------------------
 
 

@@ -48,6 +48,10 @@ int main(int argc, char** argv) {
     offers.offerInt("J", "always", "this is param J");
     offers.offerInt("K", "always", "this is param K");
     offers.offerAtlasField("field_dummy_1", "always", "this is dummy_field");
+
+    offers.offerInt("config-param-1", "always", "this is param config-param-1");
+    offers.offerDouble("config-param-2", "always", "this is param config-param-2");
+    offers.offerAtlasField("config-param-3", "always", "this is param config-param-3");
     plume::Manager::negotiate(offers);
 
     // data
@@ -56,11 +60,19 @@ int main(int argc, char** argv) {
     int param_k = 100;
     atlas::Field field = createAtlasField();
 
+    int config_param_1 = 9;
+    double config_param_2 = 99.99;
+    atlas::Field config_param_3 = createAtlasField();
+
     plume::data::ModelData data;
     data.provideInt("I", &param_i);
     data.provideInt("J", &param_j);
     data.provideInt("K", &param_k);
     data.provideAtlasFieldShared("field_dummy_1", field.get());
+
+    data.provideInt("config-param-1", &config_param_1);
+    data.provideDouble("config-param-2", &config_param_2);
+    data.provideAtlasFieldShared("config-param-3", config_param_3.get());
 
     // Feed plugins with the data
     plume::Manager::feedPlugins(data);
