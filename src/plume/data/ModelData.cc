@@ -169,6 +169,20 @@ atlas::Field ModelData::getAtlasFieldShared(std::string name) const {
     return atlas::Field(entry->as<atlas::Field::Implementation*>());
 }
 
+// Get the function space
+// @note We want to move this logic elsewhere (ifs) if it is needed
+// the assumption is that all fields share the same function space
+// @todo Plume should consider function space as a separate type, not derive it from a field
+atlas::FunctionSpace ModelData::getAtlasFunctionSpace() const {
+    for (const auto& [name, entry] : valueMap_) {
+        if (entry->type() != ParameterType::ATLAS_FIELD) {
+            continue;
+        }
+        return getAtlasFieldShared(name).functionspace();
+    }
+    return atlas::FunctionSpace();
+}
+
 
 // Get a subset of the ModelData
 ModelData ModelData::filter(std::vector<std::string> params) const {

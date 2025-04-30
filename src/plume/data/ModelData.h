@@ -18,6 +18,7 @@
 
 #include "eckit/value/Value.h"
 
+#include "atlas/functionspace.h"
 #include "atlas/field/Field.h"
 #include "atlas/field/detail/FieldImpl.h"
 
@@ -71,6 +72,7 @@ public:
 
     // -- shared data
     atlas::Field getAtlasFieldShared(std::string name) const;
+    atlas::FunctionSpace getAtlasFunctionSpace() const;
 
     // Return a subset of the ModelData
     ModelData filter(std::vector<std::string> params) const ;
