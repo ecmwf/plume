@@ -28,11 +28,13 @@ contains
     procedure :: initialise => plume_manager_create_handle
 
     procedure :: configure => plume_manager_configure
+    procedure :: configure_from_string => plume_manager_configure_from_string
     procedure :: negotiate => plume_manager_negotiate
     
     procedure :: active_fields => plume_manager_active_fields
     procedure :: active_fields_catalogue => plume_manager_active_fields_catalogue
     procedure :: is_param_requested => plume_manager_is_param_requested
+    procedure :: is_plugin_activated => plume_manager_is_plugin_activated
 
     procedure :: feed_plugins => plume_manager_feed_plugins
     procedure :: run => plume_manager_run
@@ -52,6 +54,14 @@ end function
 
 function plume_manager_configure_interf(handle_impl, config_str) result(err) &
     & bind(C,name="plume_manager_configure")
+    use iso_c_binding, only: c_char, c_int, c_ptr
+    type(c_ptr), intent(in), value :: handle_impl
+    character(c_char), dimension(*) :: config_str
+    integer(c_int) :: err
+end function
+
+function plume_manager_configure_from_string_interf(handle_impl, config_str) result(err) &
+    & bind(C,name="plume_manager_configure_from_string")
     use iso_c_binding, only: c_char, c_int, c_ptr
     type(c_ptr), intent(in), value :: handle_impl
     character(c_char), dimension(*) :: config_str
@@ -88,6 +98,15 @@ function plume_manager_is_param_requested_interf(handle_impl, name, is_param) re
     type(c_ptr), intent(in), value :: handle_impl
     character(c_char), dimension(*) :: name
     logical(c_bool), intent(inout) :: is_param
+    integer :: err
+end function
+
+function plume_manager_is_plugin_activated_interf(handle_impl, name, is_plugin) result(err) &
+    & bind(C, name="plume_manager_is_plugin_activated")
+    use iso_c_binding, only: c_ptr, c_char, c_bool
+    type(c_ptr), intent(in), value :: handle_impl
+    character(c_char), dimension(*) :: name
+    logical(c_bool), intent(inout) :: is_plugin
     integer :: err
 end function
 
@@ -138,6 +157,14 @@ function plume_manager_configure(handle, config_str) result(err)
     character(kind=c_char,len=*), intent(in) :: config_str
     integer :: err
     err = plume_manager_configure_interf(handle%impl, c_str(config_str))
+end function
+
+function plume_manager_configure_from_string(handle, config_str) result(err)
+    use iso_c_binding, only: c_null_char, c_char
+    class(plume_manager), intent(inout) :: handle
+    character(kind=c_char,len=*), intent(in) :: config_str
+    integer :: err
+    err = plume_manager_configure_from_string_interf(handle%impl, c_str(config_str))
 end function
 
 function plume_manager_negotiate(handle, protocol_handle) result(err)
@@ -194,6 +221,15 @@ function plume_manager_is_param_requested(handle, name, is_param) result(err)
     logical(c_bool) :: is_param
     integer :: err
     err = plume_manager_is_param_requested_interf(handle%impl, c_str(name), is_param)
+end function
+
+function plume_manager_is_plugin_activated(handle, name, is_plugin) result(err)
+    use iso_c_binding, only: c_ptr, c_char, c_bool
+    class(plume_manager), intent(inout) :: handle
+    character(kind=c_char,len=*), intent(in) :: name
+    logical(c_bool) :: is_plugin
+    integer :: err
+    err = plume_manager_is_plugin_activated_interf(handle%impl, c_str(name), is_plugin)
 end function
 
 function plume_manager_finalise(handle) result(err)

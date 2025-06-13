@@ -15,8 +15,7 @@
 
 using namespace eckit::testing;
 
-namespace eckit {
-namespace test {
+namespace plume::test {
 
 CASE("test catalogue") {
 
@@ -30,7 +29,7 @@ CASE("test catalogue") {
         "}"
         "\n");
 
-    YAMLConfiguration conf(jsonstr);
+    eckit::YAMLConfiguration conf(jsonstr);
 
     // a data catalogue
     plume::data::ParameterCatalogue catalogue(conf);
@@ -49,7 +48,7 @@ CASE("test catalogue") {
     EXPECT_EQUAL(filtered.hasParam("not-a-param"), false);
 
     // insert new param
-    YAMLConfiguration param_999_config(std::string(
+    eckit::YAMLConfiguration param_999_config(std::string(
     "{"
       "\"name\": \"param-999\","
       "\"type\": \"INT\","
@@ -72,7 +71,7 @@ CASE("test empty catalogue + insert") {
     // insert params to empty catalogue
     plume::data::ParameterCatalogue catalogue2;
 
-    YAMLConfiguration param_11_config(std::string(
+    eckit::YAMLConfiguration param_11_config(std::string(
     "{"
       "\"name\": \"param-11\","
       "\"type\": \"INT\","
@@ -80,7 +79,7 @@ CASE("test empty catalogue + insert") {
       "\"comment\": \"none\""
     "}"));
 
-    YAMLConfiguration param_22_config(std::string(
+    eckit::YAMLConfiguration param_22_config(std::string(
      "{"
       "\"name\": \"param-22\","
       "\"type\": \"INT\","
@@ -88,7 +87,7 @@ CASE("test empty catalogue + insert") {
       "\"comment\": \"none\""
     "}"));
 
-    YAMLConfiguration param_33_config(std::string(
+    eckit::YAMLConfiguration param_33_config(std::string(
     "{"
       "\"name\": \"param-33\","
       "\"type\": \"INT\","
@@ -116,8 +115,7 @@ CASE("test empty catalogue + insert") {
 }
 //----------------------------------------------------------------------------------------------------------------------
 
-}  // namespace test
-}  // namespace eckit
+}  // namespace plume::test
 
 int main(int argc, char** argv) {
     return run_tests(argc, argv);

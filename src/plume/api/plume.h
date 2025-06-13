@@ -8,6 +8,8 @@
  * granted to it by virtue of its status as an intergovernmental organisation nor
  * does it submit to any jurisdiction.
  */
+#pragma once
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -124,8 +126,23 @@ int plume_manager_create_handle(plume_manager_handle_t** h);
  */
 int plume_data_create_handle_from_ptr(plume_data_handle_t** h, void* cptr);
 
-
+/**
+ * @brief Configure the manager with a configuration file
+ *
+ * @param h Handle
+ * @param config_path Path to manager configuration file
+ * @return Error code
+ */
 int plume_manager_configure(plume_manager_handle_t* h, const char* config_path);
+
+/**
+ * @brief Configure the manager with a configuration string
+ *
+ * @param h Handle
+ * @param config_string manager configuration string
+ * @return Error code
+ */
+int plume_manager_configure_from_string(plume_manager_handle_t* h, const char* config_string);
 
 /**
  * @brief Load all the plugins
@@ -174,6 +191,15 @@ int plume_manager_active_data_catalogue(plume_manager_handle_t* h, void** active
  * @return int 
  */
 int plume_manager_is_param_requested(plume_manager_handle_t* h, const char* name, bool* requested);
+
+/** * @brief Check if a plugin is activated
+ *
+ * @param h Handle
+ * @param name Name of plugin
+ * @param activated Pointer to boolean indicating if plugin is activated
+ * @return Error code
+ */
+int plume_manager_is_plugin_activated(plume_manager_handle_t* h, const char* name, bool* activated);
 
 /**
  * @brief Run all plugins

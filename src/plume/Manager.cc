@@ -217,6 +217,16 @@ void Manager::teardown() {
     }
 };
 
+bool Manager::isPluginActivated(const std::string& name) {
+    auto& pluginHandlers = PluginRegistry::instance().getActivePlugins();
+    for (const auto& pluginHandler : pluginHandlers) {
+        if (pluginHandler.pluginName() == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
 
 std::unordered_set<std::string> Manager::getActiveParams() {
     return PluginRegistry::instance().getActiveParams();

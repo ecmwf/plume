@@ -15,7 +15,7 @@ add_custom_target(
 )
 
 ecbuild_get_test_multidata(
-    TARGET test_nwp_emulator_files
+    TARGET plume_test_nwp_emulator_files
     NAMES
         model_data_1.grib
         model_data_2.grib
