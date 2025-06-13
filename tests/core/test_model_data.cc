@@ -15,8 +15,7 @@
 
 using namespace eckit::testing;
 
-namespace eckit {
-namespace test {
+namespace plume::test {
 
 
 CASE("test model data - type checks") {
@@ -83,8 +82,7 @@ CASE("test model data - type checks 2") {
 
 //----------------------------------------------------------------------------------------------------------------------
 
-}  // namespace test
-}  // namespace eckit
+}  // namespace plume::test
 
 int main(int argc, char** argv) {
     return run_tests(argc, argv);

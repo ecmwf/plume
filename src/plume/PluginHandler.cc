@@ -56,6 +56,10 @@ void PluginHandler::teardown() {
     plugincorePtr_->teardown();
 }
 
+std::string PluginHandler::pluginName() const {
+    return pluginRef_.name();
+}
+
 
 } // namespace plume
 

@@ -15,8 +15,7 @@
 
 using namespace eckit::testing;
 
-namespace eckit {
-namespace test {
+namespace plume::test {
 
 
 // A dummy PluginCore
@@ -43,8 +42,7 @@ CASE("test plugin 1") {
 
 //----------------------------------------------------------------------------------------------------------------------
 
-}  // namespace test
-}  // namespace eckit
+}  // namespace plume::test
 
 int main(int argc, char** argv) {
     return run_tests(argc, argv);

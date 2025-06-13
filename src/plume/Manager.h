@@ -72,13 +72,13 @@ public:
     static void teardown();
 
     /**
-     * @brief check if plugin exists
+     * @brief check if a plugin is activated
      * 
      * @param name 
      * @return true 
      * @return false 
      */
-    static bool exists(const std::string& name);
+    static bool isPluginActivated(const std::string& name);
 
     /**
      * @brief List of Active Params

@@ -19,8 +19,7 @@
 using namespace eckit::testing;
 using namespace plume;
 
-namespace eckit {
-namespace test {
+namespace plume::test {
 
 CASE("test_negotiator ") {
 
@@ -72,8 +71,7 @@ CASE("test_negotiator ") {
 
 //----------------------------------------------------------------------------------------------------------------------
 
-}  // namespace test
-}  // namespace eckit
+}  // namespace plume::test
 
 int main(int argc, char** argv) {
     return run_tests(argc, argv);

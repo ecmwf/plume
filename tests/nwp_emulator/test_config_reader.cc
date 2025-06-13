@@ -23,8 +23,7 @@
 using namespace eckit::testing;
 using namespace nwp_emulator;
 
-namespace eckit {
-namespace test {
+namespace plume::test {
 CASE("test_focus_area") {
     atlas::PointLonLat p1{10.12, 65.59}, p2{187.10, 50.73};
 
@@ -110,8 +109,7 @@ CASE("test_data_generation") {
     }
     EXPECT_EQUAL(dataProvider.getStep(), 2);
 }
-}  // namespace test
-}  // namespace eckit
+}  // namespace plume::test
 
 int main(int argc, char** argv) {
     return run_tests(argc, argv);

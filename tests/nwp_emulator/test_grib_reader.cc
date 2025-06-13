@@ -22,8 +22,7 @@
 using namespace eckit::testing;
 using namespace nwp_emulator;
 
-namespace eckit {
-namespace test {
+namespace plume::test {
 CASE("test_reader_setup") {
     GRIBFileReader* dataReader;
     EXPECT_NO_THROW(
@@ -67,8 +66,7 @@ CASE("test_data_reading") {
     }
     EXPECT_EQUAL(dataProvider.getStep(), 2);
 }
-}  // namespace test
-}  // namespace eckit
+}  // namespace plume::test
 
 int main(int argc, char** argv) {
     return run_tests(argc, argv);

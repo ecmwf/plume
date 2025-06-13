@@ -15,8 +15,7 @@
 
 using namespace eckit::testing;
 
-namespace eckit {
-namespace test {
+namespace plume::test {
 
 CASE("test protocol - required params") {
 
@@ -34,7 +33,7 @@ required:
 )YAML";
 
     std::string cfgtxt(text);
-    YAMLConfiguration conf(cfgtxt);
+    eckit::YAMLConfiguration conf(cfgtxt);
     plume::Protocol protocol(conf);
 
     EXPECT_EQUAL(protocol.requiredParamNames().size(), 3);
@@ -88,7 +87,7 @@ offered:
 )YAML";
 
     std::string cfgtxt(text);
-    YAMLConfiguration conf(cfgtxt);
+    eckit::YAMLConfiguration conf(cfgtxt);
     plume::Protocol protocol(conf);
 
     EXPECT_EQUAL(protocol.requiredParamNames().size(), 0);
@@ -122,8 +121,7 @@ offered:
 
 //----------------------------------------------------------------------------------------------------------------------
 
-}  // namespace test
-}  // namespace eckit
+}  // namespace plume::test
 
 int main(int argc, char** argv) {
     return run_tests(argc, argv);

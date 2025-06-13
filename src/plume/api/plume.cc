@@ -233,13 +233,24 @@ int plume_manager_create_handle(plume_manager_handle_t** h) {
 }
 
 int plume_manager_configure(plume_manager_handle_t* h, const char* config_path) {
-
-        return wrapApiFunction([h, config_path] {
+    return wrapApiFunction([h, config_path] {
         ASSERT(h);
         ASSERT((h)->impl_);
 
         // Manager Configuration
         eckit::YAMLConfiguration mgrConfig{eckit::PathName(config_path)};
+        h->impl_->configure(mgrConfig);
+
+    });
+}
+
+int plume_manager_configure_from_string(plume_manager_handle_t* h, const char* config_string) {
+    return wrapApiFunction([h, config_string] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+
+        // Manager Configuration
+        eckit::YAMLConfiguration mgrConfig{std::string(config_string)};
         h->impl_->configure(mgrConfig);
 
     });
@@ -304,6 +315,16 @@ int plume_manager_is_param_requested(plume_manager_handle_t* h, const char* name
  
         std::string namestr{name};
         *requested = h->impl_->isParamRequested(namestr);
+    });
+}
+
+int plume_manager_is_plugin_activated(plume_manager_handle_t* h, const char* name, bool* activated) {
+    return wrapApiFunction([h, name, &activated] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+
+        std::string namestr{name};
+        *activated = h->impl_->isPluginActivated(namestr);
     });
 }
 

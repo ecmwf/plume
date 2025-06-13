@@ -86,6 +86,12 @@ public:
      */
     void teardown();
 
+    /**
+     * @brief Get the Plugin name
+     * @return std::string
+     */
+    std::string pluginName() const;
+
 private:
 
     // internal Plugin ref
