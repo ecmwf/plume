@@ -62,8 +62,10 @@ public:
     /**
      * @brief run all active plugins
      * 
+     * @param caller Identifies the calling model. Defaults to nullptr, so the caller can be passed or not depending
+     *        on how the simulation and plugins are configured.
      */
-    static void run();
+    static void run(int* caller = nullptr);
 
     /**
      * @brief teardown all active plugins

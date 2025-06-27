@@ -132,7 +132,7 @@ CASE("test_manager_api") {
 
     // run the plugin for 2 iterations
     for (int i = 0; i < 2; ++i) {
-        EXPECT_PLUME_CODE_SUCCESS( plume_manager_run(mgr_handle));
+        EXPECT_PLUME_CODE_SUCCESS( plume_manager_run(mgr_handle, NULL));
     }
 
     // finalise plume

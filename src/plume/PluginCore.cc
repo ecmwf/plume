@@ -14,6 +14,7 @@
 
 namespace plume {
 
+
 PluginCore::PluginCore(const eckit::Configuration& config) {}
 
 PluginCore::~PluginCore() {}
@@ -30,6 +31,10 @@ void PluginCore::grabData(const data::ModelData& data) {
 
 data::ModelData& PluginCore::modelData() {
     return modelData_;
+}
+
+void PluginCore::run(int caller) {
+    run();
 }
 
 

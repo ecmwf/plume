@@ -118,10 +118,11 @@ function plume_manager_feed_plugins_interf(handle_impl, fdata) result(err) &
   integer(c_int) :: err
 end function
 
-function plume_manager_run_interf(handle_impl) result(err) &
+function plume_manager_run_interf(handle_impl, run_tag) result(err) &
     & bind(C,name="plume_manager_run")
     use iso_c_binding, only: c_int, c_ptr
     type(c_ptr), intent(in), value :: handle_impl
+    integer(c_int), intent(in), optional :: run_tag
     integer(c_int) :: err
 end function
 
@@ -181,10 +182,15 @@ function plume_manager_feed_plugins(handle, fdata) result(err)
   err = plume_manager_feed_plugins_interf(handle%impl, fdata%impl)
 end function
 
-function plume_manager_run(handle) result(err)
+function plume_manager_run(handle, run_tag) result(err)
     class(plume_manager), intent(inout) :: handle
+    integer, intent(in), optional :: run_tag
     integer :: err
-    err = plume_manager_run_interf(handle%impl)
+    if (present(run_tag)) then
+        err = plume_manager_run_interf(handle%impl, run_tag)
+    else
+        err = plume_manager_run_interf(handle%impl)
+    endif
 end function
 
 ! TODO: this really need to be checked!! not testing for errors, but returns a char*

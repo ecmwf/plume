@@ -52,6 +52,11 @@ void PluginHandler::run() {
 }
 
 
+void PluginHandler::run(int caller) {
+    plugincorePtr_->run(caller);
+}
+
+
 void PluginHandler::teardown() {
     plugincorePtr_->teardown();
 }

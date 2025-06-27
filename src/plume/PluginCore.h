@@ -22,6 +22,7 @@
 
 namespace plume {
 
+
 /**
  * @brief A plugincore that contains calculations/algorithms
  * to perform on model data. It is implemented inside a plugin
@@ -87,6 +88,17 @@ public:
      * 
      */
     virtual void run() = 0;
+
+    /**
+     * @brief Run with information about the caller.
+     * 
+     * By default this method calls the base run method without caller.
+     * The caller is not decoded in Plume, the responsibility of correctly associating a caller number to a model
+     * lies with the individual plugin configurations.
+     * 
+     * @param caller The model that called the run represented by an int.
+     */
+    virtual void run(int caller);
 
 protected:
 

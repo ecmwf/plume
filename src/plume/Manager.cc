@@ -202,9 +202,15 @@ void Manager::feedPlugins(const data::ModelData& data) {
 
 
 // Run all active plugincores
-void Manager::run() {
-    for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
-        pluginHandler.run();
+void Manager::run(int* caller) {
+    if (caller != nullptr) {
+        for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
+            pluginHandler.run(*caller);
+        }
+    } else {
+        for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
+            pluginHandler.run();
+        }
     }
 };
 

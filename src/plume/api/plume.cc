@@ -328,12 +328,12 @@ int plume_manager_is_plugin_activated(plume_manager_handle_t* h, const char* nam
     });
 }
 
-int plume_manager_run(plume_manager_handle_t* h) {
-    return wrapApiFunction([h] {
+int plume_manager_run(plume_manager_handle_t* h, int* caller) {
+    return wrapApiFunction([h, caller] {
         ASSERT(h);
         ASSERT((h)->impl_);
 
-        h->impl_->run();
+        h->impl_->run(caller);
     });
 }
 

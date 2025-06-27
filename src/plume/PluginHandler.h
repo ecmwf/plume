@@ -81,6 +81,13 @@ public:
     void run();
 
     /**
+     * @brief run the plugincore with a caller tag
+     * 
+     * @param caller The model that called the run
+     */
+    void run(int caller);
+
+    /**
      * @brief teardown the plugincore
      * 
      */

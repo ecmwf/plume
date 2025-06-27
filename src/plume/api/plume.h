@@ -205,9 +205,10 @@ int plume_manager_is_plugin_activated(plume_manager_handle_t* h, const char* nam
  * @brief Run all plugins
  *
  * @param h Handle
+ * @param caller Tag identifying the model calling the run
  * @return Error code
  */
-int plume_manager_run(plume_manager_handle_t* h);
+int plume_manager_run(plume_manager_handle_t* h, int* caller);
 
 /**
  * @brief Teardown plugins
