@@ -34,6 +34,15 @@ ecbuild_add_test( TARGET   plume_test_manager
                     eckit
 )
 
+ecbuild_add_test( TARGET   plume_test_manager_json
+                  SOURCES  test_manager_json.cc
+                  ENVIRONMENT
+                    DYLD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/lib
+                  LIBS
+                    plume_plugin_manager
+                    eckit
+)
+
 # simple plugin (used for testing)
 ecbuild_add_library( TARGET simple_plugin
   SOURCES 

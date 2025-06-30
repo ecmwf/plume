@@ -20,14 +20,39 @@ namespace plume::test {
 CASE("test parameter") {
 
     // valid
-    std::string valid_config = R"YAML({"name": "lat", "type": "ATLAS_FIELD", "available": "on-request", "comment": "none"})YAML";
+    std::string valid_config = R"YAML(
+    name: lat
+    type: ATLAS_FIELD
+    available: on-request
+    comment: none
+    )YAML";
 
-    // invalid
-    std::string missing_name = R"YAML({"type": "ATLAS_FIELD", "available": "on-request", "comment": "none"})YAML";
-    std::string missing_type = R"YAML({"name": "lat", "available": "on-request", "comment": "none"})YAML";
-    std::string missing_avail = R"YAML({"name": "lat", "type": "ATLAS_FIELD", "comment": "none"})YAML";
-    std::string missing_comment = R"YAML({"name": "lat", "type": "ATLAS_FIELD", "available": "on-request"})YAML";
 
+    // invalid (missing name)
+    std::string missing_name = R"YAML(
+    type: ATLAS_FIELD
+    available: on-request
+    comment: none
+    )YAML";
+
+    // invalid (missing type)
+    std::string missing_type = R"YAML(
+    name: lat
+    available: on-request
+    comment: none
+    )YAML";
+
+    std::string missing_avail = R"YAML(
+    name: lat
+    type: ATLAS_FIELD
+    comment: none
+    )YAML";
+
+    std::string missing_comment = R"YAML(
+    name: lat
+    type: ATLAS_FIELD
+    available: on-request
+    )YAML";
 
     eckit::YAMLConfiguration config(valid_config);    
     eckit::YAMLConfiguration config_missing_name(missing_name);
