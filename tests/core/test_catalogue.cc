@@ -19,17 +19,23 @@ namespace plume::test {
 
 CASE("test catalogue") {
 
-    std::string jsonstr(
-        "{"
-        "  \"params\": ["
-        "     {\"name\":\"param-1\", \"type\":\"INT\", \"available\": \"always\", \"comment\":\"none\"},"
-        "     {\"name\":\"param-2\", \"type\":\"INT\", \"available\": \"always\", \"comment\":\"none\"},"
-        "     {\"name\":\"param-3\", \"type\":\"INT\", \"available\": \"always\", \"comment\":\"none\"}"
-        "  ]"
-        "}"
-        "\n");
+    std::string yamlstr(R"YAML(
+    params:
+      - name: param-1
+        type: INT
+        available: always
+        comment: none
+      - name: param-2
+        type: INT
+        available: always
+        comment: none
+      - name: param-3
+        type: INT
+        available: always
+        comment: none
+    )YAML");
 
-    eckit::YAMLConfiguration conf(jsonstr);
+    eckit::YAMLConfiguration conf(yamlstr);
 
     // a data catalogue
     plume::data::ParameterCatalogue catalogue(conf);
@@ -48,13 +54,14 @@ CASE("test catalogue") {
     EXPECT_EQUAL(filtered.hasParam("not-a-param"), false);
 
     // insert new param
-    eckit::YAMLConfiguration param_999_config(std::string(
-    "{"
-      "\"name\": \"param-999\","
-      "\"type\": \"INT\","
-      "\"available\": \"always\","
-      "\"comment\": \"none\""
-    "}"));
+    eckit::YAMLConfiguration param_999_config(std::string(R"YAML(
+    name: param-999
+    type: INT
+    available: always
+    comment: none
+    )YAML"));
+
+
     filtered.insertParam( plume::data::Parameter{param_999_config} );
     EXPECT_EQUAL(catalogue.hasParam("param-1"), true);
     EXPECT_EQUAL(catalogue.hasParam("param-2"), true);
@@ -71,29 +78,26 @@ CASE("test empty catalogue + insert") {
     // insert params to empty catalogue
     plume::data::ParameterCatalogue catalogue2;
 
-    eckit::YAMLConfiguration param_11_config(std::string(
-    "{"
-      "\"name\": \"param-11\","
-      "\"type\": \"INT\","
-      "\"available\": \"always\","
-      "\"comment\": \"none\""
-    "}"));
+    eckit::YAMLConfiguration param_11_config(std::string(R"YAML(
+    name: param-11
+    type: INT
+    available: always
+    comment: none
+    )YAML"));
 
-    eckit::YAMLConfiguration param_22_config(std::string(
-     "{"
-      "\"name\": \"param-22\","
-      "\"type\": \"INT\","
-      "\"available\": \"always\","
-      "\"comment\": \"none\""
-    "}"));
+    eckit::YAMLConfiguration param_22_config(std::string(R"YAML(
+    name: param-22
+    type: INT
+    available: always
+    comment: none
+    )YAML"));
 
-    eckit::YAMLConfiguration param_33_config(std::string(
-    "{"
-      "\"name\": \"param-33\","
-      "\"type\": \"INT\","
-      "\"available\": \"always\","
-      "\"comment\": \"none\""
-    "}"));       
+    eckit::YAMLConfiguration param_33_config(std::string(R"YAML(
+    name: param-33
+    type: INT
+    available: always
+    comment: none
+    )YAML"));
 
     catalogue2.insertParam( plume::data::Parameter{param_11_config} );
     catalogue2.insertParam( plume::data::Parameter{param_22_config} );

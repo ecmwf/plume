@@ -47,43 +47,47 @@ CASE("test_manager_api") {
 
     // configure and Negotiate
     std::string mgr_conf_str = 
-    R"YAML({"plugins": [
-        {
-            "lib": "plume_plugin_test_api",
-            "name": "PluginTestAPI", 
-            "parameters": [
-                [
-                    {"name":"I", "type":"INT"},
-                    {"name":"J", "type":"INT"},
-                    {"name":"FF1", "type":"FLOAT"},
-                    {"name":"DD1", "type":"DOUBLE"}
-                ],
-                [
-                    {"name":"JJJ", "type":"INT"},
-                    {"name":"J", "type":"INT"},
-                    {"name":"KKMM", "type":"INT"}
-                ],
-                [
-                    {"name":"XYZ", "type":"INT"},
-                    {"name":"K", "type":"INT"}
-                ]
-            ],
-            "core-config": {}
-        },
-        {
-            "lib": "plume_plugin_test_fapi",
-            "name": "PluginTestFAPI",
-            "parameters": [
-                [
-                    {"name":"FORT_I", "type":"INT"},
-                    {"name":"FORT_J", "type":"INT"},
-                    {"name":"FORT_FF1", "type":"FLOAT"},
-                    {"name":"FORT_DD1", "type":"DOUBLE"}
-                ]
-            ],
-            "core-config": {}
-        }
-    ]})YAML";
+    R"YAML(
+      plugins:
+        - lib: plume_plugin_test_api
+          name: PluginTestAPI
+          parameters:
+            -
+              - name: I
+                type: INT
+              - name: J
+                type: INT
+              - name: FF1
+                type: FLOAT
+              - name: DD1
+                type: DOUBLE
+            -
+              - name: JJJ
+                type: INT
+              - name: J
+                type: INT
+              - name: KKMM
+                type: INT
+            -
+              - name: XYZ
+                type: INT
+              - name: K
+                type: INT
+          core-config: {}
+        - lib: plume_plugin_test_fapi
+          name: PluginTestFAPI
+          parameters:
+            -
+              - name: FORT_I
+                type: INT
+              - name: FORT_J
+                type: INT
+              - name: FORT_FF1
+                type: FLOAT
+              - name: FORT_DD1
+                type: DOUBLE
+          core-config: {}
+    )YAML";
     
     // create manager handle
     EXPECT_PLUME_CODE_SUCCESS( plume_manager_create_handle(&mgr_handle));

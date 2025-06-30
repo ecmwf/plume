@@ -1,31 +1,27 @@
-{
-  "verbose": true,
-  "plugins": [
-    {
-      "name": "PluginFoo",
-      "lib": "plugin_foo"
-    },
-    {
-      "name": "PluginBar",
-      "lib": "plugin_bar",
-      "parameters": [
-        [
-          {"name": "config-param-1", "type": "int"},
-          {"name": "config-param-2", "type": "double"},
-          {"name": "config-param-3", "type": "atlas_field"},
-          {"name": "config-param-4", "type": "atlas_field"},
-          {"name": "config-param-5", "type": "atlas_field"}
-        ],
-        [
-          {"name": "config-param-1", "type": "int"},
-          {"name": "config-param-3", "type": "int"}
-        ]
-      ],
-      "core-config": {
-        "exceptions-dump-trace": true,
-        "key-2": "val-2",
-        "key-3": "val-3"
-      }
-    }    
-  ]
-}
+verbose: true
+plugins:
+  - name: PluginFoo
+    lib: plugin_foo
+  - name: PluginBar
+    lib: plugin_bar
+    parameters:
+      -
+        - name: config-param-1
+          type: int
+        - name: config-param-2
+          type: double
+        - name: config-param-3
+          type: atlas_field
+        - name: config-param-4
+          type: atlas_field
+        - name: config-param-5
+          type: atlas_field
+      -
+        - name: config-param-1
+          type: int
+        - name: config-param-3
+          type: int
+    core-config:
+      exceptions-dump-trace: true
+      key-2: val-2
+      key-3: val-3

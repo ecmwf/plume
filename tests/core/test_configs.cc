@@ -21,13 +21,24 @@ namespace plume::test {
 
 CASE("test_manager_configuration") {
 
-    std::string mgr_configstr_valid = R"YAML({
-        "plugins": [
-            {"name": "simple_plugin", "lib": "libsimple_plugin", "parameters": [{"name": "param1", "type": "INT", "available": "always", "comment": "none"}]},
-            {"name": "simple_plugin2", "lib": "libsimple_plugin2", "parameters": [{"name": "param2", "type": "INT", "available": "always", "comment": "none"}]}
-        ],
-        "verbose": true
-    })YAML";
+    std::string mgr_configstr_valid = R"YAML(
+    plugins:
+      - name: simple_plugin
+        lib: libsimple_plugin
+        parameters:
+          - name: param1
+            type: INT
+            available: always
+            comment: none
+      - name: simple_plugin2
+        lib: libsimple_plugin2
+        parameters:
+          - name: param2
+            type: INT
+            available: always
+            comment: none
+    verbose: true
+    )YAML";
 
     eckit::YAMLConfiguration config(mgr_configstr_valid);
     plume::ManagerConfig managerConfig(config);
@@ -45,9 +56,9 @@ CASE("test_manager_configuration") {
 
 CASE("test_manager_configuration_invalid") {
 
-    std::string missing_plugins = R"YAML({
-        "verbose": true
-    })YAML";
+    std::string missing_plugins = R"YAML(
+    verbose: true
+    )YAML";
 
     eckit::YAMLConfiguration config(missing_plugins);
 
@@ -58,14 +69,19 @@ CASE("test_manager_configuration_invalid") {
 
 CASE("test_plugin_configuration") {
 
-    std::string valid_config = R"YAML({
-        "name": "simple_plugin",
-        "lib": "libsimple_plugin",
-        "parameters": [
-            {"name": "param1", "type": "INT", "available": "always", "comment": "none"},
-            {"name": "param2", "type": "INT", "available": "always", "comment": "none"}
-        ]
-    })YAML";
+    std::string valid_config = R"YAML(
+    name: simple_plugin
+    lib: libsimple_plugin
+    parameters:
+      - name: param1
+        type: INT
+        available: always
+        comment: none
+      - name: param2
+        type: INT
+        available: always
+        comment: none
+    )YAML";
 
     eckit::YAMLConfiguration config(valid_config);
     plume::PluginConfig pluginConfig(config);
@@ -93,26 +109,36 @@ CASE("test_plugin_configuration") {
 
 CASE("test_plugin_configuration_invalid") {
 
-    std::string missing_name = R"YAML({
-        "lib": "libsimple_plugin",
-        "parameters": [
-            {"name": "param1", "type": "INT", "available": "always", "comment": "none"},
-            {"name": "param2", "type": "INT", "available": "always", "comment": "none"}
-        ]
-    })YAML";
+    std::string missing_name = R"YAML(
+    lib: libsimple_plugin
+    parameters:
+      - name: param1
+        type: INT
+        available: always
+        comment: none
+      - name: param2
+        type: INT
+        available: always
+        comment: none
+    )YAML";
 
     eckit::YAMLConfiguration config(missing_name);
     EXPECT_THROWS(plume::PluginConfig pluginConfig(config));
 
 
     // missing lib
-    std::string missing_lib = R"YAML({
-        "name": "simple_plugin",
-        "parameters": [
-            {"name": "param1", "type": "INT", "available": "always", "comment": "none"},
-            {"name": "param2", "type": "INT", "available": "always", "comment": "none"}
-        ]
-    })YAML";
+    std::string missing_lib = R"YAML(
+    name: simple_plugin
+    parameters:
+      - name: param1
+        type: INT
+        available: always
+        comment: none
+      - name: param2
+        type: INT
+        available: always
+        comment: none
+    )YAML";
 
     eckit::YAMLConfiguration config2(missing_lib);
     EXPECT_THROWS(plume::PluginConfig pluginConfig2(config2));

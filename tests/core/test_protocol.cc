@@ -20,17 +20,17 @@ namespace plume::test {
 CASE("test protocol - required params") {
 
     std::string text = R"YAML(
----
-required: 
-  - name: param-1
-    type: INT
-    
-  - name: param-2
-    type: INT
+    ---
+    required:
+      - name: param-1
+        type: INT
 
-  - name: param-3
-    type: INT
-)YAML";
+      - name: param-2
+        type: INT
+
+      - name: param-3
+        type: INT
+    )YAML";
 
     std::string cfgtxt(text);
     eckit::YAMLConfiguration conf(cfgtxt);
@@ -67,24 +67,24 @@ required:
 CASE("test protocol - offered params") {
 
     std::string text = R"YAML(
----
-offered: 
-  - name: param-1
-    type: INT
-    available: always
-    comment: none
-    
-  - name: param-2
-    type: INT
-    available: always
-    comment: none
+    ---
+    offered:
+      - name: param-1
+        type: INT
+        available: always
+        comment: none
 
-  - name: param-3
-    type: INT
-    available: always
-    comment: none
+      - name: param-2
+        type: INT
+        available: always
+        comment: none
 
-)YAML";
+      - name: param-3
+        type: INT
+        available: always
+        comment: none
+
+    )YAML";
 
     std::string cfgtxt(text);
     eckit::YAMLConfiguration conf(cfgtxt);

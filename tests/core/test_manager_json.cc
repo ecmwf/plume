@@ -20,68 +20,48 @@ using namespace eckit::testing;
 namespace plume::test {
 
 
-
-CASE("test_invalid_manager_configuration") {
-
-    // missing plugins
-    std::string mgr_conf_str_plugins_missing = R"YAML({})YAML";
-    eckit::YAMLConfiguration mgr_cfg_plugins_missing(mgr_conf_str_plugins_missing);
-
-    // protocol from config
-    std::string data_conf_str = R"YAML(
-    offered:
-      - name: I
-        type: INT
-        available: always
-        comment: none-1
-      - name: J
-        type: INT
-        available: always
-        comment: none-2
-      - name: K
-        type: INT
-        available: always
-        comment: none-3
-    )YAML";
-
-    eckit::YAMLConfiguration data_cfg(data_conf_str);
-
-    // configure
-    EXPECT_THROWS(plume::Manager::configure(mgr_cfg_plugins_missing));
-    EXPECT_EQUAL(plume::Manager::isConfigured(), false);
-
-}
-
-
-
-CASE("test_valid_manager_configuration") {
+CASE("test_valid_manager_configuration_json") {
 
     // simple plugin loaded
-    std::string mgr_conf_str = R"YAML(
-    plugins:
-      - lib: simple_plugin
-        name: SimplePlugin
-        core-config: {}
-    )YAML";
+    std::string mgr_conf_str = R"JSON(
+    {
+      "plugins": [
+        {
+          "lib": "simple_plugin",
+          "name": "SimplePlugin",
+          "core-config": {}
+        }
+      ]
+    }
+    )JSON";
 
     eckit::YAMLConfiguration mgr_cfg(mgr_conf_str);
 
     // protocol from config
-    std::string data_conf_str = R"YAML(
-    offered:
-      - name: I
-        type: INT
-        available: always
-        comment: none-1
-      - name: J
-        type: INT
-        available: always
-        comment: none-2
-      - name: K
-        type: INT
-        available: always
-        comment: none-3
-    )YAML";
+    std::string data_conf_str = R"JSON(
+    {
+      "offered": [
+        {
+          "name": "I",
+          "type": "INT",
+          "available": "always",
+          "comment": "none-1"
+        },
+        {
+          "name": "J",
+          "type": "INT",
+          "available": "always",
+          "comment": "none-2"
+        },
+        {
+          "name": "K",
+          "type": "INT",
+          "available": "always",
+          "comment": "none-3"
+        }
+      ]
+    }
+    )JSON";
 
     eckit::YAMLConfiguration data_cfg(data_conf_str);
 

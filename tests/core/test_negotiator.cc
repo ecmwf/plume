@@ -25,36 +25,78 @@ CASE("test_negotiator ") {
 
     Negotiator negotiator;
 
-    std::string offers_str = R"YAML({
-                                    "offered": [
-                                        {"name":"I", "type":"INT", "available": "always", "comment":"none-1"},
-                                        {"name":"J", "type":"INT", "available": "always", "comment":"none-2"},
-                                        {"name":"K", "type":"INT", "available": "always", "comment":"none-3"}]
-                                    })YAML";
+    std::string offers_str = R"YAML(
+    offered:
+      - name: I
+        type: INT
+        available: always
+        comment: none-1
+      - name: J
+        type: INT
+        available: always
+        comment: none-2
+      - name: K
+        type: INT
+        available: always
+        comment: none-3
+    )YAML";
 
-    std::string requires_str = R"YAML({
-                                     "required": [
-                                         {"name":"I", "type":"INT", "available": "always", "comment":"none-1"},
-                                         {"name":"J", "type":"INT", "available": "always", "comment":"none-2"},
-                                         {"name":"K", "type":"INT", "available": "always", "comment":"none-3"}]
-                                     })YAML";
+    std::string requires_str = R"YAML(
+    required:
+      - name: I
+        type: INT
+        available: always
+        comment: none-1
+      - name: J
+        type: INT
+        available: always
+        comment: none-2
+      - name: K
+        type: INT
+        available: always
+        comment: none-3
+    )YAML";
 
-    std::string requires_not_fullfilled_str = R"YAML({
-                                    "required": [
-                                        {"name":"I", "type":"INT", "available": "always", "comment":"none-1"},
-                                        {"name":"J", "type":"INT", "available": "always", "comment":"none-2"},
-                                        {"name":"K", "type":"INT", "available": "always", "comment":"none-3"},
-                                        {"name":"K_new", "type":"INT", "available": "always", "comment":"none-3"},
-                                        {"name":"K_new2", "type":"INT", "available": "always", "comment":"none-3"}]
-                                    })YAML";
+    std::string requires_not_fullfilled_str = R"YAML(
+    required:
+      - name: I
+        type: INT
+        available: always
+        comment: none-1
+      - name: J
+        type: INT
+        available: always
+        comment: none-2
+      - name: K
+        type: INT
+        available: always
+        comment: none-3
+      - name: K_new
+        type: INT
+        available: always
+        comment: none-3
+      - name: K_new2
+        type: INT
+        available: always
+        comment: none-3
+    )YAML";
 
-    std::string requires_invalid_str = R"YAML({
-                                        "required_invalid_key": [
-                                            {"name":"I", "type":"INT", "available": "always", "comment":"none-1"},
-                                            {"name":"J", "type":"INT", "available": "always", "comment":"none-2"},
-                                            {"name":"K", "type":"INT", "available": "always", "comment":"none-3"}]
-                                        })YAML";                                    
-   
+    std::string requires_invalid_str = R"YAML(
+    required_invalid_key:
+      - name: I
+        type: INT
+        available: always
+        comment: none-1
+      - name: J
+        type: INT
+        available: always
+        comment: none-2
+      - name: K
+        type: INT
+        available: always
+        comment: none-3
+    )YAML";
+
     // negotiate                                        
     PluginDecision decision = negotiator.negotiate(eckit::YAMLConfiguration(offers_str), eckit::YAMLConfiguration(requires_str));
     EXPECT_EQUAL(decision.accepted(), true);
