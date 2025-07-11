@@ -26,38 +26,44 @@ ecbuild_get_test_multidata(
     NOCHECK
 )
 
-ecbuild_add_test(
-    TARGET      plume_test_nwp_grib
-    SOURCES     test_grib_reader.cc
-    LIBS        plume_nwp_emulator
-    ENVIRONMENT TEST_DATA_DIR=${test_nwp_emulator_files_dir}
-    MPI         3
-    CONDITION   eckit_HAVE_MPI
-    TEST_DEPENDS test_nwp_emulator_files
-)
+foreach(prec sp dp)
+    if (HAVE_NWP_EMULATOR_${prec})
+        ecbuild_add_test(
+            TARGET      plume_test_nwp_grib_${prec}
+            SOURCES     test_grib_reader.cc
+            LIBS        plume_nwp_emulator_${prec}
+            DEFINITIONS ${NWP_EMULATOR_DEFINITIONS_${prec}}
+            ENVIRONMENT TEST_DATA_DIR=${test_nwp_emulator_files_dir}
+            MPI         3
+            CONDITION   eckit_HAVE_MPI
+            TEST_DEPENDS test_nwp_emulator_files
+        )
 
-ecbuild_add_test(
-    TARGET      plume_test_nwp_config
-    SOURCES     test_config_reader.cc
-    LIBS        plume_nwp_emulator
-    ENVIRONMENT TEST_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/data/
-    MPI         3
-    CONDITION   eckit_HAVE_MPI
-)
+        ecbuild_add_test(
+            TARGET      plume_test_nwp_config_${prec}
+            SOURCES     test_config_reader.cc
+            LIBS        plume_nwp_emulator_${prec}
+            DEFINITIONS ${NWP_EMULATOR_DEFINITIONS_${prec}}
+            ENVIRONMENT TEST_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/data/
+            MPI         3
+            CONDITION   eckit_HAVE_MPI
+        )
 
-ecbuild_add_library(
-    TARGET nwp_emulator_test_plugin
-    SOURCES 
-        nwp_emulator_plugin.h
-        nwp_emulator_plugin.cc
-    PRIVATE_LIBS
-        plume_plugin
-)
+        ecbuild_add_library(
+            TARGET nwp_emulator_test_plugin_${prec}
+            SOURCES 
+                nwp_emulator_plugin.h
+                nwp_emulator_plugin.cc
+            PRIVATE_LIBS
+                plume_plugin
+        )
 
-ecbuild_add_test(
-    TARGET  plume_test_nwp_tool
-    LIBS simple_plugin nwp_emulator_test_plugin
-    COMMAND nwp_emulator_run.x
-    ARGS --config-src=${CMAKE_CURRENT_SOURCE_DIR}/data/valid_config.yml
-         --plume-cfg=${CMAKE_CURRENT_SOURCE_DIR}/data/plume_config.yml
-)
+        ecbuild_add_test(
+            TARGET  plume_test_nwp_tool_${prec}
+            LIBS simple_plugin nwp_emulator_test_plugin_${prec}
+            COMMAND nwp_emulator_run_${prec}.x
+            ARGS --config-src=${CMAKE_CURRENT_SOURCE_DIR}/data/valid_config.yml
+                --plume-cfg=${CMAKE_CURRENT_SOURCE_DIR}/data/plume_config_${prec}.yml
+        )
+    endif()
+endforeach()
