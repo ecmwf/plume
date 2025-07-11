@@ -48,14 +48,30 @@ ecbuild_info("FCKIT_FOUND ${fckit_FOUND}")
 ecbuild_info("FCKIT_LIBRARIES ${FCKIT_LIBRARIES}")
 ecbuild_info("FCKIT_INCLUDE_DIRS ${FCKIT_INCLUDE_DIRS}")
 
-############## PRECISION
+############## NWP EMULATOR PRECISION
 ecbuild_add_option( FEATURE NWP_EMULATOR_SINGLE_PRECISION
-                    DESCRIPTION "Single precision Atlas fields"
-                    DEFAULT OFF )
+                    DESCRIPTION
+                    "Compile nwp emulator for single precision fields"
+                    DEFAULT OFF)
 
-if( HAVE_NWP_EMULATOR_SINGLE_PRECISION ) 
-  list(APPEND NWP_EMULATOR_DEFINITIONS WITH_NWP_EMULATOR_SINGLE_PRECISION )
+ecbuild_add_option( FEATURE NWP_EMULATOR_DOUBLE_PRECISION
+                    DESCRIPTION
+                    "Compile nwp emulator for double precision fields"
+                    DEFAULT ON)
+
+set( HAVE_NWP_EMULATOR_sp 0)
+set( HAVE_NWP_EMULATOR_dp 0)
+
+if (HAVE_SINGLE_PRECISION OR HAVE_NWP_EMULATOR_SINGLE_PRECISION)
+  set( NWP_EMULATOR_DEFINITIONS_sp WITH_NWP_EMULATOR_SINGLE_PRECISION )
+  set( HAVE_NWP_EMULATOR_sp 1)
 endif()
+
+if (HAVE_NWP_EMULATOR_DOUBLE_PRECISION)
+  set( NWP_EMULATOR_DEFINITIONS_dp WITH_NWP_EMULATOR_DOUBLE_PRECISION )
+  set( HAVE_NWP_EMULATOR_dp 1)
+endif()
+############################################################################################
 
 add_subdirectory( src )
 add_subdirectory( tests )
