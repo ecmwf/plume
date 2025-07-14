@@ -13,4 +13,7 @@ endif()
 
 add_subdirectory(core)
 add_subdirectory(api)
-add_subdirectory(nwp_emulator)
+
+if (HAVE_NWP_EMULATOR)
+  add_subdirectory(nwp_emulator)
+endif()

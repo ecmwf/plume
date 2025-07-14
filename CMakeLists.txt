@@ -20,7 +20,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 ### dependencies and options
 ecbuild_find_package( NAME eckit  VERSION  1.28.5 REQUIRED )
 ecbuild_find_package( NAME atlas )
-ecbuild_find_package( NAME eccodes )
 
 ecbuild_add_option( FEATURE BUILD_TOOLS
                     DEFAULT ON
@@ -48,28 +47,35 @@ ecbuild_info("FCKIT_FOUND ${fckit_FOUND}")
 ecbuild_info("FCKIT_LIBRARIES ${FCKIT_LIBRARIES}")
 ecbuild_info("FCKIT_INCLUDE_DIRS ${FCKIT_INCLUDE_DIRS}")
 
-############## NWP EMULATOR PRECISION
-ecbuild_add_option( FEATURE NWP_EMULATOR_SINGLE_PRECISION
-                    DESCRIPTION
-                    "Compile nwp emulator for single precision fields"
-                    DEFAULT OFF)
+############## NWP EMULATOR PRECISION & ENABLING
+ecbuild_add_option( FEATURE NWP_EMULATOR
+                    DEFAULT ON
+                    DESCRIPTION "Compile the NWP emulator"
+                    REQUIRED_PACKAGES eccodes )
 
-ecbuild_add_option( FEATURE NWP_EMULATOR_DOUBLE_PRECISION
-                    DESCRIPTION
-                    "Compile nwp emulator for double precision fields"
-                    DEFAULT ON)
+if (HAVE_NWP_EMULATOR)
+  ecbuild_add_option( FEATURE NWP_EMULATOR_SINGLE_PRECISION
+                      DESCRIPTION
+                      "Compile nwp emulator for single precision fields"
+                      DEFAULT OFF)
 
-set( HAVE_NWP_EMULATOR_sp 0)
-set( HAVE_NWP_EMULATOR_dp 0)
+  ecbuild_add_option( FEATURE NWP_EMULATOR_DOUBLE_PRECISION
+                      DESCRIPTION
+                      "Compile nwp emulator for double precision fields"
+                      DEFAULT ON)
 
-if (HAVE_SINGLE_PRECISION OR HAVE_NWP_EMULATOR_SINGLE_PRECISION)
-  set( NWP_EMULATOR_DEFINITIONS_sp WITH_NWP_EMULATOR_SINGLE_PRECISION )
-  set( HAVE_NWP_EMULATOR_sp 1)
-endif()
+  set( HAVE_NWP_EMULATOR_sp 0)
+  set( HAVE_NWP_EMULATOR_dp 0)
 
-if (HAVE_NWP_EMULATOR_DOUBLE_PRECISION)
-  set( NWP_EMULATOR_DEFINITIONS_dp WITH_NWP_EMULATOR_DOUBLE_PRECISION )
-  set( HAVE_NWP_EMULATOR_dp 1)
+  if (HAVE_SINGLE_PRECISION OR HAVE_NWP_EMULATOR_SINGLE_PRECISION)
+    set( NWP_EMULATOR_DEFINITIONS_sp WITH_NWP_EMULATOR_SINGLE_PRECISION )
+    set( HAVE_NWP_EMULATOR_sp 1)
+  endif()
+
+  if (HAVE_NWP_EMULATOR_DOUBLE_PRECISION)
+    set( NWP_EMULATOR_DEFINITIONS_dp WITH_NWP_EMULATOR_DOUBLE_PRECISION )
+    set( HAVE_NWP_EMULATOR_dp 1)
+  endif()
 endif()
 ############################################################################################
 
