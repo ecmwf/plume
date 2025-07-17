@@ -512,6 +512,14 @@ int plume_data_print(plume_data_handle_t* h) {
     return wrapApiFunction([h] { h->impl_->print(); });
 }
 
+int plume_data_set_updated(plume_data_handle_t* h, const int count, const char** names) {
+    std::vector<std::string> params;
+    for (int i = 0; i < count; ++i) {
+        params.push_back(names[i]);
+    }
+    return wrapApiFunction([h, params] {h->impl_->setUpdated(params); });
+}
+
 // --------------------------------------------------------------------------------------
 
 

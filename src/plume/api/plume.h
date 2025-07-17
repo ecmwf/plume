@@ -447,6 +447,16 @@ int plume_data_get_double(plume_data_handle_t* h, const char* name, double* val)
  */
 int plume_data_print(plume_data_handle_t* h);
 
+/**
+ * @brief Set params updated flag
+ *
+ * @param h Handle
+ * @param count Number of parameters updated
+ * @param names The names of the updated parameters
+ * @return Error code
+ */
+int plume_data_set_updated(plume_data_handle_t* h, const int count, const char** names);
+
 
 #if defined(__cplusplus)
 }  // extern "C"

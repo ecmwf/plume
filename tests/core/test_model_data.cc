@@ -80,6 +80,38 @@ CASE("test model data - type checks 2") {
     EXPECT_THROWS(data.getAtlasFieldShared("not-existant-field"));
 }
 
+CASE("test model data - update status") {
+
+    plume::data::ModelData data;
+
+    int paramA = 1;
+    int paramB = 2;
+    data.provideInt("paramA", &paramA);
+    data.provideInt("paramB", &paramB);
+
+    EXPECT_NOT(data.isUpdated("paramA")); // Params are initialised *not* updated
+
+    data.setUpdated({"paramA"});
+
+    EXPECT(data.isUpdated("paramA")); // Only request param is set as updated
+    EXPECT_NOT(data.isUpdated("paramB"));
+
+    data.setUpdated({"paramB"});
+
+    EXPECT_NOT(data.isUpdated("paramA")); // setting another param as updated resets other params status to not updated
+    EXPECT(data.isUpdated("paramB"));
+
+    data.clearUpdated();
+
+    EXPECT_NOT(data.isUpdated("paramA")); // clearing resets all params updated status
+    EXPECT_NOT(data.isUpdated("paramB"));
+
+    data.setUpdated({"paramA", "paramB"});
+
+    EXPECT(data.isUpdated("paramA")); // all requested params are set as updated
+    EXPECT(data.isUpdated("paramB"));
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 
 }  // namespace plume::test

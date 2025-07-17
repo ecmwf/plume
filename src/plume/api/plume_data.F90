@@ -44,6 +44,8 @@ contains
     procedure :: get_double                 => plume_data_get_double
     procedure :: get_shared_atlas_field     => plume_data_get_shared_atlas_field
 
+    procedure :: set_updated                => plume_data_set_updated
+
     procedure :: print => plume_data_print
     procedure :: finalise => plume_data_delete_handle
 
@@ -76,6 +78,15 @@ function plume_data_print_interf( handle_impl ) result(err) &
     integer(c_int) :: err
 end function
 
+
+function plume_data_set_updated_interf( handle_impl, count, names ) result(err) &
+  & bind(C,name="plume_data_set_updated")
+  use iso_c_binding, only: c_int, c_ptr
+  type(c_ptr), intent(in), value :: handle_impl
+  integer(c_int), intent(in), value :: count
+  type(c_ptr), dimension(*), intent(in) :: names
+  integer(c_int) :: err
+end function
 
 
 ! ------------- Data "creators"
@@ -494,6 +505,21 @@ function plume_data_print( handle ) result(err)
   class(plume_data), intent(inout) :: handle
   integer :: err
   err = plume_data_print_interf(handle%impl)
+end function
+
+function plume_data_set_updated( handle, names ) result(err)
+  use iso_c_binding, only: c_char, c_int, c_loc
+  class(plume_data), intent(inout) :: handle
+  character(kind=c_char,len=:), allocatable, target, intent(in) :: names(:)
+  type(c_ptr), allocatable :: c_param_names(:)
+  integer :: err, i, count
+
+  count = size(names)
+  allocate(c_param_names(count))
+  do i = 1, count
+    c_param_names(i) = c_loc(names(i))
+  end do
+  err = plume_data_set_updated_interf(handle%impl, count, c_param_names)
 end function
 
 

@@ -82,6 +82,11 @@ public:
     bool hasParameter(const std::string& name) const ;
     bool hasParameter(const std::string& name, const ParameterType& type) const ;
 
+    // Manage parameters updated state
+    bool isUpdated(const std::string& name) const; // for plugins to query
+    void setUpdated(const std::vector<std::string>& params); // for data providers
+    void clearUpdated(); // for data providers or Plume manager to clear after run
+
     // list available parameters of a certain type
     std::vector<std::string> listAvailableParameters(std::string type_string) const ;
 
