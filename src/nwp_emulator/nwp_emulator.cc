@@ -136,11 +136,16 @@ int NWPEmulator::execute(const Args& args) {
 bool NWPEmulator::setupPlume(NWPDataProvider& dataProvider) {
     plume::Manager::configure(eckit::YAMLConfiguration(eckit::PathName(plumeConfigPath_)));
 
+    // Set all the non-const params updated flags to true so it doesn't have to be done at run step
+    std::vector<std::string> updatingParams;
+
     plume::Protocol offers;  /// Define data offered by Plume
     offers.offerInt("NSTEP", "always", "Simulation Step");
+    updatingParams.push_back("NSTEP");
     offers.offerDouble("TSTEP", "always", "Simulation Time Step");
     offers.offerInt("NFLEVG", "always", "Number of vertical levels");
     offers.offerInt("WSTEP", "always", "Wave simulation time");
+    updatingParams.push_back("WSTEP");
     auto fields = dataProvider.getModelFieldSet();
     for (const auto& field: fields) {
         offers.offerAtlasField(field.name(), "on-request", field.name());
@@ -153,10 +158,13 @@ bool NWPEmulator::setupPlume(NWPDataProvider& dataProvider) {
     for (auto& field: fields) {
         if (plume::Manager::isParamRequested(field.name())) {
             plumeData_.provideAtlasFieldShared(field.name(), field.get());
+            updatingParams.push_back(field.name());
         }
     }
 
     plume::Manager::feedPlugins(plumeData_);
+
+    plumeData_.setUpdated(updatingParams);
     return true;
 }
 

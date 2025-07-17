@@ -91,6 +91,9 @@ CASE("test_data_api") {
     EXPECT_PLUME_CODE_SUCCESS( plume_data_update_float(data_handle, "CC_F", 888.8f) );
     EXPECT_PLUME_CODE_SUCCESS( plume_data_update_double(data_handle, "CC_D", 999.9) );
 
+    const char* updated_params[] = { "CC_I", "CC_F", "CC_D" };
+    EXPECT_PLUME_CODE_SUCCESS( plume_data_set_updated(data_handle, 3, updated_params));
+
     // check updated parameters
     EXPECT_PLUME_CODE_SUCCESS( plume_data_get_int(data_handle, "CC_I", &param_cc_i_check) );
     EXPECT_EQUAL(param_cc_i_check, 777);

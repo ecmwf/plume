@@ -208,6 +208,29 @@ bool ModelData::hasParameter(const std::string& name, const ParameterType& type)
 }
 
 
+bool ModelData::isUpdated(const std::string& name) const {
+    ASSERT_MSG(valueMap_.find(name) != valueMap_.end(), "Element not found in model data: " + name );
+    return valueMap_.at(name)->isUpdated();
+}
+
+
+void ModelData::setUpdated(const std::vector<std::string>& params) {
+    clearUpdated();
+    for (const auto& name : params) {
+        ASSERT_MSG( valueMap_.find(name) != valueMap_.end(),
+                    "Element not found in model data: " + name );
+        valueMap_.at(name)->setUpdated(true);
+    }    
+}
+
+
+void ModelData::clearUpdated() {
+    for (const auto& [param, value] : valueMap_) {
+        value->setUpdated(false);
+    }
+}
+
+
 void ModelData::print() const {
     eckit::Log::info() << "*** Parameters: " << std::endl;
     for (auto k : valueMap_) {

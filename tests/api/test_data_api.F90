@@ -41,6 +41,8 @@ integer :: param_cc_i_check = -999
 real(c_float) :: param_cc_f_check = -999.0
 real(c_double) :: param_cc_d_check = -999.0
 
+! check updated parameter array
+character(len=:,kind=c_char), allocatable, target :: names(:)
 
 call atlas_library%initialise()
 call plume_check(plume_initialise())
@@ -93,6 +95,15 @@ FCTEST_CHECK(param_cc_d_check == -2.2)
 call plume_check(data%update_int("CC_I", 777) )
 call plume_check(data%update_float("CC_F", real(888.8,kind=c_float)) )
 call plume_check(data%update_double("CC_D", real(999.9,kind=c_double)) )
+
+! set the updated params flag to true
+! len is 5 because it needs room for the 4 chars and the null terminator
+allocate(character(len=5) :: names(3))
+names(1) = "CC_I"//C_NULL_CHAR
+names(2) = "CC_F"//C_NULL_CHAR
+names(3) = "CC_D"//C_NULL_CHAR
+call plume_check(data%set_updated(names))
+deallocate(names)
 
 ! check updated parameters
 call plume_check(data%get_int("CC_I", param_cc_i_check))

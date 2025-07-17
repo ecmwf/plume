@@ -138,14 +138,17 @@ public:
 
     ParameterValue(void* valuePtr, ParameterType type) : 
         contentPtr_{valuePtr},
-        type_{type} {}
+        type_{type},
+        isUpdated_{false} {}
         
-    virtual ~ParameterValue(){};
+    virtual ~ParameterValue() = default;
     ParameterValue(const ParameterValue& other)  = delete;
     ParameterValue& operator=(const ParameterValue& other) = delete;
 
     virtual std::string toString() const {return ParameterTypeConverter::toString(type_);}
     virtual ParameterType type() const {return type_;}
+    virtual bool isUpdated() const {return isUpdated_;}
+    virtual void setUpdated(bool updated) {isUpdated_ = updated;}
 
     // owns the underlying data?
     virtual bool owns() const = 0;
@@ -165,6 +168,7 @@ public:
 protected:
     ParameterType type_;
     void* contentPtr_;
+    bool isUpdated_;
 
 };
 
