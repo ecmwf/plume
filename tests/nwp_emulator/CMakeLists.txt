@@ -7,7 +7,6 @@
 # granted to it by virtue of its status as an intergovernmental organisation nor
 # does it submit to any jurisdiction.
 # Test files repository on Nexus
-set(ECBUILD_DOWNLOAD_BASE_URL https://get.ecmwf.int/repository/plume-test-data)
 
 set(test_nwp_emulator_files_dir ${CMAKE_BINARY_DIR}/tests/nwp_emulator/data)
 add_custom_target(
@@ -20,7 +19,7 @@ ecbuild_get_test_multidata(
         model_data_1.grib
         model_data_2.grib
     DIRNAME
-        nwp_emulator
+        plume/test-data/nwp_emulator
     DIRLOCAL
         ${test_nwp_emulator_files_dir}
     NOCHECK
