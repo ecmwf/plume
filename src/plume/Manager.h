@@ -100,7 +100,21 @@ public:
      */
     static bool isParamRequested(const std::string& name);
 
+    /**
+     * @brief is the manager configured?
+     * 
+     * @return true 
+     * @return false 
+     */
     static bool isConfigured();
+
+    /**
+     * @brief is the manager going to run plugins at this step?
+     * @return true 
+     * @return false
+     */
+    static bool isRunningThisStep() { return !(plumeStep_%plumeRunEvery_); }
+
 private:
 
     /**
@@ -122,6 +136,12 @@ private:
 
     static eckit::LocalConfiguration config_;
     static bool isConfigured_;
+
+    // Plume time step counter
+    static size_t plumeStep_;
+
+    // Run every N steps
+    static size_t plumeRunEvery_;
 
 };
 

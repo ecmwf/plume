@@ -176,6 +176,12 @@ int plume_manager_active_data_catalogue(plume_manager_handle_t* h, void** active
 int plume_manager_is_param_requested(plume_manager_handle_t* h, const char* name, bool* requested);
 
 /**
+ * @brief is plume running this step?
+ * 
+ */
+int plume_manager_is_running_this_step(plume_manager_handle_t* h, bool* running);
+
+/**
  * @brief Run all plugins
  *
  * @param h Handle

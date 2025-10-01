@@ -33,6 +33,7 @@ contains
     procedure :: active_fields => plume_manager_active_fields
     procedure :: active_fields_catalogue => plume_manager_active_fields_catalogue
     procedure :: is_param_requested => plume_manager_is_param_requested
+    procedure :: is_running_this_step => plume_manager_is_running_this_step
 
     procedure :: feed_plugins => plume_manager_feed_plugins
     procedure :: run => plume_manager_run
@@ -88,6 +89,14 @@ function plume_manager_is_param_requested_interf(handle_impl, name, is_param) re
     type(c_ptr), intent(in), value :: handle_impl
     character(c_char), dimension(*) :: name
     logical(c_bool), intent(inout) :: is_param
+    integer :: err
+end function
+
+function plume_manager_is_running_this_step_interf(handle_impl, running) result(err) &
+    & bind(C, name="plume_manager_is_running_this_step")
+    use iso_c_binding, only: c_ptr, c_bool
+    type(c_ptr), intent(in), value :: handle_impl
+    logical(c_bool), intent(inout) :: running
     integer :: err
 end function
 
@@ -194,6 +203,14 @@ function plume_manager_is_param_requested(handle, name, is_param) result(err)
     logical(c_bool) :: is_param
     integer :: err
     err = plume_manager_is_param_requested_interf(handle%impl, c_str(name), is_param)
+end function
+
+function plume_manager_is_running_this_step(handle, running) result(err)
+    use iso_c_binding, only: c_ptr, c_bool
+    class(plume_manager), intent(inout) :: handle
+    logical(c_bool) :: running
+    integer :: err
+    err = plume_manager_is_running_this_step_interf(handle%impl, running)
 end function
 
 function plume_manager_finalise(handle) result(err)

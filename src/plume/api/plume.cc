@@ -307,6 +307,15 @@ int plume_manager_is_param_requested(plume_manager_handle_t* h, const char* name
     });
 }
 
+int plume_manager_is_running_this_step(plume_manager_handle_t* h, bool* running) {
+    return wrapApiFunction([h, &running] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+ 
+        *running = h->impl_->isRunningThisStep();
+    });
+}
+
 int plume_manager_run(plume_manager_handle_t* h) {
     return wrapApiFunction([h] {
         ASSERT(h);

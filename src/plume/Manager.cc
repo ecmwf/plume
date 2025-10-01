@@ -115,6 +115,8 @@ private:
 
 eckit::LocalConfiguration Manager::config_{};
 bool Manager::isConfigured_{false};
+size_t Manager::plumeStep_{0};
+size_t Manager::plumeRunEvery_{1};
 
 
 
@@ -123,6 +125,13 @@ void Manager::configure(const eckit::Configuration& config) {
         eckit::LocalConfiguration tmp{config};
         config_ = tmp;
         Manager::isConfigured_ = true;
+        plumeRunEvery_ = config_.getUnsigned("run_every", 1);
+
+        // check that run_every is sensible
+        if (plumeRunEvery_ < 1) {
+            throw eckit::BadValue("Plume Manager: 'run_every' must be >= 1", Here());
+        }
+
     }
 }
 
@@ -199,9 +208,16 @@ void Manager::feedPlugins(const data::ModelData& data) {
 
 // Run all active plugincores
 void Manager::run() {
-    for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
-        pluginHandler.plugincore()->run();
+
+    // check if we need to run at this step
+    if ( isRunningThisStep() ) {
+        for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
+            pluginHandler.plugincore()->run();
+        }
     }
+
+    // increment plume internal step
+    plumeStep_++;
 };
 
 
