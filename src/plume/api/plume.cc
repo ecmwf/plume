@@ -398,28 +398,28 @@ int plume_data_delete_handle(plume_data_handle_t* h) {
 // insert int param into the data structure
 int plume_data_create_int(plume_data_handle_t* h, const char* name, int param) {
     return wrapApiFunction([h, name, param] {
-        h->impl_->createInt(name, param);
+        h->impl_->createParam(name, param);
     });
 }
 
 // insert int param into the data structure
 int plume_data_create_bool(plume_data_handle_t* h, const char* name, bool param) {
     return wrapApiFunction([h, name, param] { 
-        h->impl_->createBool(name, param); 
+        h->impl_->createParam(name, param); 
     });
 }
 
 // insert double param into the data structure
 int plume_data_create_float(plume_data_handle_t* h, const char* name, float param) {
     return wrapApiFunction([h, name, param] { 
-        h->impl_->createFloat(name, param); 
+        h->impl_->createParam(name, param); 
     });
 }
 
 // insert double param into the data structure
 int plume_data_create_double(plume_data_handle_t* h, const char* name, double param) {
     return wrapApiFunction([h, name, param] { 
-        h->impl_->createDouble(name, param); 
+        h->impl_->createParam(name, param); 
     });
 }
 
@@ -428,28 +428,28 @@ int plume_data_create_double(plume_data_handle_t* h, const char* name, double pa
 // insert int param into the data structure
 int plume_data_update_int(plume_data_handle_t* h, const char* name, int param) {
     return wrapApiFunction([h, name, param] {
-        h->impl_->updateInt(name, param);
+        h->impl_->updateParam(name, param);
     });
 }
 
 // insert int param into the data structure
 int plume_data_update_bool(plume_data_handle_t* h, const char* name, bool param) {
     return wrapApiFunction([h, name, param] { 
-        h->impl_->updateBool(name, param); 
+        h->impl_->updateParam(name, param); 
     });
 }
 
 // insert double param into the data structure
 int plume_data_update_float(plume_data_handle_t* h, const char* name, float param) {
     return wrapApiFunction([h, name, param] { 
-        h->impl_->updateFloat(name, param); 
+        h->impl_->updateParam(name, param); 
     });
 }
 
 // insert double param into the data structure
 int plume_data_update_double(plume_data_handle_t* h, const char* name, double param) {
     return wrapApiFunction([h, name, param] { 
-        h->impl_->updateDouble(name, param); 
+        h->impl_->updateParam(name, param); 
     });
 }
 
@@ -459,53 +459,53 @@ int plume_data_update_double(plume_data_handle_t* h, const char* name, double pa
 // insert int param into the data structure
 int plume_data_provide_int(plume_data_handle_t* h, const char* name, int* param) {
     return wrapApiFunction([h, name, param] {
-        h->impl_->provideInt(name, param);
+        h->impl_->provideParam(name, param);
     });
 }
 
 // insert int param into the data structure
 int plume_data_provide_bool(plume_data_handle_t* h, const char* name, bool* param) {
-    return wrapApiFunction([h, name, param] { h->impl_->provideBool(name, param); });
+    return wrapApiFunction([h, name, param] { h->impl_->provideParam(name, param); });
 }
 
 // insert double param into the data structure
 int plume_data_provide_float(plume_data_handle_t* h, const char* name, float* param) {
-    return wrapApiFunction([h, name, param] { h->impl_->provideFloat(name, param); });
+    return wrapApiFunction([h, name, param] { h->impl_->provideParam(name, param); });
 }
 
 // insert double param into the data structure
 int plume_data_provide_double(plume_data_handle_t* h, const char* name, double* param) {
-    return wrapApiFunction([h, name, param] { h->impl_->provideDouble(name, param); });
+    return wrapApiFunction([h, name, param] { h->impl_->provideParam(name, param); });
 }
 
 // -------- Atlas objects
 int plume_data_provide_atlas_field_shared(plume_data_handle_t* h, const char* name, void* ptr) {
     return wrapApiFunction([h, name, ptr] {
         auto field_ptr = static_cast<atlas::Field::Implementation*>(ptr);
-        h->impl_->provideAtlasFieldShared(name, field_ptr);
+        h->impl_->provideParam(name, field_ptr);
     });
 }
 
 
 // ----------------- Data view "updaters" (Plugin API) -----------------
 int plume_data_get_shared_atlas_field(plume_data_handle_t* h, const char* name, void** ptr) {
-    return wrapApiFunction([h, name, ptr] { *ptr = h->impl_->getAtlasFieldShared(name).get(); });
+    return wrapApiFunction([h, name, ptr] { *ptr = h->impl_->getParam<atlas::Field>(name).get(); });
 }
 
 int plume_data_get_int(plume_data_handle_t* h, const char* name, int* val) {
-    return wrapApiFunction([h, name, val] { *val = h->impl_->getInt(name); });
+    return wrapApiFunction([h, name, val] { *val = h->impl_->getParam<int>(name); });
 }
 
 int plume_data_get_bool(plume_data_handle_t* h, const char* name, bool* val) {
-    return wrapApiFunction([h, name, val] { *val = h->impl_->getBool(name); });
+    return wrapApiFunction([h, name, val] { *val = h->impl_->getParam<bool>(name); });
 }
 
 int plume_data_get_float(plume_data_handle_t* h, const char* name, float* val) {
-    return wrapApiFunction([h, name, val] { *val = h->impl_->getFloat(name); });
+    return wrapApiFunction([h, name, val] { *val = h->impl_->getParam<float>(name); });
 }
 
 int plume_data_get_double(plume_data_handle_t* h, const char* name, double* val) {
-    return wrapApiFunction([h, name, val] { *val = h->impl_->getDouble(name); });
+    return wrapApiFunction([h, name, val] { *val = h->impl_->getParam<double>(name); });
 }
 
 int plume_data_print(plume_data_handle_t* h) {

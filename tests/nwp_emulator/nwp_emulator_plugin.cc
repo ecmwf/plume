@@ -35,9 +35,9 @@ NWPEmulatorPluginCore::NWPEmulatorPluginCore(const eckit::Configuration& conf) :
 NWPEmulatorPluginCore::~NWPEmulatorPluginCore() {}
 
 void NWPEmulatorPluginCore::run() {
-    eckit::Log::info() << "Consuming parameters " << modelData().getAtlasFieldShared("100u").name() << ", "
-                       << modelData().getAtlasFieldShared("u").name() << ", "
-                       << modelData().getAtlasFieldShared("v").name() << std::endl;
+    eckit::Log::info() << "Consuming parameters " << modelData().getParam<atlas::Field>("100u").name() << ", "
+                       << modelData().getParam<atlas::Field>("u").name() << ", "
+                       << modelData().getParam<atlas::Field>("v").name() << std::endl;
 }
 
 //--------------------------------------------------------------

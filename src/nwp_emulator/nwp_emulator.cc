@@ -151,13 +151,13 @@ bool NWPEmulator::setupPlume(NWPDataProvider& dataProvider) {
         offers.offerAtlasField(field.name(), "on-request", field.name());
     }
     plume::Manager::negotiate(offers);
-    plumeData_.createInt("NSTEP", 0);  /// Initialise parameters
-    plumeData_.createDouble("TSTEP", 900.0);
-    plumeData_.createInt("NFLEVG", dataProvider.getLevels());
-    plumeData_.createInt("WSTEP", 0);
+    plumeData_.createParam("NSTEP", 0);  /// Initialise parameters
+    plumeData_.createParam("TSTEP", 900.0);
+    plumeData_.createParam("NFLEVG", dataProvider.getLevels());
+    plumeData_.createParam("WSTEP", 0);
     for (auto& field: fields) {
         if (plume::Manager::isParamRequested(field.name())) {
-            plumeData_.provideAtlasFieldShared(field.name(), field.get());
+            plumeData_.provideParam(field.name(), &field);
             updatingParams.push_back(field.name());
         }
     }
@@ -170,8 +170,8 @@ bool NWPEmulator::setupPlume(NWPDataProvider& dataProvider) {
 
 void NWPEmulator::runPlume(int step) {
     plume::Manager::run();
-    plumeData_.updateInt("NSTEP", step);
-    plumeData_.updateInt("WSTEP", std::ceil(step * plumeData_.getDouble("TSTEP")));
+    plumeData_.updateParam("NSTEP", step);
+    plumeData_.updateParam("WSTEP", std::ceil(step * plumeData_.getParam<double>("TSTEP")));
 }
 
 int main(int argc, char** argv) {

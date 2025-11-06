@@ -10,8 +10,12 @@
  */
 #pragma once
 
+#include <functional>
 #include <map>
+#include <optional>
 #include <string>
+#include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 #include "eckit/config/LocalConfiguration.h"
@@ -21,6 +25,7 @@
 #include "atlas/field/detail/FieldImpl.h"
 
 #include "plume/Configurable.h"
+#include "plume/data/FieldProvider.h"
 
 namespace plume {
 namespace data {
@@ -28,62 +33,75 @@ namespace data {
 
 /**
  * @brief Used for strong typing
- * 
+ *
  */
-enum class ParameterType {
+enum class ParameterType
+{
     INT,
     BOOL,
     FLOAT,
     DOUBLE,
     STRING,
-    ATLAS_FIELD
+    ATLAS_FIELD,
+    INVALID
 };
 
 
 /**
  * @brief Convert data types to/from string
- * 
+ *
  */
 class ParameterTypeConverter {
 public:
     static std::string toString(ParameterType type) {
         switch (type) {
-          case (ParameterType::INT):
-            return "INT";
-            break;
-          case (ParameterType::BOOL):
-            return "BOOL";
-            break;
-          case (ParameterType::FLOAT):
-            return "FLOAT";
-            break;
-          case (ParameterType::DOUBLE):
-            return "DOUBLE";
-            break;
-          case (ParameterType::STRING):
-            return "STRING";
-            break;            
-          case (ParameterType::ATLAS_FIELD):
-            return "ATLAS_FIELD";
-            break;
-          default:
-            throw(eckit::BadValue("Parameter Type not recognised!"));
+            case (ParameterType::INT):
+                return "INT";
+                break;
+            case (ParameterType::BOOL):
+                return "BOOL";
+                break;
+            case (ParameterType::FLOAT):
+                return "FLOAT";
+                break;
+            case (ParameterType::DOUBLE):
+                return "DOUBLE";
+                break;
+            case (ParameterType::STRING):
+                return "STRING";
+                break;
+            case (ParameterType::ATLAS_FIELD):
+                return "ATLAS_FIELD";
+                break;
+            case (ParameterType::INVALID):
+                return "INVALID";
+            default:
+                throw(eckit::BadValue("Parameter Type not recognised!"));
         }
     }
     static ParameterType fromString(std::string typeStr) {
         if (typeStr == "INT") {
             return ParameterType::INT;
-        } else if (typeStr == "BOOL") {
-            return ParameterType::BOOL; 
-        } else if (typeStr == "FLOAT") {
-            return ParameterType::FLOAT; 
-        } else if (typeStr == "DOUBLE") {
+        }
+        else if (typeStr == "BOOL") {
+            return ParameterType::BOOL;
+        }
+        else if (typeStr == "FLOAT") {
+            return ParameterType::FLOAT;
+        }
+        else if (typeStr == "DOUBLE") {
             return ParameterType::DOUBLE;
-        } else if (typeStr == "STRING") {
-            return ParameterType::STRING;             
-        } else if (typeStr == "ATLAS_FIELD") {
+        }
+        else if (typeStr == "STRING") {
+            return ParameterType::STRING;
+        }
+        else if (typeStr == "ATLAS_FIELD") {
             return ParameterType::ATLAS_FIELD;
-        } else {
+        }
+        else if (typeStr == "INVALID") {
+            return ParameterType::INVALID;
+        }
+        else {
             throw(eckit::BadValue("Parameter Type not recognised!"));
         }
     }
@@ -96,21 +114,20 @@ public:
 
 /**
  * @brief A parameter of the data
- * 
+ *
  */
 class Parameter : public CheckedConfigurable {
 
 public:
-
     Parameter(const eckit::Configuration& config);
-    Parameter(const std::string& name, const std::string& type, const std::string& available="", const std::string& comment = "");
-    Parameter(const std::string& name, const ParameterType& type, const std::string& available="", const std::string& comment = "");
+    Parameter(const std::string& name, const std::string& type, const std::string& available = "",
+              const std::string& comment = "");
+    Parameter(const std::string& name, const ParameterType& type, const std::string& available = "",
+              const std::string& comment = "");
 
     ~Parameter();
 
-    bool operator==(const Parameter& other) {
-        return (name()==other.name() && type()==other.type());
-    }
+    bool operator==(const Parameter& other) { return (name() == other.name() && type() == other.type()); }
 
     const std::string& name() const;
     const plume::data::ParameterType& type() const;
@@ -118,153 +135,264 @@ public:
     const std::string& comment() const;
 
 private:
-
-    eckit::LocalConfiguration params2config(const std::string& name,  const std::string& type, const std::string& available, const std::string& comment);
+    eckit::LocalConfiguration params2config(const std::string& name, const std::string& type,
+                                            const std::string& available, const std::string& comment);
 
 private:
-
-    std::string name_; // parameter name
-    plume::data::ParameterType dataType_; // parameter type
-    std::string available_; // parameter availability ["always", "on-request"]
-    std::string comment_; // optional comment
-
+    std::string name_;                     // parameter name
+    plume::data::ParameterType dataType_;  // parameter type
+    std::string available_;                // parameter availability ["always", "on-request"]
+    std::string comment_;                  // optional comment
 };
 
-
-// Generic interface for a parameter value
-class ParameterValue {
+// =================================================================================================
+// Parameter values
+// =================================================================================================
+/**
+ * @class IParameterValue
+ * @brief Interface for parameter values. Non-typed base class managing value update status.
+ */
+class IParameterValue {
+private:
+    bool isUpdated_ = false;
 
 public:
+    virtual ~IParameterValue() = default;
 
-    ParameterValue(void* valuePtr, ParameterType type) : 
-        contentPtr_{valuePtr},
-        type_{type},
-        isUpdated_{false} {}
-        
-    virtual ~ParameterValue() = default;
-    ParameterValue(const ParameterValue& other)  = delete;
-    ParameterValue& operator=(const ParameterValue& other) = delete;
+    virtual ParameterType type() const { return ParameterType::INVALID; }
 
-    virtual std::string toString() const {return ParameterTypeConverter::toString(type_);}
-    virtual ParameterType type() const {return type_;}
-    virtual bool isUpdated() const {return isUpdated_;}
-    virtual void setUpdated(bool updated) {isUpdated_ = updated;}
+    bool isUpdated() const { return isUpdated_; }
+    virtual void setUpdated(bool updated) { isUpdated_ = updated; }
+};
 
-    // owns the underlying data?
-    virtual bool owns() const = 0;
+/**
+ * @class ParameterValueTyped
+ * @brief Template parameter value with optional ownership.
+ *
+ * Represents a parameter of type `T` that may either own its value or observe an externally owned value.
+ * The parameter exposes its runtime type via `ParameterType` and provides read-only or controlled mutable access
+ * depending on ownership, with a special case for Atlas fields.
+ *
+ * If constructed in non-owning mode, the referenced value must outlive this object. If constructed in owning mode,
+ * the value is stored internally and may be modified through the provided setters.
+ *
+ * @tparam T Underlying parameter value type. Must be supported by `deduceType()`.
+ */
+template <typename T>
+class ParameterValueTyped {
+private:
+    bool ownsValue_;
+    ParameterType type_;
 
-    /// TODO: this is unsafe, temporary solution only!
-    /// use std::variant or std::any instead?
-    template <typename T>
-    T as() const {
-        return reinterpret_cast<T>(contentPtr_);
+    std::optional<T> ownedValue_;  ///< Only used when the object owns its value.
+    T* valuePtr_;                  ///< Non-owning pointer; the pointee must outlive this object if it is not owned.
+
+    static constexpr ParameterType deduceType() {
+        if constexpr (std::is_same_v<T, int>)
+            return ParameterType::INT;
+        else if constexpr (std::is_same_v<T, bool>)
+            return ParameterType::BOOL;
+        else if constexpr (std::is_same_v<T, float>)
+            return ParameterType::FLOAT;
+        else if constexpr (std::is_same_v<T, double>)
+            return ParameterType::DOUBLE;
+        else if constexpr (std::is_same_v<T, char> || std::is_same_v<T, std::string>)
+            return ParameterType::STRING;
+        else if constexpr (std::is_same_v<T, atlas::Field> || std::is_same_v<T, atlas::Field::Implementation>)
+            return ParameterType::ATLAS_FIELD;
+        else
+            static_assert(sizeof(T) == 0, "Parameter Type not supported!");
     }
 
-    template <typename T>
-    void set(T value) {
-        *(reinterpret_cast<T*>(contentPtr_)) = value;
+public:
+    ~ParameterValueTyped() = default;
+
+    /**
+     * @brief Constructs an owning parameter with a copied value.
+     *
+     * Transfers ownership of the passed `value` to the object.
+     *
+     * @warning While Atlas fields can be owned, it is not the case for field implementations which are currently
+     *          used by the C API. Support for field implementations should be removed in the future, in the meantime,
+     *          this constructor is disabled for `T == atlas::Field::Implementation`.
+     */
+    template <typename U = T, typename = std::enable_if_t<!std::is_same<U, atlas::Field::Implementation>::value>>
+    ParameterValueTyped(T value) :
+        ownsValue_(true), ownedValue_(std::move(value)), valuePtr_(&ownedValue_.value()), type_(deduceType()) {}
+
+    /**
+     * @brief Constructs a non-owning parameter from a raw pointer.
+     *
+     * @question: do we need special cases for char, char* ? There is currently no support in the C API.
+     */
+    ParameterValueTyped(T* ptr) : ownsValue_(false), valuePtr_(ptr), type_(deduceType()) {
+        ASSERT_MSG(ptr != nullptr, "Non-owning ParameterValue constructed with null pointer");
     }
+
+    /// Deleted copy constructor & copy assignment operator.
+    ParameterValueTyped(const ParameterValueTyped& other)            = delete;
+    ParameterValueTyped& operator=(const ParameterValueTyped& other) = delete;
+
+    /// Returns the parameter type as a string.
+    std::string toString() const { return ParameterTypeConverter::toString(type_); }
+
+    ParameterType type() const { return type_; }
+    bool owns() const { return ownsValue_; }
+
+    /**
+     * @brief Returns a read-only reference to the parameter value.
+     *
+     * @warning In non-owning mode, the referenced value must still be alive.
+     */
+    const T& get() const { return *valuePtr_; }
+
+    /**
+     * @brief Sets the parameter value.
+     *
+     * @pre This instance must own its value.
+     */
+    void set(const T& value) {
+        ASSERT(ownsValue_);
+        *ownedValue_ = value;
+    }
+
+    /**
+     * @brief Returns a mutable reference to the stored Atlas field.
+     *
+     * @pre This instance must own its value. This method can be used by update strategies to change the values of
+     *      owned Atlas fields, instead of setting the field from a new one entirely.
+     */
+    template <typename U = T, typename = std::enable_if_t<std::is_base_of_v<atlas::Field, U>>>
+    T& getSettableField() {
+        ASSERT(ownsValue_);
+        return *valuePtr_;
+    }
+};
+
+class IParameterObservable;  // forward declaration
+
+/**
+ * @class IParameterObserver
+ * @brief Interface for observing parameters.
+ *
+ * Observers can listen to a single subjet, which should be of the observable type. Observers are not necessarily
+ * actively listening, in which case, they do not need to have a subject or an update strategy. Active observers must
+ * implement a reaction to subject changes, and this reaction can optionally be based on an `UpdateStrategy`.
+ */
+class IParameterObserver : public std::enable_shared_from_this<IParameterObserver> {
+private:
+    std::weak_ptr<IParameterObservable> subject_;  ///< weak reference to observed parameter to avoid cyclic ownership.
+
+    /// Optional, a parameter actively observing should have a strategy for reacting to changes in the subject.
+    std::unique_ptr<field_provider::UpdateStrategy> updateStrategy_;
+
+public:
+    /// The active observer lazily detaches oneself from its subject when it notifies or destroys, nothing to do here.
+    virtual ~IParameterObserver() = default;
+
+    virtual bool observes() { return !subject_.expired(); }
+    virtual void setSubject(std::shared_ptr<IParameterObservable> subject);
+    virtual void setUpdateStrategy(std::unique_ptr<field_provider::UpdateStrategy> strategy) {
+        updateStrategy_ = std::move(strategy);
+    }
+    virtual field_provider::UpdateStrategy* getStrategy() const { return updateStrategy_.get(); }
+
+    /// Each concrete observer that is actively observing must define its own reaction to subject change.
+    virtual void onSubjectChanged() {
+        ASSERT_MSG(!observes(), "A parameter that observes must implement a reaction to subject change.");
+    }
+};
+
+/**
+ * @class IParameterObservable
+ * @brief Interface for observable parameters (also referred to as subjects, or publishers).
+ *
+ * Multiple observers can listen to the same publisher. The client managing an observable is responsible for triggering
+ * a notification to its observers when applicable. It provides an interface for observers to start and stop listening
+ * to it.
+ */
+class IParameterObservable {
+private:
+    /// Vector of weak references to observers to dispatch notifications to to avoid cyclic ownership.
+    std::vector<std::weak_ptr<IParameterObserver>> observers_;
 
 protected:
-    ParameterType type_;
-    void* contentPtr_;
-    bool isUpdated_;
+    /// Calls `onSubjectChanged()` on all non-expired observers.
+    virtual void notifyObservers();
 
-};
-
-
-
-// --------------------- Non-owning param values ---------------------
-class ParameterValueInt : public ParameterValue {
 public:
-    explicit ParameterValueInt(int* ptr) : ParameterValue{ptr, ParameterType::INT} {}
-    virtual bool owns() const { return false; }
-};
+    /**
+     * @brief Destroys the publisher.
+     *
+     * Cleans up already destroyed observers, then resets the subject of active observers, and finally clears its
+     * list of observers.
+     */
+    virtual ~IParameterObservable() {
+        observers_.erase(std::remove_if(observers_.begin(), observers_.end(), [](auto& w) { return w.expired(); }),
+                         observers_.end());
 
-class ParameterValueBool : public ParameterValue {
-public:
-    explicit ParameterValueBool(bool* ptr) : ParameterValue{ptr, ParameterType::BOOL} {}
-    virtual bool owns() const { return false; }
-};
-
-class ParameterValueFloat : public ParameterValue {
-public:
-    explicit ParameterValueFloat(float* ptr) : ParameterValue{ptr, ParameterType::FLOAT} {}
-    virtual bool owns() const { return false; }
-};
-
-class ParameterValueDouble : public ParameterValue {
-public:
-    explicit ParameterValueDouble(double* ptr) : ParameterValue{ptr, ParameterType::DOUBLE} {}
-    virtual bool owns() const { return false; }
-};
-
-class ParameterValueString : public ParameterValue {
-public:
-    explicit ParameterValueString(char* ptr) : ParameterValue{ptr, ParameterType::STRING} {}
-    virtual bool owns() const { return false; }
-};
-
-
-// --------------------- Owning param values ---------------------
-class ParameterValueIntOwning : public ParameterValue {
-public:
-    explicit ParameterValueIntOwning(int* ptr) : ParameterValue{ptr, ParameterType::INT} {}
-    virtual ~ParameterValueIntOwning() {
-        delete static_cast<int*>(contentPtr_);
-        contentPtr_=nullptr;
+        for (auto& wobs : observers_) {
+            if (auto obs = wobs.lock()) {
+                obs->setSubject(nullptr);
+            }
+        }
+        observers_.clear();
     }
-    virtual bool owns() const { return true; }
+
+    /// Adds observer to the list of current observers if it is not already listening.
+    virtual void attach(std::shared_ptr<IParameterObserver> observer);
+
+    /// Removes observer from the list of current observers if it is listening.
+    virtual void detach(std::shared_ptr<IParameterObserver> observer);
 };
 
-class ParameterValueBoolOwning : public ParameterValue {
+/**
+ * @class ParameterValue
+ * @brief A concrete parameter that combines typed storage and observer/publisher behaviour.
+ *
+ * With the current design, parameter values are assigned either the observer or publisher role. Therefore, observers
+ * cannot watch other observers.
+ *
+ * @tparam T Underlying parameter value type.
+ * @tparam Role The role of this template. This header implements observer and publisher roles.
+ */
+template <typename T, typename Role>
+class ParameterValue : public ParameterValueTyped<T>, public Role, public IParameterValue {
 public:
-    explicit ParameterValueBoolOwning(bool* ptr) : ParameterValue{ptr, ParameterType::BOOL} {}
-    virtual ~ParameterValueBoolOwning() {
-        delete static_cast<bool*>(contentPtr_);
-        contentPtr_=nullptr;
+    ~ParameterValue() = default;
+
+    /// Inherit constructors from `ParameterValueTyped<T>` for value ownership.
+    using ParameterValueTyped<T>::ParameterValueTyped;
+
+    ParameterType type() const override { return ParameterValueTyped<T>::type(); }
+
+    /**
+     * @brief Sets the updated flag and triggers notifications if applicable.
+     *
+     * If `Role` is `IParameterObservable`, this notifies observers when the parameter becomes updated.
+     * Otherwise, only sets the updated flag.
+     */
+    void setUpdated(bool updated) override {
+        IParameterValue::setUpdated(updated);
+        if constexpr (std::is_same_v<Role, IParameterObservable>) {
+            if (isUpdated()) {
+                this->Role::notifyObservers();
+            }
+        }
     }
-    virtual bool owns() const { return true; }
-};
 
-class ParameterValueFloatOwning : public ParameterValue {
-public:
-    explicit ParameterValueFloatOwning(float* ptr) : ParameterValue{ptr, ParameterType::FLOAT} {}
-    virtual ~ParameterValueFloatOwning() {
-        delete static_cast<float*>(contentPtr_);
-        contentPtr_=nullptr;
+    /**
+     * @brief Reacts to changes in the observed subject.
+     *
+     * If `Role` is `IParameterObserver`, the strategy is used to update the parameter value.
+     */
+    void onSubjectChanged() {  // reactions are runtime strategy-based
+        if constexpr (std::is_same_v<Role, IParameterObserver>) {
+            ASSERT_MSG(this->Role::getStrategy() != nullptr, "Plume parameter missing update strategy");
+            this->Role::getStrategy()->update();
+        }
     }
-    virtual bool owns() const { return true; }
 };
-
-class ParameterValueDoubleOwning : public ParameterValue {
-public:
-    explicit ParameterValueDoubleOwning(double* ptr) : ParameterValue{ptr, ParameterType::DOUBLE} {}
-    virtual ~ParameterValueDoubleOwning() {
-        delete static_cast<double*>(contentPtr_);
-        contentPtr_=nullptr;
-    }
-    virtual bool owns() const { return true; }
-};
-
-class ParameterValueStringOwning : public ParameterValue {
-public:
-    explicit ParameterValueStringOwning(std::string* ptr) : ParameterValue{ptr, ParameterType::STRING} {}
-    virtual ~ParameterValueStringOwning() {
-        delete static_cast<std::string*>(contentPtr_);
-        contentPtr_=nullptr;
-    }
-    virtual bool owns() const { return true; }
-};
-
-
-// --------------------- Shared param values ---------------------
-class ParameterValueAtlasField : public ParameterValue {
-public:
-    explicit ParameterValueAtlasField(atlas::Field::Implementation* ptr) : ParameterValue{ptr, ParameterType::ATLAS_FIELD} {};
-    virtual bool owns() const { return false; }
-};
-
 
 }  // namespace data
 }  // namespace plume

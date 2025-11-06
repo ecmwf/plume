@@ -150,7 +150,18 @@ CASE("test_valid_plugin_configuration_parameters") {
     
 }
 
-
+CASE ("test derived parameter") {
+    std::string data_conf_str = R"YAML(
+    parameters:
+      - 
+        - name: dummy
+          type: ATLAS_FIELD
+          levtype: hl
+          level: 100
+    )YAML";
+    // @todo: I don't knw if this is the right place but the client part of the height owned field should be tested somewhere
+    ASSERT(false);
+}
 
 //----------------------------------------------------------------------------------------------------------------------
 

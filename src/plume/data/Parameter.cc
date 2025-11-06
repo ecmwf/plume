@@ -19,10 +19,10 @@ namespace {
 
 eckit::LocalConfiguration makeParameterOptions() {
     eckit::LocalConfiguration options;
-    options.set("name", std::vector<std::string>{} ); // empty means all accepted
-    options.set("type", std::vector<std::string>{ ParameterTypeConverter::toStringVector() } );
-    options.set("available", std::vector<std::string>{"", "always", "on-request"} );
-    options.set("comment", std::vector<std::string>{} );
+    options.set("name", std::vector<std::string>{});  // empty means all accepted
+    options.set("type", std::vector<std::string>{ParameterTypeConverter::toStringVector()});
+    options.set("available", std::vector<std::string>{"", "always", "on-request"});
+    options.set("comment", std::vector<std::string>{});
     return options;
 }
 
@@ -31,36 +31,30 @@ eckit::LocalConfiguration parameterOptions() {
     return options;
 }
 
-}
- 
+}  // namespace
 
-Parameter::Parameter(const eckit::Configuration& config) : CheckedConfigurable(config, {"name", "type"}, {"available", "comment"} ) {
+
+Parameter::Parameter(const eckit::Configuration& config) :
+    CheckedConfigurable(config, {"name", "type"}, {"available", "comment"}) {
 
     // setup from config
-    name_ = config.getString("name");
-    dataType_ = ParameterTypeConverter::fromString(config.getString("type"));
+    name_      = config.getString("name");
+    dataType_  = ParameterTypeConverter::fromString(config.getString("type"));
     available_ = config.getString("available", "");
-    comment_ = config.getString("comment", "");
+    comment_   = config.getString("comment", "");
 }
 
 // construct from params
-Parameter::Parameter(
-    const std::string& name,  
-    const std::string& type, 
-    const std::string& available, 
-    const std::string& comment) : Parameter{params2config(name, type, available, comment)}{
-}
+Parameter::Parameter(const std::string& name, const std::string& type, const std::string& available,
+                     const std::string& comment) :
+    Parameter{params2config(name, type, available, comment)} {}
 
-Parameter::Parameter(
-    const std::string& name, 
-    const ParameterType& type, 
-    const std::string& available, 
-    const std::string& comment) : Parameter{params2config(name, ParameterTypeConverter::toString(type), available, comment)} {}
+Parameter::Parameter(const std::string& name, const ParameterType& type, const std::string& available,
+                     const std::string& comment) :
+    Parameter{params2config(name, ParameterTypeConverter::toString(type), available, comment)} {}
 
 
-Parameter::~Parameter() {
-
-}
+Parameter::~Parameter() {}
 
 
 const std::string& Parameter::name() const {
@@ -83,7 +77,8 @@ const std::string& Parameter::comment() const {
 }
 
 // helper constructing function
-eckit::LocalConfiguration Parameter::params2config(const std::string& name,  const std::string& type, const std::string& available, const std::string& comment) {
+eckit::LocalConfiguration Parameter::params2config(const std::string& name, const std::string& type,
+                                                   const std::string& available, const std::string& comment) {
     eckit::LocalConfiguration config;
     config.set("name", name);
     config.set("type", type);
@@ -91,6 +86,56 @@ eckit::LocalConfiguration Parameter::params2config(const std::string& name,  con
     config.set("comment", comment);
     return config;
 }
+
+// =================================================================================================
+// Parameter values
+// =================================================================================================
+void IParameterObserver::setSubject(std::shared_ptr<IParameterObservable> subject) {
+    auto currentSubject = subject_.lock();
+    if (currentSubject == subject) {
+        return;
+    }
+
+    if (currentSubject) {  // Detach from old subject if any
+        currentSubject->detach(shared_from_this());
+    }
+    subject_ = subject;
+    if (subject) {  // Attach to new subject if not null
+        subject->attach(shared_from_this());
+    }
+}
+
+void IParameterObservable::notifyObservers() {
+    // clean up expired observers first & then notify alive observers
+    observers_.erase(std::remove_if(observers_.begin(), observers_.end(),
+                                    [](const std::weak_ptr<IParameterObserver>& w) { return w.expired(); }),
+                     observers_.end());
+
+    for (auto& w : observers_) {
+        if (auto obs = w.lock()) {
+            obs->onSubjectChanged();
+        }
+    }
+}
+
+void IParameterObservable::attach(std::shared_ptr<IParameterObserver> observer) {
+    // avoid duplicates & nullptrs
+    if (!observer)
+        return;
+    auto it = std::find_if(observers_.begin(), observers_.end(),
+                           [&](const std::weak_ptr<IParameterObserver>& w) { return w.lock() == observer; });
+
+    if (it == observers_.end()) {
+        observers_.push_back(observer);
+    }
+}
+
+void IParameterObservable::detach(std::shared_ptr<IParameterObserver> observer) {
+    observers_.erase(std::remove_if(observers_.begin(), observers_.end(),
+                                    [&](const std::weak_ptr<IParameterObserver>& w) { return w.lock() == observer; }),
+                     observers_.end());
+}
+
 
 }  // namespace data
 }  // namespace plume

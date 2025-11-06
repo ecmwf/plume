@@ -10,12 +10,16 @@
  */
 #pragma once
 
-#include <map>
-// #include <any>
-#include <string>
-#include <vector>
 #include <functional>
+#include <map>
+#include <memory>
+#include <string>
+#include <type_traits>
+#include <vector>
 
+#include "eckit/config/LocalConfiguration.h"
+#include "eckit/exception/Exceptions.h"
+#include "eckit/log/Log.h"
 #include "eckit/value/Value.h"
 
 #include "atlas/field/Field.h"
@@ -31,79 +35,206 @@ namespace data {
 
 // Container class for Values and pointers
 class ModelData {
+private:
+    static const std::string SEP_;
+    // Values & Strategies
+    std::map<std::string, std::shared_ptr<IParameterValue>> valueMap_;
+    std::unordered_map<std::string, std::function<std::unique_ptr<field_provider::UpdateStrategy>(
+                                        const field_provider::StrategyArgList&)>>
+        strategyRegistry_;
+    std::unordered_map<std::string,
+                       std::function<field_provider::StrategyArgList(
+                           const eckit::Configuration&, const std::map<std::string, std::shared_ptr<IParameterValue>>&,
+                           const std::string&, const std::string&)>>
+        strategyHelpers_;
 
-    using ValueEntry = std::pair<std::string, std::shared_ptr<ParameterValue>>;
-    using ValueMap   = std::map<std::string, std::shared_ptr<ParameterValue>>;
+    /**
+     * @brief Returns the names of all parameters in the value map.
+     */
+    std::vector<std::string> getAvailableValues() const;
+
+    /**
+     * @brief Constructs a concrete strategy but does not attach it yet to a parameter.
+     *
+     * @param type The identifier of the strategy to create (key in the strategy registry).
+     * @param args The vector of constructor arguments required for this strategy.
+     *
+     * @return A `std::unique_ptr` to the strategy which ownership can then be transferred to an observer parameter.
+     */
+    std::unique_ptr<field_provider::UpdateStrategy> createStrategy(const std::string& type,
+                                                                   const field_provider::StrategyArgList& args);
+    /**
+     * @brief Creates a dependency between an owned and an observed parameter.
+     *
+     * The observer will update its parameter value when the observable notifies a change. The update mechanism
+     * depends on the strategy provided. See implementation for break down of steps.
+     */
+    void addDependency(const std::string& observer, const std::string& observable, const std::string& strategyName,
+                       const eckit::Configuration& config);
+
+    /**
+     * @brief Builds default name for observer parameters.
+     *
+     * @note In case of Atlas field, this name is decorrelated from the field name in its metadata.
+     */
+    std::string deriveParamName(const std::string& source, const std::string& levtype, const std::string& level) const;
 
 public:
     ModelData();
 
     ~ModelData();
 
-    // --- creates (new values)
-    void createInt(std::string name, int valInit);
-    void createBool(std::string name, bool valInit);
-    void createFloat(std::string name, float valInit);
-    void createDouble(std::string name, double valInit);
-    void createString(std::string name, char* valInit);
+    /**
+     * @brief Creates a new value of type T, and transfer its ownership to a parameter wrapper.
+     *
+     * @note Atlas fields can be created using this method from the C++ API, but there is no support for updating them
+     *       directly at the moment. Use the `createParam` method with the subscription pattern instead.
+     * @todo The C API uses an Atlas internal type for field provision and access. Only the `Field` type should be used
+     *       by clients like Plume, so field implementation use should be removed.
+     */
+    template <typename T>
+    void createParam(std::string name, T valInit) {
+        static_assert(!std::is_base_of_v<atlas::Field::Implementation, T>,
+                      "Atlas field implementations are only for observation");
+        auto res = valueMap_.try_emplace(name, std::make_shared<ParameterValue<T, IParameterObserver>>(valInit));
+        if (!res.second) {
+            eckit::Log::warning() << "Parameter '" << name << "' already in Model Data. Not inserted!" << std::endl;
+        }
+    }
 
-    // --- provides (existing values)
-    void provideInt(std::string name, int* val);
-    void provideBool(std::string name, bool* val);
-    void provideFloat(std::string name, float* val);
-    void provideDouble(std::string name, double* val);
-    void provideString(std::string name, char* val);
-    void provideAtlasFieldShared(std::string name, atlas::Field::Implementation* field_ptr);
+    /**
+     * @brief Creates a new value as above, and subscribe it to one of the publisher parameters.
+     *
+     * Publisher parameters are added to the Model Data through `provideParam`.
+     *
+     * @warning The new value can only be successfully created after the publisher and other sources required by the
+     *          update strategy have been provided to the Model Data.
+     */
+    template <typename T>
+    void createParam(const std::string& strategy, const eckit::Configuration& config, std::string name = "") {
+        static_assert(!std::is_base_of_v<atlas::Field::Implementation, T>,
+                      "Atlas field implementations are only for observation");
+        // 1. name the param entry using defaults or user instructions
+        std::string paramName = name;
+        if (paramName.empty()) {
+            paramName =
+                deriveParamName(config.getString("name"), config.getString("levtype", "hl"), config.getString("level"));
+        }
+        if (hasParameter(paramName)) {
+            eckit::Log::warning() << "Parameter '" << paramName << "' already in Model Data. Not inserted!"
+                                  << std::endl;
+            return;
+        }
+        // 2. create the observing value valInit (default constructor or clone source field)
+        // 3. create the param value and insert it in the map
+        if constexpr (std::is_same_v<T, atlas::Field>) {
+            atlas::Field fieldInit = getParam<atlas::Field>(config.getString("name")).clone();
+            fieldInit.rename(paramName);
+            fieldInit.metadata().set("plume-owned", true);
+            valueMap_.try_emplace(paramName,
+                                  std::make_shared<ParameterValue<atlas::Field, IParameterObserver>>(fieldInit));
+        }
+        else {
+            T valInit{};
+            valueMap_.try_emplace(paramName, std::make_shared<ParameterValue<T, IParameterObserver>>(valInit));
+        }
+        // 4. subscribe the newly created param to the source param & compute its initial value
+        addDependency(paramName, config.getString("name"), strategy, config);
+    }
 
-    // --- Data providers can "update" created parameters
-    void updateInt(std::string name, int val);
-    void updateBool(std::string name, bool val);
-    void updateFloat(std::string name, float val);
-    void updateDouble(std::string name, double val);
-    void updateString(std::string name, std::string val);
+    /**
+     * @brief Provides an observation-only pointer to an existing value managed by the model.
+     *
+     * @warning The value should outlive Plume to avoid undefined behaviour.
+     */
+    template <typename T>
+    void provideParam(std::string name, T* ptr) {
+        if constexpr (std::is_same_v<T, atlas::Field> || std::is_same_v<T, atlas::Field::Implementation>) {
+            ASSERT_MSG(ptr->bytes() >= 0, "Provided Atlas field not readable!");
+        }
+        auto res = valueMap_.try_emplace(name, std::make_shared<ParameterValue<T, IParameterObservable>>(ptr));
+        if (!res.second) {
+            eckit::Log::warning() << "Parameter '" << name << "' already in Model Data. Not inserted!" << std::endl;
+        }
+    }
 
-    // --- Data users can "update" their local view of the data parameters
-    int          getInt(std::string name) const ;
-    bool         getBool(std::string name) const ;
-    float        getFloat(std::string name) const ;
-    double       getDouble(std::string name) const ;
-    std::string  getString(std::string name) const ;
+    /**
+     * @brief Update the value of a created parameter, i.e., of an owned parameter that is not an Atlas field.
+     *
+     * @note Method not implemented for Atlas fields, which can only be updated through the observation pattern for now.
+     */
+    template <typename T>
+    void updateParam(std::string name, T newVal) {
+        if (auto typedPtr = std::dynamic_pointer_cast<IParameterObserver>(valueMap_.at(name))) {
+            if (typedPtr->observes()) {
+                throw eckit::AssertionFailed("Observer parameters actively observing can only be updated by strategies",
+                                             Here());
+            }
+        }
+        if (auto typedPtr = std::dynamic_pointer_cast<ParameterValueTyped<T>>(valueMap_.at(name))) {
+            typedPtr->set(newVal);
+        }
+        else {
+            throw eckit::BadCast("Plume parameter update type mismatch!", Here());
+        }
+    }
 
-    // -- shared data
-    atlas::Field getAtlasFieldShared(std::string name) const;
+    /**
+     * @brief Accesses a value of a parameter. Intended for data users to "update" their local view of the model data.
+     *
+     * @note This interface can be used for source & derived params if the full name is known.
+     */
+    template <typename T, typename = std::enable_if_t<!std::is_same<T, atlas::Field::Implementation>::value>>
+    T getParam(std::string name) const {
+        if (auto typedPtr = std::dynamic_pointer_cast<ParameterValueTyped<T>>(valueMap_.at(name))) {
+            return typedPtr->get();
+        }
+        if constexpr (std::is_same_v<T, atlas::Field>) {
+            if (auto typedPtr =
+                    std::dynamic_pointer_cast<ParameterValueTyped<atlas::Field::Implementation>>(valueMap_.at(name))) {
+                return atlas::Field(&(typedPtr->get()));
+            }
+        }
+        throw eckit::BadCast("Plume parameter view update type mismatch!", Here());
+    }
+
+    /**
+     * @brief Accesses a value of a derived parameter from its source parameter name, levtype and level.
+     *
+     * @note This signature opens to levtype in case other levtypes, such as 'pl', are introduced in the future.
+     */
+    template <typename T>
+    T getParam(const std::string& name, const std::string& level, const std::string& levtype = "hl") const {
+        std::string entryName = deriveParamName(name, levtype, level);
+        return getParam<T>(entryName);
+    }
 
     // Return a subset of the ModelData
-    ModelData filter(std::vector<std::string> params) const ;
+    ModelData filter(std::vector<std::string> params) const;
 
     // Return a subset of the ModelData
-    ModelData filter(ParameterCatalogue params) const ;
+    ModelData filter(ParameterCatalogue params) const;
 
     // check if a parameter is in the data
-    bool hasParameter(const std::string& name) const ;
-    bool hasParameter(const std::string& name, const ParameterType& type) const ;
+    bool hasParameter(const std::string& name) const;
+    bool hasParameter(const std::string& name, const ParameterType& type) const;
 
     // Manage parameters updated state
-    bool isUpdated(const std::string& name) const; // for plugins to query
-    void setUpdated(const std::vector<std::string>& params); // for data providers
-    void clearUpdated(); // for data providers or Plume manager to clear after run
+    bool isUpdated(const std::string& name) const;  // for plugins to query
+    bool isUpdated(const std::string& name, const std::string& level, const std::string& levtype = "hl") const;
+    void setUpdated(const std::vector<std::string>& params);  // for data providers
+    void clearUpdated();                                      // for data providers or Plume manager to clear after run
 
     // list available parameters of a certain type
-    std::vector<std::string> listAvailableParameters(std::string type_string) const ;
+    std::vector<std::string> listAvailableParameters(std::string type_string) const;
+
+    /// Add a concrete strategy factory to the registries to allow creation of various dependencies between parameters.
+    template <typename Strategy>
+    void registerStrategy() {
+        field_provider::AutoRegister<Strategy> entry{strategyRegistry_, strategyHelpers_};
+    }
 
     void print() const;
-
-private:
-
-    void insertValue(const ValueEntry& entry);
-
-    std::vector<std::string> getAvailableValues() const;
-
-    // Values
-    ValueMap valueMap_;
-
-    // // value map
-    // ValueMapAny valueMapAny_;
-
 };
 
 }  // namespace data

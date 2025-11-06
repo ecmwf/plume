@@ -32,9 +32,9 @@ SimplePluginCore::SimplePluginCore(const eckit::Configuration& conf) : PluginCor
 
 void SimplePluginCore::run() {
     eckit::Log::info() << "Consuming parameters: (" 
-                       << "I=" << modelData().getInt("I") << ", "
-                       << "J=" << modelData().getInt("J") << ", "
-                       << "K=" << modelData().getInt("K") << ") "
+                       << "I=" << modelData().getParam<int>("I") << ", "
+                       << "J=" << modelData().getParam<int>("J") << ", "
+                       << "K=" << modelData().getParam<int>("K") << ") "
                        << std::endl;
 }
 

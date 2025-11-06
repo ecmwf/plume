@@ -32,6 +32,7 @@ set(PLUGIN_FILES_H
     data/ParameterCatalogue.h
     data/Parameter.h
     data/DataChecker.h
+    data/FieldProvider.h
 )
 
 set(PLUGIN_FILES_CC
@@ -44,6 +45,7 @@ set(PLUGIN_FILES_CC
     data/ParameterCatalogue.cc
     data/Parameter.cc
     data/DataChecker.cc
+    data/FieldProvider.cc
 )
 
 set(PLUME_PLUGIN_SOURCES
@@ -88,6 +90,8 @@ set(PLUME_PLUGIN_MANAGER_SOURCES
     data/Parameter.cc
     data/DataChecker.h
     data/DataChecker.cc
+    data/FieldProvider.h
+    data/FieldProvider.cc
 )
 
 ecbuild_add_library(

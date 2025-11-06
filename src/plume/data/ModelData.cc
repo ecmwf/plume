@@ -11,9 +11,6 @@
 #include <algorithm>
 #include <exception>
 
-#include "eckit/exception/Exceptions.h"
-#include "eckit/log/Log.h"
-
 #include <plume/data/ModelData.h>
 
 
@@ -21,152 +18,16 @@ namespace plume {
 namespace data {
 
 
-ModelData::ModelData() {}
+const std::string ModelData::SEP_ = ";";
+
+
+ModelData::ModelData() {
+    // registering update strategies
+    registerStrategy<field_provider::WindAtHeight>();
+}
 
 ModelData::~ModelData() {
     // Nothing to do here (each parameter destructs its data pointer, as appropriate..)
-}
-
-
-
-
-// ----------------- creators -------------------
-void ModelData::createInt(std::string name, int valInit) {
-    ValueEntry entry(name, new ParameterValueIntOwning( new int{valInit} ));
-    insertValue(entry);
-}
-
-void ModelData::createBool(std::string name, bool valInit) {
-    ValueEntry entry(name, new ParameterValueBoolOwning( new bool{valInit} ));
-    insertValue(entry);
-}
-
-void ModelData::createFloat(std::string name, float valInit) {
-    ValueEntry entry(name, new ParameterValueFloatOwning( new float{valInit} ));
-    insertValue(entry);
-}
-
-void ModelData::createDouble(std::string name, double valInit) {
-    ValueEntry entry(name, new ParameterValueDoubleOwning( new double{valInit} ));
-    insertValue(entry);
-}
-
-void ModelData::createString(std::string name, char* valInit) {
-    ValueEntry entry(name, new ParameterValueStringOwning( new std::string{valInit} ));
-    insertValue(entry);
-}
-
-
-
-// ----------------- inserters -----------------
-
-// insert int
-void ModelData::provideInt(std::string name, int* val) {    
-    ValueEntry entry(name, new ParameterValueInt(val));
-    insertValue(entry);
-}
-
-
-// insert bool
-void ModelData::provideBool(std::string name, bool* val) {
-    ValueEntry entry(name, new ParameterValueBool(val));
-    insertValue(entry);
-}
-
-
-// insert float
-void ModelData::provideFloat(std::string name, float* val) {
-    ValueEntry entry(name, new ParameterValueFloat(val));
-    insertValue(entry);
-}
-
-
-// insert double
-void ModelData::provideDouble(std::string name, double* val) {
-    ValueEntry entry(name, new ParameterValueDouble(val));
-    insertValue(entry);
-}
-
-
-// insert string
-void ModelData::provideString(std::string name, char* val) {
-    ValueEntry entry(name, new ParameterValueString(val));
-    insertValue(entry);
-}
-
-// insert a Pointer to an Atlas field
-void ModelData::provideAtlasFieldShared(std::string name, atlas::Field::Implementation* field_ptr) {
-    ASSERT_MSG(field_ptr->bytes() >= 0, "Provided Atlas field not readable!");
-    ValueEntry entry(name, new ParameterValueAtlasField(field_ptr));
-    insertValue(entry);
-}
-
-
-// --- Updaters
-void ModelData::updateInt(std::string name, int val) {
-    ASSERT(valueMap_.at(name)->owns());
-    valueMap_.at(name)->set<int>(val);
-}
-
-void ModelData::updateBool(std::string name, bool val) {
-    ASSERT(valueMap_.at(name)->owns());
-    valueMap_.at(name)->set<bool>(val);
-}
-
-void ModelData::updateFloat(std::string name, float val) {
-    ASSERT(valueMap_.at(name)->owns());
-    valueMap_.at(name)->set<float>(val);
-}
-
-void ModelData::updateDouble(std::string name, double val) {
-    ASSERT(valueMap_.at(name)->owns());
-    valueMap_.at(name)->set<double>(val);
-}
-
-void ModelData::updateString(std::string name, std::string val) {
-    ASSERT(valueMap_.at(name)->owns());
-    valueMap_.at(name)->set<std::string>(val);
-}
-
-
-
-// --- getters
-
-int ModelData::getInt(std::string name) const {
-    auto entry = valueMap_.at(name);
-    ASSERT(entry->type() == ParameterType::INT);
-    return int{*entry->as<int*>()};
-}
-
-bool ModelData::getBool(std::string name) const {
-    auto entry = valueMap_.at(name);
-    ASSERT(entry->type() == ParameterType::BOOL);
-    return bool{*entry->as<bool*>()};
-}
-
-float ModelData::getFloat(std::string name) const {
-    auto entry = valueMap_.at(name);
-    ASSERT(entry->type() == ParameterType::FLOAT);
-    return float{*entry->as<float*>()};
-}
-
-double ModelData::getDouble(std::string name) const {
-    auto entry = valueMap_.at(name);
-    ASSERT(entry->type() == ParameterType::DOUBLE);
-    return double{*entry->as<double*>()};
-}
-
-std::string ModelData::getString(std::string name) const {
-    auto entry = valueMap_.at(name);
-    ASSERT(entry->type() == ParameterType::STRING);
-    return std::string{entry->as<char*>()};
-}
-
-// Get Field
-atlas::Field ModelData::getAtlasFieldShared(std::string name) const {
-    auto entry = valueMap_.at(name);
-    ASSERT(entry->type() == ParameterType::ATLAS_FIELD);
-    return atlas::Field(entry->as<atlas::Field::Implementation*>());
 }
 
 
@@ -177,8 +38,9 @@ ModelData ModelData::filter(std::vector<std::string> params) const {
     for (const auto& key : params) {
         if (std::find(availParams.begin(), availParams.end(), key) != availParams.end()) {
             auto entry = valueMap_.at(key);
-            filteredData.valueMap_.insert( std::make_pair(key, entry));
-        } else {
+            filteredData.valueMap_.insert(std::make_pair(key, entry));
+        }
+        else {
             eckit::Log::info() << "Parameter: " << key << " NOT found in Data! " << std::endl;
         }
     }
@@ -200,8 +62,9 @@ bool ModelData::hasParameter(const std::string& name) const {
 
 bool ModelData::hasParameter(const std::string& name, const ParameterType& type) const {
     if (valueMap_.find(name) != valueMap_.end()) {
-        ASSERT_MSG(valueMap_.at(name)->type() == type, "value.type = " + ParameterTypeConverter::toString(valueMap_.at(name)->type()) 
-            + " vs expected = " + ParameterTypeConverter::toString(type));
+        ASSERT_MSG(valueMap_.at(name)->type() == type,
+                   "value.type = " + ParameterTypeConverter::toString(valueMap_.at(name)->type()) +
+                       " vs expected = " + ParameterTypeConverter::toString(type));
         return true;
     }
     return false;
@@ -209,18 +72,22 @@ bool ModelData::hasParameter(const std::string& name, const ParameterType& type)
 
 
 bool ModelData::isUpdated(const std::string& name) const {
-    ASSERT_MSG(valueMap_.find(name) != valueMap_.end(), "Element not found in model data: " + name );
+    ASSERT_MSG(valueMap_.find(name) != valueMap_.end(), "Element not found in model data: " + name);
     return valueMap_.at(name)->isUpdated();
+}
+
+bool ModelData::isUpdated(const std::string& name, const std::string& level, const std::string& levtype) const {
+    std::string entryName = deriveParamName(name, levtype, level);
+    return isUpdated(entryName);
 }
 
 
 void ModelData::setUpdated(const std::vector<std::string>& params) {
     clearUpdated();
     for (const auto& name : params) {
-        ASSERT_MSG( valueMap_.find(name) != valueMap_.end(),
-                    "Element not found in model data: " + name );
+        ASSERT_MSG(valueMap_.find(name) != valueMap_.end(), "Element not found in model data: " + name);
         valueMap_.at(name)->setUpdated(true);
-    }    
+    }
 }
 
 
@@ -250,7 +117,28 @@ std::vector<std::string> ModelData::listAvailableParameters(std::string type_str
     return keys;
 }
 
-
+void ModelData::addDependency(const std::string& observer, const std::string& observable, const std::string& type,
+                              const eckit::Configuration& config) {
+    // 1. attach observer to observable
+    auto publisher = std::dynamic_pointer_cast<IParameterObservable>(valueMap_.at(observable));
+    if (!publisher) {
+        throw eckit::BadCast("'" + observable + "' is not an Observable parameter!", Here());
+    }
+    auto subscriber = std::dynamic_pointer_cast<IParameterObserver>(valueMap_.at(observer));
+    if (!subscriber) {
+        throw eckit::BadCast("'" + observer + "' is an observable, it cannot subscribe to other parameters!", Here());
+    }
+    subscriber->setSubject(publisher);
+    // 2. parse config and build arg list
+    field_provider::StrategyArgList strategyArgs = strategyHelpers_.at(type)(config, valueMap_, observable, observer);
+    // 3. create update strategy
+    auto strategy = strategyRegistry_.at(type)(strategyArgs);
+    // 4. set initial observer value
+    strategy->update();
+    valueMap_.at(observer)->setUpdated(false);
+    // 5. attach strategy to observer
+    subscriber->setUpdateStrategy(std::move(strategy));
+}
 
 
 // -------- private
@@ -264,11 +152,21 @@ std::vector<std::string> ModelData::getAvailableValues() const {
     return keys;
 }
 
-void ModelData::insertValue(const ValueEntry& entry) {
-    auto inserted = valueMap_.insert(entry).second;
-    if (!inserted) {
-        eckit::Log::warning() << "Parameter: " << entry.first << " already present in Metadata. Not inserted!" << std::endl;
+std::unique_ptr<field_provider::UpdateStrategy> ModelData::createStrategy(const std::string& type,
+                                                                          const field_provider::StrategyArgList& args) {
+    auto it = strategyRegistry_.find(type);
+    if (it == strategyRegistry_.end()) {
+        throw eckit::BadValue("Unknown update strategy: " + type, Here());
     }
+    return it->second(args);
+}
+
+std::string ModelData::deriveParamName(const std::string& source, const std::string& levtype,
+                                       const std::string& level) const {
+    if (levtype != "hl" && levtype != "dummy") {  // dummy is allowed for testing
+        throw eckit::BadValue("Plume derived params only supports levtype 'hl'!", Here());
+    }
+    return source + SEP_ + levtype + SEP_ + level;  // default is 'name;levtype;level'
 }
 
 

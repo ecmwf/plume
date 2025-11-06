@@ -46,8 +46,8 @@ void PluginCoreBar::run() {
 
 
     eckit::Log::info() << "Plugin Bar consuming parameters: (" 
-                       << "K=" << modelData().getInt("K") << ", "
-                       << "field=" << modelData().getAtlasFieldShared("field_dummy_1") << ") "
+                       << "K=" << modelData().getParam<int>("K") << ", "
+                       << "field=" << modelData().getParam<atlas::Field>("field_dummy_1") << ") "
                        << std::endl;
 }
 

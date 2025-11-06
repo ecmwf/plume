@@ -70,9 +70,9 @@ int main(int argc, char** argv) {
 
     // Insert some int parameters (regardless of whether 
     // they are going to be requested by plugins or not..)
-    data.provideInt("I", &param_i);
-    data.provideInt("J", &param_j);
-    data.provideInt("K", &param_k);
+    data.provideParam("I", &param_i);
+    data.provideParam("J", &param_j);
+    data.provideParam("K", &param_k);
 
     // NOTE: After the negotiation, the manager knows which parameters 
     // have been requested by all activated plugins (i.e. plugins that 
@@ -87,23 +87,23 @@ int main(int argc, char** argv) {
     name = "field_dummy_1";
     if ( plume::Manager::isParamRequested(name) ) {
         field_dummy = createAtlasField(name);
-        data.provideAtlasFieldShared(name, field_dummy.get());
+        data.provideParam(name, &field_dummy);
     }
     
     name = "config-param-1";
     if ( plume::Manager::isParamRequested(name) ) {
-        data.provideInt(name, &config_param_1);
+        data.provideParam(name, &config_param_1);
     }
 
     name = "config-param-2";
     if ( plume::Manager::isParamRequested(name) ) {
-        data.provideDouble(name, &config_param_2);
+        data.provideParam(name, &config_param_2);
     }
 
     name = "config-param-3";
     if ( plume::Manager::isParamRequested(name) ) {
         config_param_3 = createAtlasField(name);
-        data.provideAtlasFieldShared(name, config_param_3.get());
+        data.provideParam(name, &config_param_3);
     }
 
     // Once data is ready.. feed the plugins!

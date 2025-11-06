@@ -61,10 +61,10 @@ int main(int argc, char** argv) {
 
     // Declare plume data and add some parameters into it..
     plume::data::ModelData data;
-    data.createInt("I", 0);
-    data.createInt("J", 10);
-    data.createInt("K", 100);
-    data.provideAtlasFieldShared("field_dummy_1", field.get());
+    data.createParam("I", 0);
+    data.createParam("J", 10);
+    data.createParam("K", 100);
+    data.createParam("field_dummy_1", field);
 
 
     // parameters requested by the plugins through configuration
@@ -72,9 +72,9 @@ int main(int argc, char** argv) {
     double config_param_2 = 99.99;
     atlas::Field config_param_3 = createAtlasField();
 
-    data.provideInt("config-param-1", &config_param_1);
-    data.provideDouble("config-param-2", &config_param_2);
-    data.provideAtlasFieldShared("config-param-3", config_param_3.get());
+    data.provideParam("config-param-1", &config_param_1);
+    data.provideParam("config-param-2", &config_param_2);
+    data.provideParam("config-param-3", &config_param_3);
 
     // Feed plugins with the data
     plume::Manager::feedPlugins(data);
@@ -83,9 +83,9 @@ int main(int argc, char** argv) {
     for (int i=0; i<10; i++){        
 
         // Update the values
-        data.updateInt("I", i);
-        data.updateInt("J", 10+i);
-        data.updateInt("K", 100+i);
+        data.updateParam("I", i);
+        data.updateParam("J", 10+i);
+        data.updateParam("K", 100+i);
 
         // run
         plume::Manager::run();

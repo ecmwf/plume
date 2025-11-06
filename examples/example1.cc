@@ -65,14 +65,14 @@ int main(int argc, char** argv) {
     atlas::Field config_param_3 = createAtlasField();
 
     plume::data::ModelData data;
-    data.provideInt("I", &param_i);
-    data.provideInt("J", &param_j);
-    data.provideInt("K", &param_k);
-    data.provideAtlasFieldShared("field_dummy_1", field.get());
+    data.provideParam("I", &param_i);
+    data.provideParam("J", &param_j);
+    data.provideParam("K", &param_k);
+    data.provideParam("field_dummy_1", &field);
 
-    data.provideInt("config-param-1", &config_param_1);
-    data.provideDouble("config-param-2", &config_param_2);
-    data.provideAtlasFieldShared("config-param-3", config_param_3.get());
+    data.provideParam("config-param-1", &config_param_1);
+    data.provideParam("config-param-2", &config_param_2);
+    data.provideParam("config-param-3", &config_param_3);
 
     // Feed plugins with the data
     plume::Manager::feedPlugins(data);
