@@ -54,7 +54,11 @@ public:
 
 /**
  * @brief Specialisation of UpdateStrategyTraits for DummyAtlasStrategy.
- * 
+ *
+ * `requiredParams` is left empty because the this strategy does not impose a source name (it is dummy so it does not
+ * require a source to be of a specific quantity, e.g. wind, time etc.) Other traits are ommitted because this strategy
+ * should only be used for model data testing, not manager.
+ *
  * @note This strategy only uses the source and target parameters, no other parameters or inputs from a configuration.
  */
 template <>
@@ -62,6 +66,7 @@ struct UpdateStrategyTraits<DummyAtlasStrategy> {
     static constexpr const char* name = "atlas_dummy";
     static constexpr std::array<const char*, 0> configArgs{};
     static constexpr std::array<const char*, 0> paramArgs{};
+    static constexpr std::array<std::array<const char*, 0>, 0> requiredParams{{}};
     using Args = std::tuple<AtlasFieldObservablePtr, AtlasFieldObserverPtr>;
 };
 
@@ -77,7 +82,7 @@ CASE("test model data - atlas fields checks") {
     atlas::Field paramField("dummy", atlas::array::make_datatype<int>(), atlas::array::make_shape(1, 2, 3));
     atlas::Field ownedParamField("ownedDummy", atlas::array::make_datatype<int>(), atlas::array::make_shape(1, 2, 3));
 
-    data.provideParam("param-field", &paramField); /// checking field provision
+    data.provideParam("param-field", &paramField);  /// checking field provision
     EXPECT_THROWS(data.getParam<int>("param-field"));
     EXPECT_NO_THROW(data.getParam<atlas::Field>("param-field"));
 

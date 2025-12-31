@@ -11,27 +11,30 @@
 
 #pragma once
 
-#include "Protocol.h"
-#include "PluginDecision.h"
 #include "eckit/config/LocalConfiguration.h"
+
+#include "PluginDecision.h"
+#include "Protocol.h"
+#include "data/ParameterCatalogue.h"
 
 
 namespace plume {
 
 class Negotiator {
-public:
+private:
+    bool isParamOffered(const Protocol& offers, const data::ParameterDefinition& param);
 
+public:
     /**
      * @brief Negotiate with a plugin
-     * 
-     * @param requires 
-     * @param config_params 
-     * @return PluginDecision 
+     *
+     * @param requires
+     * @param config_params
+     * @return PluginDecision
      */
-    PluginDecision negotiate(const Protocol& offers,
-                             const Protocol& requires,
-                             const std::vector<eckit::LocalConfiguration>& config_params = std::vector<eckit::LocalConfiguration>{});
-    
+    PluginDecision negotiate(
+        const Protocol& offers, const Protocol& requires,
+        const std::vector<eckit::LocalConfiguration>& config_params = std::vector<eckit::LocalConfiguration>{});
 };
 
 

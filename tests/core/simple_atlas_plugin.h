@@ -10,49 +10,42 @@
  */
 #include <string>
 
-#include "atlas/field/Field.h"
-
 #include "plume/Plugin.h"
 #include "plume/PluginCore.h"
 
-namespace nwp_emulator_test_plugin {
+#include "atlas/field/Field.h"
 
-
-// ------ Foo runnable plugincore that self-registers! -------
-class NWPEmulatorPluginCore : public plume::PluginCore {
+namespace plume_example_plugin {
+// ------ Simple plugin which requests a derived field -------
+class SimpleDerivedPluginCore final : public plume::PluginCore {
 public:
-    NWPEmulatorPluginCore(const eckit::Configuration& conf);
-    ~NWPEmulatorPluginCore();
+    SimpleDerivedPluginCore(const eckit::Configuration& conf);
     void run() override;
-    constexpr static const char* type() { return "nwpemulator-plugincore"; }
+    constexpr static const char* type() { return "simple-derived-plugincore"; }
 };
 // ------------------------------------------------------
 
 // ------------------------------------------------------
-class NWPEmulatorPlugin : public plume::Plugin {
+class SimpleDerivedPlugin final : public plume::Plugin {
 
 public:
-    NWPEmulatorPlugin();
-    ~NWPEmulatorPlugin();
+    SimpleDerivedPlugin();
 
     plume::Protocol negotiate() override {
         plume::Protocol protocol;
-        protocol.require<atlas::Field>("100u");
-        protocol.require<atlas::Field>("u");
-        protocol.require<atlas::Field>("v");
+        protocol.require<atlas::Field>("u", {{"height", "100"}});
 
         return protocol;
     }
 
     // Return the static instance
-    static const NWPEmulatorPlugin& instance();
+    static const SimpleDerivedPlugin& instance();
 
-    std::string version() const override { return "0.0.1-NWPEmulator"; }
+    std::string version() const override { return "0.0.1-SimpleDerived"; }
 
     std::string gitsha1(unsigned int count) const override { return "undefined"; }
 
-    virtual std::string plugincoreName() const override { return NWPEmulatorPluginCore::type(); }
+    virtual std::string plugincoreName() const override { return SimpleDerivedPluginCore::type(); }
 };
 // ------------------------------------------------------
-
-}  // namespace nwp_emulator_test_plugin
+}  // namespace plume_example_plugin

@@ -10,51 +10,71 @@
  */
 
 #include <iostream>
+#include <set>
 
 #include "plume/Negotiator.h"
-#include "plume/utils.h"
 #include "plume/plume.h"
+#include "plume/utils.h"
 
- namespace plume {
+namespace plume {
+
+bool Negotiator::isParamOffered(const Protocol& offers, const data::ParameterDefinition& param) {
+    eckit::Log::info() << " - Considering Parameter: " << param.name() << std::endl;
+    if (!offers.isParamOffered(param.name())) {
+        if (offers.isParamOffered(param.sourceParam())) {
+            // it is a derived param whose source is offered
+            for (const auto& dependency : param.dependencies()) {
+                if (!offers.isParamOffered(dependency)) {
+                    eckit::Log::warning() << "Dependency " << dependency << " of parameter " << param.name()
+                                          << " not found!" << std::endl;
+                    return false;
+                }
+            }
+        }
+        else {
+            eckit::Log::warning() << "Parameter " << param.name() << " not found or source not found!" << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
 
 
-PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& requires, const std::vector<eckit::LocalConfiguration>& config_params) {
+PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& requires,
+                                     const std::vector<eckit::LocalConfiguration>& config_params) {
 
-    eckit::Log::info() << "Requesting Plume Version: " << LibVersion(requires.requiredPlumeVersion()).asString() 
-                       <<  " VS Actual Plume version "<< plume_VERSION << std::endl;
+    eckit::Log::info() << "Requesting Plume Version: " << LibVersion(requires.requiredPlumeVersion()).asString()
+                       << " VS Actual Plume version " << plume_VERSION << std::endl;
 
-    eckit::Log::info() << "Requesting Atlas Version: " << LibVersion(requires.requiredAtlasVersion()).asString() 
-                       <<  " VS Actual Atlas version "<< offers.offeredAtlasVersion() << std::endl;
-    
+    eckit::Log::info() << "Requesting Atlas Version: " << LibVersion(requires.requiredAtlasVersion()).asString()
+                       << " VS Actual Atlas version " << offers.offeredAtlasVersion() << std::endl;
+
     // Check Plume version
-    if (LibVersion(requires.requiredPlumeVersion()) > LibVersion( plume_VERSION )) {
+    if (LibVersion(requires.requiredPlumeVersion()) > LibVersion(plume_VERSION)) {
         return PluginDecision{false};
     }
 
     // Check Atlas version
-    if (LibVersion(requires.requiredAtlasVersion()) > LibVersion( offers.offeredAtlasVersion() )) {        
+    if (LibVersion(requires.requiredAtlasVersion()) > LibVersion(offers.offeredAtlasVersion())) {
         return PluginDecision{false};
     }
 
-    std::set<std::string> allRequestedParams;
-    std::vector<std::string> requested_params = requires.requiredParamNames();
+    std::set<data::ParameterDefinition> allRequestedParams;
+    std::set<std::string> requested_param_names = requires.requiredParamNames();
+    std::vector<data::ParameterDefinition> requested_params = requires.requires().getParams();
 
     // 1) Check requested parameters (from the plugin)
     // if ANY one of these parameters is not offered, the plugin is rejected
     eckit::Log::info() << "Requesting Parameters: [";
-    if (requested_params.size()) {
-        for (int i = 0; i < requested_params.size()-1; i++) {
-            eckit::Log::info() << requested_params[i] << ", ";
-        }
-        eckit::Log::info() << requested_params[requested_params.size()-1] << "]" << std::endl;
-    } else {
-        eckit::Log::info() << "]" << std::endl;
-    }    
-    
-    for (const auto& param_name : requested_params) {
-        eckit::Log::info() << " - Considering Parameter: " << param_name << std::endl;
-        if (!offers.isParamOffered(param_name)) {
-            eckit::Log::warning() << "Parameter " << param_name << " not found!" << std::endl;
+    for (auto it = requested_param_names.begin(); it != requested_param_names.end(); ++it) {
+        if (it != requested_param_names.begin())
+            eckit::Log::info() << ", ";
+        eckit::Log::info() << *it;
+    }
+    eckit::Log::info() << "]" << std::endl;
+
+    for (const auto& param : requested_params) {
+        if (!isParamOffered(offers, param)) {
             return PluginDecision{false};
         }
     }
@@ -72,33 +92,33 @@ PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& req
             eckit::Log::info() << "Considering Parameter Group..." << std::endl;
 
             const std::vector<eckit::LocalConfiguration>& params = param_group.getSubConfigurations();
+            requested_params.clear();
 
             // loop over parameters in the group and check if they are all offered
-            bool group_satisfied = std::all_of(params.begin(), params.end(), [&offers](const auto& param){
-                std::string param_name = param.getString("name");
-                eckit::Log::info() << " - Considering Parameter: " << param_name << std::endl;
-                if (!offers.isParamOffered(param_name)) {
-                    eckit::Log::warning() << " ---> Configuration Parameter " << param_name << " not found! => Group rejected!" << std::endl;
-                    return false;
-                }
-                return true;
-            });
+            bool group_satisfied =
+                std::all_of(params.begin(), params.end(), [this, &offers, &requested_params](const auto& paramConfig) {
+                    data::ParameterDefinition param(paramConfig);
+                    if (!isParamOffered(offers, param)) {
+                        return false;
+                    }
+                    requested_params.push_back(param);
+                    return true;
+                });
 
-            // group is satisfied
             if (group_satisfied) {
                 eckit::Log::info() << " ---> Parameter Group Accepted!" << std::endl;
 
                 // add all parameters in the group to the set "allRequestedParams"
-                for (const auto& param : params) {
-                    allRequestedParams.insert(param.getString("name"));
-                } 
+                allRequestedParams.insert(requested_params.begin(), requested_params.end());
+            }
+            else {
+                eckit::Log::warning() << "---> Group rejected!" << std::endl;
             }
         }
     }
 
-    return PluginDecision{true, std::vector<std::string>(allRequestedParams.begin(), allRequestedParams.end())};
+    return PluginDecision(true, allRequestedParams);
 };
 
 
-
- }  // namespace plume
+}  // namespace plume

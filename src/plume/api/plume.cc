@@ -177,35 +177,35 @@ int plume_protocol_offer_int(plume_protocol_handle_t* h, const char* name, const
     return wrapApiFunction([h, name, avail, comment] {
         ASSERT(h);
         ASSERT((h)->impl_);
-        h->impl_->offerInt(name, avail, comment);
+        h->impl_->offer<int>(name, avail, comment);
     });
 }
 int plume_protocol_offer_bool(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
     return wrapApiFunction([h, name, avail, comment] {
         ASSERT(h);
         ASSERT((h)->impl_);
-        h->impl_->offerBool(name, avail, comment);
+        h->impl_->offer<bool>(name, avail, comment);
     });
 }
 int plume_protocol_offer_float(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
     return wrapApiFunction([h, name, avail, comment] {
         ASSERT(h);
         ASSERT((h)->impl_);
-        h->impl_->offerFloat(name, avail, comment);
+        h->impl_->offer<float>(name, avail, comment);
     });
 }
 int plume_protocol_offer_double(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
     return wrapApiFunction([h, name, avail, comment] {
         ASSERT(h);
         ASSERT((h)->impl_);
-        h->impl_->offerDouble(name, avail, comment);
+        h->impl_->offer<double>(name, avail, comment);
     });
 }
 int plume_protocol_offer_atlas_field(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
     return wrapApiFunction([h, name, avail, comment] {
         ASSERT(h);
         ASSERT((h)->impl_);
-        h->impl_->offerAtlasField(name, avail, comment);
+        h->impl_->offer<atlas::Field>(name, avail, comment);
     });
 }
 

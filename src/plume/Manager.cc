@@ -9,10 +9,10 @@
  * does it submit to any jurisdiction.
  */
 #include <dirent.h>
+#include <algorithm>
 #include <cstdlib>
 #include <functional>
 #include <map>
-#include <algorithm>
 #include <memory>
 
 #include "eckit/config/LocalConfiguration.h"
@@ -21,25 +21,23 @@
 #include "eckit/runtime/Main.h"
 #include "eckit/utils/StringTools.h"
 
-#include "plume/plume.h"
-#include "plume/utils.h"
-#include "plume/PluginCore.h"
-#include "plume/PluginConfig.h"
-#include "plume/PluginHandler.h"
-#include "plume/data/ParameterCatalogue.h"
-#include "plume/data/DataChecker.h"
-#include "plume/Protocol.h"
-
 #include "plume/Manager.h"
 #include "plume/Negotiator.h"
-
+#include "plume/PluginConfig.h"
+#include "plume/PluginCore.h"
+#include "plume/PluginHandler.h"
+#include "plume/Protocol.h"
+#include "plume/data/DataChecker.h"
+#include "plume/data/ParameterCatalogue.h"
+#include "plume/plume.h"
+#include "plume/utils.h"
 
 
 namespace plume {
 
 /**
  * @brief Plugin registry (Singleton)
- * 
+ *
  */
 class PluginRegistry {
 
@@ -49,15 +47,21 @@ public:
         return reg;
     }
 
-    void setActive(Plugin& plugin, const PluginConfig& pconfig, const std::vector<std::string>& offeredParams) {
+    void reset() {
+        pluginHandlers_.clear();
+        dataCatalogue_ = data::ParameterCatalogue();
+    }
+
+    void setActive(Plugin& plugin, const PluginConfig& pconfig, const PluginDecision& decision) {
 
         std::string name = plugin.plugincoreName();
 
         // create a plugin handler
-        PluginHandler pluginHandle(plugin, pconfig, offeredParams);
+        PluginHandler pluginHandle(plugin, pconfig, decision);
 
         // instantiate the plugincore (the plugin handler takes ownership of it)
-        pluginHandle.activate( std::unique_ptr<PluginCore>( plume::PluginCoreFactory::instance().build(name, pconfig.coreConfig()) ) );
+        pluginHandle.activate(
+            std::unique_ptr<PluginCore>(plume::PluginCoreFactory::instance().build(name, pconfig.coreConfig())));
 
         // plugin added to the active plugin list
         PluginRegistry::instance().pluginHandlers_.push_back(std::move(pluginHandle));
@@ -68,48 +72,42 @@ public:
 
 
     // Parameters requested by all active plugins collectively
-    std::unordered_set<std::string> getActiveParams() {
+    std::unordered_set<std::string> getActiveParams(bool derived = true) {
         std::unordered_set<std::string> requiredParams;
         for (const auto& pluginHandle : pluginHandlers_) {
-            auto req_fields = pluginHandle.getRequiredParamNames();
+            auto req_fields = pluginHandle.getRequiredParamNames(derived);
             requiredParams.insert(req_fields.begin(), req_fields.end());
         }
         return requiredParams;
     }
 
-    data::ParameterCatalogue getActiveDataCatalogue() {
-        return dataCatalogue_.filter(getActiveParams());
+    data::ParameterCatalogue getActiveDataCatalogue(bool derived = true) {
+        return dataCatalogue_.filter(getActiveParams(derived));
     }
 
-    void setDataCatalogue(const data::ParameterCatalogue& dataCatalogue) {
-        dataCatalogue_ = dataCatalogue;
-    }
+    void setDataCatalogue(const data::ParameterCatalogue& dataCatalogue) { dataCatalogue_ = dataCatalogue; }
 
-    const data::ParameterCatalogue& getDataCatalogue() {
-        return dataCatalogue_;
-    }
+    const data::ParameterCatalogue& getDataCatalogue() { return dataCatalogue_; }
 
 private:
     // List of active plugins
     std::vector<PluginHandler> pluginHandlers_;
 
-    // stores a copy of the data catalogue that 
+    // stores a copy of the data catalogue that
     // resulted in the activated plugins
     data::ParameterCatalogue dataCatalogue_;
-
 };
 // -------------------------------------------------------------------
 
 
-ManagerConfig Manager::managerConfig_{};
+std::optional<ManagerConfig> Manager::managerConfig_;
 
 bool Manager::isConfigured_{false};
 
 
-
 void Manager::configure(const eckit::Configuration& config) {
-    if (!Manager::isConfigured_){
-        managerConfig_ = ManagerConfig(config);
+    if (!Manager::isConfigured_) {
+        managerConfig_         = ManagerConfig(config);
         Manager::isConfigured_ = true;
     }
 }
@@ -137,16 +135,18 @@ void Manager::negotiate(const Protocol& offers) {
     // before negotiation, make sure the manager has been configured
     ASSERT_MSG(isConfigured_, "Plume manager needs to be configured first!");
 
-    eckit::Log::info() << "Plume config: " << managerConfig_ << ", offers: " << offers.offeredParamNames() << std::endl;
+    auto pnames = offers.offeredParamNames();
+    std::vector<std::string> names(pnames.begin(), pnames.end());
+    eckit::Log::info() << "Plume config: " << *managerConfig_ << ", offers: " << names << std::endl;
 
     // Negotiate with each plugin
     Negotiator negotiator;
-    
+
     // Load all selected plugins as per configuration
-    for (const auto& pconfig : managerConfig_.plugins()) {
-        
+    for (const auto& pconfig : managerConfig_.value().plugins()) {
+
         auto name = pconfig.name();
-        auto lib = pconfig.lib();
+        auto lib  = pconfig.lib();
 
         eckit::Log::info() << std::endl << " <== Evaluating Plugin: " << name << " from Library: " << lib << std::endl;
 
@@ -160,7 +160,8 @@ void Manager::negotiate(const Protocol& offers) {
         auto config_params = pconfig.parameters();
         if (config_params.size() > 0) {
             eckit::Log::info() << "Parameters from Config: " << config_params << std::endl;
-        } else {
+        }
+        else {
             eckit::Log::info() << "No additional parameters found in Config." << std::endl;
         }
 
@@ -170,9 +171,8 @@ void Manager::negotiate(const Protocol& offers) {
 
         // If the plugin is accepted, set it as active
         if (decision.accepted()) {
-            PluginRegistry::instance().setActive(plugin, pconfig, decision.offeredParams());
+            PluginRegistry::instance().setActive(plugin, pconfig, decision);
         }
-        
     }
 
     PluginRegistry::instance().setDataCatalogue(offers.offers());
@@ -180,19 +180,26 @@ void Manager::negotiate(const Protocol& offers) {
 
 
 // Let each plugin take its own share of data (pointers)
-void Manager::feedPlugins(const data::ModelData& data) {
+void Manager::feedPlugins(data::ModelData& data) {
 
     // check data
     Manager::checkData(data);
 
     // Run each PluginCore for every active plugin
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
+        // Create derived fields if requested
+        // Will do nothing if a previous plugin has already triggered the parameter creation
+        for (const auto& requestedParam : pluginHandler.getRequiredParams()) {
+            if (!requestedParam.strategy().empty()) {
+                data.dispatchCreateParam(requestedParam.strategy(), requestedParam.config());
+            }
+        }
 
         // get the share of run data needed to run the plugincore
-        auto requiredParams = pluginHandler.getRequiredParamNames();
+        auto requiredParams          = pluginHandler.getRequiredParamNames();
         data::ModelData requiredData = data.filter(requiredParams);
 
-        // grab data 
+        // grab data
         pluginHandler.grabData(requiredData);
 
         // setup
@@ -233,7 +240,7 @@ std::unordered_set<std::string> Manager::getActiveParams() {
 }
 
 
-data::ParameterCatalogue Manager::getActiveDataCatalogue() {    
+data::ParameterCatalogue Manager::getActiveDataCatalogue() {
     return PluginRegistry::instance().getActiveDataCatalogue();
 }
 
@@ -242,7 +249,8 @@ bool Manager::isParamRequested(const std::string& name) {
     auto activeParams = Manager::getActiveParams();
     if (find(activeParams.begin(), activeParams.end(), name) != activeParams.end()) {
         return true;
-    } else {
+    }
+    else {
         return false;
     }
 }
@@ -257,13 +265,22 @@ void Manager::checkData(const data::ModelData& data) {
 
     eckit::Log::info() << "--- Plume manager is checking data ..." << std::endl;
 
-    // Check all requested params (regardless of whether they are "always-available" or "on-demand")    
-    data::DataChecker::checkAllParams(data, PluginRegistry::instance().getActiveDataCatalogue(), plume::data::CheckPolicyWarning{} );
+    // Check all requested params (regardless of whether they are "always-available" or "on-demand")
+    // Skip all derived params as they are not yet created
+    data::DataChecker::checkAllParams(data, PluginRegistry::instance().getActiveDataCatalogue(false),
+                                      plume::data::CheckPolicyWarning{});
 
     // Check that all the "always" params are present
-    data::DataChecker::checkAlwaysAvailParams(data, PluginRegistry::instance().getDataCatalogue(), plume::data::CheckPolicyWarning{});
+    data::DataChecker::checkAlwaysAvailParams(data, PluginRegistry::instance().getDataCatalogue(),
+                                              plume::data::CheckPolicyWarning{});
 
     eckit::Log::info() << "--- Plume manager has checked data." << std::endl;
+}
+
+void Manager::reset() {
+    PluginRegistry::instance().reset();
+    isConfigured_ = false;
+    managerConfig_.reset();
 }
 
 

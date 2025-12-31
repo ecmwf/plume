@@ -12,22 +12,27 @@
 
 #include <iostream>
 #include <map>
+#include <optional>
 #include <string>
-#include <vector>
 #include <unordered_set>
+#include <vector>
 
 #include "eckit/config/LocalConfiguration.h"
 #include "eckit/memory/NonCopyable.h"
 #include "eckit/system/LibraryManager.h"
 
+#include "plume/ManagerConfig.h"
 #include "plume/Plugin.h"
 #include "plume/PluginDecision.h"
 #include "plume/data/ParameterCatalogue.h"
 #include "plume/data/ModelData.h"
-#include "plume/ManagerConfig.h"
 
 
 namespace plume {
+
+namespace test {
+struct ManagerTestAccess; // forward declaration
+}  // namespace test
 
 /**
  * @brief Manages the loading and running of plugins
@@ -57,7 +62,7 @@ public:
      * 
      * @param data 
      */
-    static void feedPlugins(const data::ModelData& data);
+    static void feedPlugins(data::ModelData& data);
 
     /**
      * @brief run all active plugins
@@ -123,9 +128,16 @@ private:
      */
     static void checkData(const data::ModelData& data);
 
-    static ManagerConfig managerConfig_;
+    /**
+     * @brief Reset the manager configuration, this method is only intended for use within tests.
+     */
+    static void reset();
+
+    static std::optional<ManagerConfig> managerConfig_;
 
     static bool isConfigured_;
+
+    friend struct test::ManagerTestAccess;
 
 };
 

@@ -30,7 +30,8 @@ set(PLUGIN_FILES_H
     Configurable.h
     data/ModelData.h
     data/ParameterCatalogue.h
-    data/Parameter.h
+    data/ParameterType.h
+    data/ParameterValue.h
     data/DataChecker.h
     data/FieldProvider.h
 )
@@ -43,7 +44,7 @@ set(PLUGIN_FILES_CC
     Configurable.cc
     data/ModelData.cc
     data/ParameterCatalogue.cc
-    data/Parameter.cc
+    data/ParameterValue.cc
     data/DataChecker.cc
     data/FieldProvider.cc
 )
@@ -84,10 +85,11 @@ set(PLUME_PLUGIN_MANAGER_SOURCES
     PluginConfig.h
     data/ModelData.h
     data/ModelData.cc
+    data/ParameterType.h
     data/ParameterCatalogue.h
     data/ParameterCatalogue.cc
-    data/Parameter.h
-    data/Parameter.cc
+    data/ParameterValue.h
+    data/ParameterValue.cc
     data/DataChecker.h
     data/DataChecker.cc
     data/FieldProvider.h

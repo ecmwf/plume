@@ -16,7 +16,7 @@
 #include "eckit/testing/Test.h"
 
 #include "plume/data/FieldProvider.h"
-#include "plume/data/Parameter.h"
+#include "plume/data/ParameterValue.h"
 
 using namespace eckit::testing;
 
@@ -72,8 +72,8 @@ CASE("test update strategies - wind at height") {
 
     EXPECT_EQUAL(u200Ptr->get().levels(), 1);
     EXPECT_EQUAL(u5000Ptr->get().levels(), 1);
-    EXPECT_EQUAL(u200Ptr->get().shape(), atlas::array::make_shape(3));
-    EXPECT_EQUAL(u5000Ptr->get().shape(), atlas::array::make_shape(3));
+    EXPECT_EQUAL(u200Ptr->get().shape(), atlas::array::make_shape(3, 1));
+    EXPECT_EQUAL(u5000Ptr->get().shape(), atlas::array::make_shape(3, 1));
 
     // -----------------------------------------------------------------------------------------------------------------
     // Check update correctness
@@ -84,13 +84,13 @@ CASE("test update strategies - wind at height") {
     EXPECT(u200Ptr->isUpdated());
     EXPECT(u5000Ptr->isUpdated());
 
-    auto u200View  = atlas::array::make_view<double, 1>(u200Ptr->get());
-    auto u5000View = atlas::array::make_view<double, 1>(u5000Ptr->get());
+    auto u200View  = atlas::array::make_view<double, 2>(u200Ptr->get());
+    auto u5000View = atlas::array::make_view<double, 2>(u5000Ptr->get());
     for (atlas::idx_t i = 0; i < u.shape(0); ++i) {
-        EXPECT((u200View(i) < uValues[i][3] && u200View(i) > uValues[i][4]));
-        EXPECT((u5000View(i) < uValues[i][1] && u5000View(i) > uValues[i][2]));
+        EXPECT((u200View(i, 0) < uValues[i][3] && u200View(i, 0) > uValues[i][4]));
+        EXPECT((u5000View(i, 0) < uValues[i][1] && u5000View(i, 0) > uValues[i][2]));
     }
-    EXPECT(eckit::types::is_approximately_equal(u5000View(1), 25.00, 0.01));
+    EXPECT(eckit::types::is_approximately_equal(u5000View(1, 0), 25.00, 0.01));
 
     // -----------------------------------------------------------------------------------------------------------------
     // Check correct behaviour to faulty parameters & field types

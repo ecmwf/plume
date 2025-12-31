@@ -77,10 +77,6 @@ private:
     AtlasFieldObserverPtr windAtHeight_;
 
 public:
-    /// Computes the potential at the given height (`z = m * g`), performs some validation.
-    /// The order of arguments is important, as the strategy helper orders args from config before args from params,
-    /// and the strategy type traits config and param args should match the order in the constructor, with source and
-    /// target as last
     /**
      * @brief Constructs a wind at given height strategy.
      *
@@ -102,18 +98,12 @@ public:
      * 4. Mark the windAtHeight_ field parameter as updated.
      */
     void update() override;
-
-    /**
-     * @brief On top of the wind component to interpolate from, this strategy requires the geopotential.
-     *
-     * Provides information about the valid combinations of required params, e.g., for the Plume negotiator.
-     */
-    static const std::vector<std::vector<std::string>> requiredParams();
 };
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Strategy type traits
 // ---------------------------------------------------------------------------------------------------------------------
+
 /**
  * @brief Traits class template for update strategies.
  *
@@ -121,21 +111,32 @@ public:
  * It provides compile-time information about how to build a strategy, such as its name and constructor argument types.
  * Each specialisation should at least have the following information:
  * - `name` gives the string identifier of the strategy.
+ * - `levtype` Only used for naming purposes to give users an idea of the strategy. Might not always be relevant.
+ * - `levelKey` The config key where the level can be found.
  * - `configArgs` is an array of keys to retrieve from an eckit configuration.
  * - `paramArgs` is an array of param names to retrieve from the model data, except for the observable and observer.
+ * - `requiredParams` is an array of valid combinations of required params that can be used by the negotiator.
  * - `Args` is a tuple of the argument types expected by the strategy constructor. As highlighted in the WindAtHeight
  *    strategy ctor docstring, the order is important.
  *
  * @tparam T The strategy type to provide traits for.
+ *
+ * @note This primary template provides a reference of all the configuration options that users can provide to request
+ *       a derived parameter. This reference can be used by the manager for the negotiation phase.
  */
 template <typename T>
-struct UpdateStrategyTraits;
+struct UpdateStrategyTraits {
+    static constexpr std::array<const char*, 1> allConfigArgs{"height"};
+};
 
 template <>
 struct UpdateStrategyTraits<WindAtHeight> {
-    static constexpr const char* name = "wind_at_height";
+    static constexpr const char* name     = "wind_at_height";
+    static constexpr const char* levtype  = "hl";
+    static constexpr const char* levelKey = "height";
     static constexpr std::array<const char*, 1> configArgs{"height"};
     static constexpr std::array<const char*, 1> paramArgs{"z"};
+    static constexpr std::array<std::array<const char*, 2>, 2> requiredParams{{{"u", "z"}, {"v", "z"}}};
     using Args = std::tuple<std::size_t, AtlasFieldObservablePtr, AtlasFieldObservablePtr, AtlasFieldObserverPtr>;
 };
 
@@ -313,6 +314,62 @@ struct AutoRegister {
             });
     }
 };
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Negotiation utilities for options to strategy name mapping
+// ---------------------------------------------------------------------------------------------------------------------
+using AllUpdateStrategyTraits = std::tuple<UpdateStrategyTraits<WindAtHeight>>;
+
+/**
+ * @brief Checks if a strategy trait matches a given config of options and source parameter.
+ *
+ * A trait is considered a match if its inner `configArgs` array are fully contained as keys in the provided config,
+ * and if the source param (observable) can be found in at least one of the combinations of required parameters.
+ *
+ * @tparam StrategyTraits The update strategy trait type to check. See `UpdateStrategyTraits` for details.
+ *
+ * @note This function is an implementation detail and should not be called directly. Use `findMatchingStrategy()`.
+ */
+template <typename StrategyTraits>
+std::tuple<bool, std::vector<std::string>> matchesStrategyTraitsImpl(const std::string& source,
+                                                                     const eckit::Configuration& config) {
+    // For each arg in StrategyTraits::configArgs, check that it exists in the config
+    for (const char* key : StrategyTraits::configArgs) {
+        if (!config.has(key))
+            return {false, {}};
+    }
+    // Special case, no required params, any param can be used as source
+    if (StrategyTraits::requiredParams.empty()) {
+        return {true, {}};
+    }
+    // Check that the source param is in at least one of the combinations of valid params
+    for (const auto& combination : StrategyTraits::requiredParams) {
+        for (const auto& param : combination) {
+            if (source == param) {
+                std::vector<std::string> requiredParams;
+                requiredParams.reserve(combination.size());
+                for (const char* s : combination) {
+                    requiredParams.emplace_back(s);
+                }
+                return {true, requiredParams};
+            }
+        }
+    }
+    return {false, {}};
+}
+
+/**
+ * @brief Finds the first strategy whose arguments and required params match the provided config and source.
+ *
+ * Each set of {source, config} should uniquely identify a strategy. If that is not the case, it likely means two
+ * strategies are doing the same thing. If no traits match, returns an empty strategy string.
+ *
+ * @return A tuple with the strategy name, the combination of required params containing the source, the levtype
+ *         (might not be applicable to all strategies, may revise in the future, mainly used for naming purposes),
+ *         and the options key which should be used as level.
+ */
+std::tuple<std::string, std::vector<std::string>, std::string, std::string> findMatchingStrategy(
+    const std::string& source, const eckit::Configuration& config);
 
 }  // namespace field_provider
 }  // namespace plume

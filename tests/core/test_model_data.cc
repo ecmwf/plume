@@ -16,7 +16,7 @@
 
 #include "plume/data/FieldProvider.h"
 #include "plume/data/ModelData.h"
-#include "plume/data/Parameter.h"
+#include "plume/data/ParameterValue.h"
 
 using namespace eckit::testing;
 
@@ -47,7 +47,11 @@ public:
 
 /**
  * @brief Specialisation of UpdateStrategyTraits for DummyStrategy.
- * 
+ *
+ * `requiredParams` is left empty because the this strategy does not impose a source name (it is dummy so it does not
+ * require a source to be of a specific quantity, e.g. wind, time etc.) Other traits are ommitted because this strategy
+ * should only be used for model data testing, not manager.
+ *
  * @note This strategy only uses the source and target parameters, no other parameters or inputs from a configuration.
  */
 template <>
@@ -55,6 +59,7 @@ struct UpdateStrategyTraits<DummyStrategy> {
     static constexpr const char* name = "dummy";
     static constexpr std::array<const char*, 0> configArgs{};
     static constexpr std::array<const char*, 0> paramArgs{};
+    static constexpr std::array<std::array<const char*, 0>, 0> requiredParams{{}};
     using Args = std::tuple<IntObservablePtr, IntObserverPtr>;
 };
 

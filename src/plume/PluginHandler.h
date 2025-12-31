@@ -13,8 +13,9 @@
 #include <memory>
 
 #include "plume/Plugin.h"
-#include "plume/PluginCore.h"
 #include "plume/PluginConfig.h"
+#include "plume/PluginCore.h"
+#include "plume/PluginDecision.h"
 
 
 namespace plume {
@@ -27,7 +28,7 @@ class PluginHandler {
 
 public:
 
-    PluginHandler(Plugin& plugin, const PluginConfig& config, const std::vector<std::string>& offeredParams);
+    PluginHandler(Plugin& plugin, const PluginConfig& config, const PluginDecision& decision);
 
     ~PluginHandler() = default;
 
@@ -57,9 +58,16 @@ public:
     /**
      * @brief Get the Active Param Names
      * 
-     * @return std::vector<std::string> 
+     * @return std::set<std::string> 
      */
-    const std::vector<std::string>& getRequiredParamNames() const;
+    const std::set<std::string> getRequiredParamNames(bool derived = true) const;
+
+    /**
+     * @brief Get the Active Params
+     * 
+     * @return std::set<plume::data::ParameterDefinition> 
+     */
+    const std::set<plume::data::ParameterDefinition>& getRequiredParams() const;
 
     /**
      * @brief Forward data to the plugincore
@@ -104,7 +112,7 @@ private:
     std::unique_ptr<PluginCore> plugincorePtr_;
 
     // offered parameters
-    std::vector<std::string> offeredParams_;
+    PluginDecision decision_;
 };
 
 }  // namespace plume

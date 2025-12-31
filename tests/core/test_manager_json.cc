@@ -8,6 +8,8 @@
  * granted to it by virtue of its status as an intergovernmental organisation nor
  * does it submit to any jurisdiction.
  */
+#include <set>
+
 #include "eckit/testing/Test.h"
 #include "eckit/config/YAMLConfiguration.h"
 
@@ -27,7 +29,7 @@ CASE("test_valid_manager_configuration_json") {
     {
       "plugins": [
         {
-          "lib": "simple_plugin",
+          "lib": "simple_plugins",
           "name": "SimplePlugin",
           "core-config": {}
         }
@@ -85,7 +87,7 @@ CASE("test_valid_manager_configuration_json") {
     // check active data catalogue
     plume::data::ParameterCatalogue catalogue = plume::Manager::getActiveDataCatalogue();
 
-    std::vector<std::string> params = catalogue.getParamNames();
+    std::set<std::string> params = catalogue.getParamNames();
     EXPECT_EQUAL(params.size(), 3);
 
     // check that the params are in the catalogue

@@ -8,11 +8,12 @@
  * granted to it by virtue of its status as an intergovernmental organisation nor
  * does it submit to any jurisdiction.
  */
-#include "eckit/testing/Test.h"
+#include <set>
 #include "eckit/config/YAMLConfiguration.h"
+#include "eckit/testing/Test.h"
 
+#include "ManagerTestAccess.h"
 #include "plume/Manager.h"
-#include "plume/data/ParameterCatalogue.h"
 
 
 using namespace eckit::testing;
@@ -20,13 +21,12 @@ using namespace eckit::testing;
 namespace plume::test {
 
 
-
 CASE("test_invalid_plugin_configuration_parameters") {
 
     // invalid YAML
     std::string mgr_conf_str = R"YAML(
     plugins:
-     - lib: simple_plugin
+     - lib: simple_plugins
        name: SimplePlugin
        parameters: 999
        core-config: -
@@ -38,7 +38,7 @@ CASE("test_invalid_plugin_configuration_parameters") {
     // wrong "parameters" type
     std::string mgr_conf_str2 = R"YAML(
     plugins:
-    - lib: simple_plugin
+    - lib: simple_plugins
       name: SimplePlugin
       parameters: 999
       core-config: {}
@@ -69,7 +69,6 @@ CASE("test_invalid_plugin_configuration_parameters") {
     EXPECT_EQUAL(plume::Manager::isConfigured(), false);
     EXPECT_THROWS(plume::Manager::configure(mgr_cfg_invalid_param_type));
     EXPECT_EQUAL(plume::Manager::isConfigured(), false);
-
 }
 
 
@@ -77,7 +76,7 @@ CASE("test_valid_plugin_configuration_parameters") {
 
     std::string mgr_conf_str = R"YAML(
     plugins:
-    - lib: simple_plugin
+    - lib: simple_plugins
       name: SimplePlugin
       parameters:
       - 
@@ -137,8 +136,8 @@ CASE("test_valid_plugin_configuration_parameters") {
 
     // should be validly initialised
     EXPECT_EQUAL(plume::Manager::isConfigured(), true);
-    
-    
+
+
     // negotiate
     plume::Manager::negotiate(data_cfg);
 
@@ -147,20 +146,159 @@ CASE("test_valid_plugin_configuration_parameters") {
 
     // expected to be active parame: I, J, XYZ, K
     EXPECT_EQUAL(plume::Manager::getActiveParams().size(), 4);
-    
 }
 
-CASE ("test derived parameter") {
-    std::string data_conf_str = R"YAML(
-    parameters:
-      - 
-        - name: dummy
-          type: ATLAS_FIELD
-          levtype: hl
-          level: 100
+CASE("test_derived_parameter") {
+    std::string mgr_conf_str = R"YAML(
+    plugins:
+    - lib: simple_plugins
+      name: SimplePlugin
+      parameters:
+        - 
+          - name: u
+            type: ATLAS_FIELD
+            height: 100
     )YAML";
-    // @todo: I don't knw if this is the right place but the client part of the height owned field should be tested somewhere
-    ASSERT(false);
+
+    eckit::YAMLConfiguration mgr_cfg_derived_param(mgr_conf_str);
+
+    std::string data_conf_str = R"YAML(
+    offered:
+      - name: u
+        type: ATLAS_FIELD
+        available: always
+        comment: wind
+      - name: z
+        type: ATLAS_FIELD
+        available: always
+        comment: geopotential
+      - name: I
+        type: INT
+        available: always
+        comment: none-1
+      - name: J
+        type: INT
+        available: always
+        comment: none-1
+      - name: K
+        type: INT
+        available: always
+        comment: none-3
+    )YAML";
+
+    eckit::YAMLConfiguration data_cfg(data_conf_str);
+
+    // valid configuration
+    ManagerTestAccess::reset();
+    EXPECT_NOT(plume::Manager::isConfigured());
+    EXPECT_NO_THROW(plume::Manager::configure(mgr_cfg_derived_param));
+
+    // negotiate
+    EXPECT_NO_THROW(plume::Manager::negotiate(data_cfg));
+
+    std::set<std::string> expected = {"I", "J", "K", "u", "u;hl;100", "z"};
+    std::set<std::string> activeParams(plume::Manager::getActiveParams().begin(),
+                                       plume::Manager::getActiveParams().end());
+
+    // expected to be active params: u, z, u;hl;100
+    // not only the derived should be activated but also the dependencies
+    EXPECT_EQUAL(activeParams, expected);
+}
+
+CASE("test_invalid_derived_parameter") {
+    std::string mgr_conf_str = R"YAML(
+    plugins:
+    - lib: simple_plugins
+      name: SimplePlugin
+      parameters:
+        - 
+          - name: u
+            type: ATLAS_FIELD
+            invalid_option: 100
+    )YAML";
+
+    eckit::YAMLConfiguration mgr_cfg_derived_param(mgr_conf_str);
+
+    std::string data_conf_str = R"YAML(
+    offered:
+      - name: u
+        type: ATLAS_FIELD
+        available: always
+        comment: wind
+      - name: I
+        type: INT
+        available: always
+        comment: none-1
+      - name: J
+        type: INT
+        available: always
+        comment: none-1
+      - name: K
+        type: INT
+        available: always
+        comment: none-3
+    )YAML";
+
+    eckit::YAMLConfiguration data_cfg(data_conf_str);
+
+    // valid configuration
+    ManagerTestAccess::reset();
+    EXPECT_NOT(plume::Manager::isConfigured());
+    EXPECT_NO_THROW(plume::Manager::configure(mgr_cfg_derived_param));
+
+    // negotiation fails hard because of invalid option
+    EXPECT_THROWS(plume::Manager::negotiate(data_cfg));
+}
+
+CASE("test_cannot_derive_parameter") {
+    std::string mgr_conf_str = R"YAML(
+    plugins:
+    - lib: simple_plugins
+      name: SimplePlugin
+      parameters:
+        - 
+          - name: u
+            type: ATLAS_FIELD
+            height: 100
+    )YAML";
+
+    eckit::YAMLConfiguration mgr_cfg_derived_param(mgr_conf_str);
+
+    std::string data_conf_str = R"YAML(
+    offered:
+      - name: u
+        type: ATLAS_FIELD
+        available: always
+        comment: wind
+      - name: I
+        type: INT
+        available: always
+        comment: none-1
+      - name: J
+        type: INT
+        available: always
+        comment: none-1
+      - name: K
+        type: INT
+        available: always
+        comment: none-3
+    )YAML";
+
+    eckit::YAMLConfiguration data_cfg(data_conf_str);
+
+    // valid configuration
+    ManagerTestAccess::reset();
+    EXPECT_NOT(plume::Manager::isConfigured());
+    EXPECT_NO_THROW(plume::Manager::configure(mgr_cfg_derived_param));
+
+    // negotiate
+    EXPECT_NO_THROW(plume::Manager::negotiate(data_cfg));
+
+    // plugin loaded but without parameter group
+    std::set<std::string> expected = {"I", "J", "K"};
+    std::set<std::string> activeParams(plume::Manager::getActiveParams().begin(),
+                                       plume::Manager::getActiveParams().end());
+    EXPECT_EQUAL(activeParams, expected);
 }
 
 //----------------------------------------------------------------------------------------------------------------------

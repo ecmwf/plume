@@ -18,21 +18,14 @@ namespace plume {
 namespace data {
 
 
-const std::string ModelData::SEP_ = ";";
-
-
 ModelData::ModelData() {
     // registering update strategies
     registerStrategy<field_provider::WindAtHeight>();
 }
 
-ModelData::~ModelData() {
-    // Nothing to do here (each parameter destructs its data pointer, as appropriate..)
-}
-
 
 // Get a subset of the ModelData
-ModelData ModelData::filter(std::vector<std::string> params) const {
+ModelData ModelData::filter(std::set<std::string> params) const {
     ModelData filteredData;
     std::vector<std::string> availParams = getAvailableValues();
     for (const auto& key : params) {
@@ -60,11 +53,17 @@ bool ModelData::hasParameter(const std::string& name) const {
 }
 
 
+bool ModelData::hasParameter(const std::string& name, const std::string& level, const std::string& levtype) const {
+    std::string entryName = IParameterObserver::deriveParamName(name, levtype, level);
+    return hasParameter(entryName);
+}
+
+
 bool ModelData::hasParameter(const std::string& name, const ParameterType& type) const {
     if (valueMap_.find(name) != valueMap_.end()) {
         ASSERT_MSG(valueMap_.at(name)->type() == type,
-                   "value.type = " + ParameterTypeConverter::toString(valueMap_.at(name)->type()) +
-                       " vs expected = " + ParameterTypeConverter::toString(type));
+                   "value.type = " + std::string(typeToString(valueMap_.at(name)->type())) +
+                       " vs expected = " + std::string(typeToString(type)));
         return true;
     }
     return false;
@@ -77,7 +76,7 @@ bool ModelData::isUpdated(const std::string& name) const {
 }
 
 bool ModelData::isUpdated(const std::string& name, const std::string& level, const std::string& levtype) const {
-    std::string entryName = deriveParamName(name, levtype, level);
+    std::string entryName = IParameterObserver::deriveParamName(name, levtype, level);
     return isUpdated(entryName);
 }
 
@@ -107,7 +106,7 @@ void ModelData::print() const {
 
 
 std::vector<std::string> ModelData::listAvailableParameters(std::string type_string) const {
-    ParameterType type = ParameterTypeConverter::fromString(type_string);
+    ParameterType type = typeFromString(type_string.c_str());
     std::vector<std::string> keys;
     for (const auto& key : valueMap_) {
         if (key.second->type() == type) {
@@ -116,6 +115,8 @@ std::vector<std::string> ModelData::listAvailableParameters(std::string type_str
     }
     return keys;
 }
+
+// -------- private
 
 void ModelData::addDependency(const std::string& observer, const std::string& observable, const std::string& type,
                               const eckit::Configuration& config) {
@@ -141,8 +142,6 @@ void ModelData::addDependency(const std::string& observer, const std::string& ob
 }
 
 
-// -------- private
-
 // All values available
 std::vector<std::string> ModelData::getAvailableValues() const {
     std::vector<std::string> keys;
@@ -161,12 +160,24 @@ std::unique_ptr<field_provider::UpdateStrategy> ModelData::createStrategy(const 
     return it->second(args);
 }
 
-std::string ModelData::deriveParamName(const std::string& source, const std::string& levtype,
-                                       const std::string& level) const {
-    if (levtype != "hl" && levtype != "dummy") {  // dummy is allowed for testing
-        throw eckit::BadValue("Plume derived params only supports levtype 'hl'!", Here());
+void ModelData::dispatchCreateParam(const std::string& strategy, const eckit::Configuration& config) {
+    ParameterType type = typeFromString(config.getString("type").c_str());
+    switch (type) {
+        case ParameterType::INT:
+            return createParam<int>(strategy, config);
+        case ParameterType::BOOL:
+            return createParam<bool>(strategy, config);
+        case ParameterType::FLOAT:
+            return createParam<float>(strategy, config);
+        case ParameterType::DOUBLE:
+            return createParam<double>(strategy, config);
+        case ParameterType::STRING:
+            return createParam<std::string>(strategy, config);
+        case ParameterType::ATLAS_FIELD:
+            return createParam<atlas::Field>(strategy, config);
+        default:
+            throw eckit::BadValue("Parameter Type invalid or not recognised!", Here());
     }
-    return source + SEP_ + levtype + SEP_ + level;  // default is 'name;levtype;level'
 }
 
 

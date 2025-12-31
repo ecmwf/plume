@@ -13,6 +13,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -25,8 +26,9 @@
 #include "atlas/field/Field.h"
 #include "atlas/field/detail/FieldImpl.h"
 
-
 #include "plume/data/ParameterCatalogue.h"
+#include "plume/data/ParameterType.h"
+#include "plume/data/ParameterValue.h"
 
 
 namespace plume {
@@ -36,7 +38,6 @@ namespace data {
 // Container class for Values and pointers
 class ModelData {
 private:
-    static const std::string SEP_;
     // Values & Strategies
     std::map<std::string, std::shared_ptr<IParameterValue>> valueMap_;
     std::unordered_map<std::string, std::function<std::unique_ptr<field_provider::UpdateStrategy>(
@@ -72,17 +73,10 @@ private:
     void addDependency(const std::string& observer, const std::string& observable, const std::string& strategyName,
                        const eckit::Configuration& config);
 
-    /**
-     * @brief Builds default name for observer parameters.
-     *
-     * @note In case of Atlas field, this name is decorrelated from the field name in its metadata.
-     */
-    std::string deriveParamName(const std::string& source, const std::string& levtype, const std::string& level) const;
-
 public:
     ModelData();
 
-    ~ModelData();
+    ~ModelData() = default;  // Nothing to do here (each parameter destructs its data pointer, as appropriate..)
 
     /**
      * @brief Creates a new value of type T, and transfer its ownership to a parameter wrapper.
@@ -103,6 +97,11 @@ public:
     }
 
     /**
+     * @brief Dispatch method `createParam<T>` method for manager to create parameters based on configured type.
+     */
+    void dispatchCreateParam(const std::string& strategy, const eckit::Configuration& config);
+
+    /**
      * @brief Creates a new value as above, and subscribe it to one of the publisher parameters.
      *
      * Publisher parameters are added to the Model Data through `provideParam`.
@@ -117,8 +116,8 @@ public:
         // 1. name the param entry using defaults or user instructions
         std::string paramName = name;
         if (paramName.empty()) {
-            paramName =
-                deriveParamName(config.getString("name"), config.getString("levtype", "hl"), config.getString("level"));
+            paramName = IParameterObserver::deriveParamName(config.getString("name"), config.getString("levtype", "hl"),
+                                                            config.getString("level"));
         }
         if (hasParameter(paramName)) {
             eckit::Log::warning() << "Parameter '" << paramName << "' already in Model Data. Not inserted!"
@@ -165,6 +164,9 @@ public:
      */
     template <typename T>
     void updateParam(std::string name, T newVal) {
+        if (!hasParameter(name)) {
+            throw eckit::BadParameter("Parameter '" + name + "' not found in model data!", Here());
+        }
         if (auto typedPtr = std::dynamic_pointer_cast<IParameterObserver>(valueMap_.at(name))) {
             if (typedPtr->observes()) {
                 throw eckit::AssertionFailed("Observer parameters actively observing can only be updated by strategies",
@@ -186,6 +188,9 @@ public:
      */
     template <typename T, typename = std::enable_if_t<!std::is_same<T, atlas::Field::Implementation>::value>>
     T getParam(std::string name) const {
+        if (!hasParameter(name)) {
+            throw eckit::BadParameter("Parameter '" + name + "' not found in model data!", Here());
+        }
         if (auto typedPtr = std::dynamic_pointer_cast<ParameterValueTyped<T>>(valueMap_.at(name))) {
             return typedPtr->get();
         }
@@ -205,18 +210,19 @@ public:
      */
     template <typename T>
     T getParam(const std::string& name, const std::string& level, const std::string& levtype = "hl") const {
-        std::string entryName = deriveParamName(name, levtype, level);
+        std::string entryName = IParameterObserver::deriveParamName(name, levtype, level);
         return getParam<T>(entryName);
     }
 
     // Return a subset of the ModelData
-    ModelData filter(std::vector<std::string> params) const;
+    ModelData filter(std::set<std::string> params) const;
 
     // Return a subset of the ModelData
     ModelData filter(ParameterCatalogue params) const;
 
     // check if a parameter is in the data
     bool hasParameter(const std::string& name) const;
+    bool hasParameter(const std::string& name, const std::string& level, const std::string& levtype = "hl") const;
     bool hasParameter(const std::string& name, const ParameterType& type) const;
 
     // Manage parameters updated state

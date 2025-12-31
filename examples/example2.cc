@@ -17,7 +17,6 @@
 
 #include "plume/Manager.h"
 #include "plume/data/ModelData.h"
-#include "plume/data/ParameterCatalogue.h"
 
 
 // Prepare a dummy Atlas Field
@@ -44,15 +43,15 @@ int main(int argc, char** argv) {
 
     // Negotiate
     plume::Protocol offers;
-    offers.offerInt("I", "always", "this is param I");
-    offers.offerInt("J", "always", "this is param J");
-    offers.offerInt("K", "always", "this is param K");
+    offers.offer<int>("I", "always", "this is param I");
+    offers.offer<int>("J", "always", "this is param J");
+    offers.offer<int>("K", "always", "this is param K");
 
-    offers.offerAtlasField("field_dummy_1", "on-request", "this is dummy_field");
+    offers.offer<atlas::Field>("field_dummy_1", "on-request", "this is dummy_field");
 
-    offers.offerInt("config-param-1", "on-request", "this is param config-param-1");
-    offers.offerDouble("config-param-2", "on-request", "this is param config-param-2");
-    offers.offerAtlasField("config-param-3", "on-request", "this is param config-param-3");
+    offers.offer<int>("config-param-1", "on-request", "this is param config-param-1");
+    offers.offer<double>("config-param-2", "on-request", "this is param config-param-2");
+    offers.offer<atlas::Field>("config-param-3", "on-request", "this is param config-param-3");
 
     plume::Manager::negotiate(offers);
 

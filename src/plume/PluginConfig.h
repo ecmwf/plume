@@ -12,7 +12,9 @@
 #pragma once
 
 #include "Configurable.h"
+
 #include "eckit/config/LocalConfiguration.h"
+#include "eckit/exception/Exceptions.h"
 
 
 namespace plume {

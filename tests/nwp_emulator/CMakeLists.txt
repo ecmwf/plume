@@ -59,7 +59,7 @@ foreach(prec sp dp)
 
         ecbuild_add_test(
             TARGET  plume_test_nwp_tool_${prec}
-            LIBS simple_plugin nwp_emulator_test_plugin_${prec}
+            LIBS simple_plugins nwp_emulator_test_plugin_${prec}
             COMMAND nwp_emulator_run_${prec}.x
             ARGS --config-src=${CMAKE_CURRENT_SOURCE_DIR}/data/valid_config.yml
                 --plume-cfg=${CMAKE_CURRENT_SOURCE_DIR}/data/plume_config_${prec}.yml

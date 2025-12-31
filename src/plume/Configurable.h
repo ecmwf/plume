@@ -36,7 +36,7 @@ public:
 
     friend std::ostream& operator<<(std::ostream& oss, const Configurable& obj);
 
-private:
+protected:
 
     // internal copy of config
     eckit::LocalConfiguration config_;
