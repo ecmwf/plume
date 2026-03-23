@@ -64,6 +64,11 @@ if (HAVE_NWP_EMULATOR)
                       "Compile nwp emulator for double precision fields"
                       DEFAULT ON)
 
+  ecbuild_add_option( FEATURE NWP_EMULATOR_UI
+                      DESCRIPTION
+                      "Build minimal web UI launcher for nwp emulator"
+                      DEFAULT OFF)
+
   set( HAVE_NWP_EMULATOR_sp 0)
   set( HAVE_NWP_EMULATOR_dp 0)
 

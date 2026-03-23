@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plume NWP Emulator UI</title>
+  <link rel="stylesheet" href="assets/css/variables.css">
+  <link rel="stylesheet" href="assets/css/base.css">
+  <link rel="stylesheet" href="assets/css/layout.css">
+  <link rel="stylesheet" href="assets/css/components.css">
+  <link rel="stylesheet" href="assets/css/map.css">
+  <link rel="stylesheet" href="assets/css/setup.css">
+  <link rel="stylesheet" href="assets/css/responsive.css">
+</head>
+<body>
+  <div class="app">
+    <div class="brand-strip" aria-label="ECMWF branding">
+      <div class="brand-logos">
+        <img class="brand-logo" src="assets/logos/ECMWF_logo.png" alt="ECMWF logo">
+        <img class="brand-logo plume" src="assets/logos/plume_logo_small.svg" alt="Plume logo">
+      </div>
+      <div class="brand-tag">Plume NWP Emulator Setup and Run Interface</div>
+    </div>
+
+    <div class="top-tabs">
+      <button id="run-tab-btn" class="tab active" aria-selected="true">RUN <span id="run-tab-dot" class="tab-dot" aria-hidden="true"></span></button>
+      <button id="setup-tab-btn" class="tab" aria-selected="false">SETUP <span id="setup-tab-dot" class="tab-dot" aria-hidden="true"></span></button>
+    </div>
+
+    <div class="tab-content">
+      <section id="run-panel" class="tab-panel" aria-label="Run tab">
+      <div class="meta-row">
+        <div class="title-block">
+          <h1>Plume NWP Emulator</h1>
+          <p>Minimal launcher UI for Plume Emulator</p>
+        </div>
+
+        <div class="meta-actions">
+          <label class="chip dev switch" for="dev-toggle">
+            <input id="dev-toggle" type="checkbox" checked>
+            <span class="switch-track" aria-hidden="true"></span>
+            Dev
+          </label>
+          <span class="chip">Status: <span id="status">Ready</span></span>
+        </div>
+      </div>
+
+      <div class="workspace">
+        <section class="left-panel" aria-label="Control panel">
+          <div class="panel-title">Control Panel</div>
+          <div id="run-control-panel" class="left-inner">
+            <button id="launch" class="run-btn">Run</button>
+
+            <div class="transport" role="group" aria-label="Transport controls">
+              <button type="button" aria-label="Previous step">&#9664;</button>
+              <button type="button" aria-label="Pause">&#10074;&#10074;</button>
+              <button type="button" aria-label="Next step">&#9654;</button>
+            </div>
+
+            <button class="step-btn" type="button">Run 1 Step</button>
+
+            <div class="save-grid" role="group" aria-label="Save controls">
+              <button class="save-btn" type="button">save step</button>
+              <button class="save-btn" type="button">save gif</button>
+              <button class="save-btn" type="button">save run</button>
+            </div>
+
+            <div class="step-card" aria-live="polite">
+              <div class="label">Current Step</div>
+              <div class="value">1 / 10</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="right-panel" aria-label="Run workspace">
+          <div class="panel-title">Run Workspace</div>
+          <div class="right-inner">
+            <div class="controls-grid">
+              <div class="box">
+                <div class="box-title">Options</div>
+                <div class="options-layout">
+                  <div class="option-group">
+                    <div class="group-title">Field Toggles</div>
+                    <ul class="check-list">
+                      <li>
+                        <label><input type="radio" name="field-toggle" checked> Field</label>
+                      </li>
+                      <li>
+                        <label><input type="radio" name="field-toggle"> Toggle</label>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div class="option-group">
+                    <div class="group-title">Plugin Outputs Toggles</div>
+                    <ul class="check-list">
+                      <li>
+                        <label><input type="checkbox"> Loaded Plugin 1</label>
+                      </li>
+                      <li>
+                        <label><input type="checkbox"> Loaded Plugin 2</label>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div class="map-column">
+                <div class="map-wrap" aria-label="Equal Earth map panel">
+                  <div class="map-zoom-controls" role="group" aria-label="Map controls">
+                    <button id="map-zoom-out" class="map-zoom-btn" type="button" aria-label="Zoom out">-</button>
+                    <button id="map-zoom-in" class="map-zoom-btn" type="button" aria-label="Zoom in">+</button>
+                    <button id="map-pan-toggle" class="map-pan-btn" type="button" aria-label="Toggle translation">Translate</button>
+                  </div>
+                  <div id="equal-earth-map" class="map-canvas" role="img" aria-label="Equal Earth world map with coastlines and country borders only"></div>
+                </div>
+
+                <div class="box">
+                  <div class="box-title">Scale</div>
+                  <div class="colorbar" aria-label="Coolwarm scale placeholder"></div>
+                  <div class="scale-note">Units and graduations to be defined.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section class="output-panel" aria-label="Terminal output">
+        <div class="output-title">Terminal Output (Read Only)</div>
+        <pre id="output">No run yet.</pre>
+      </section>
+      </section>
+
+      <section id="setup-panel" class="tab-panel" aria-label="Setup tab" hidden>
+        <div class="setup-options" aria-label="Run options">
+          <div class="setup-options-title">Run Options</div>
+          <div class="setup-options-row">
+            <label class="setup-control" for="dry-run">
+              <input id="dry-run" type="checkbox">
+              Dry Run
+            </label>
+
+            <div class="setup-control" role="group" aria-label="Run mode">
+              Run Mode:
+              <span class="mode-group">
+                <label for="mode-grib"><input id="mode-grib" type="radio" name="run-mode" value="grib"> Grib</label>
+                <label for="mode-config"><input id="mode-config" type="radio" name="run-mode" value="config" checked> Config</label>
+              </span>
+            </div>
+
+            <label class="setup-control" for="mpi-n">
+              MPI_N:
+              <input id="mpi-n" class="mpi-input" type="number" min="1" value="3">
+            </label>
+          </div>
+        </div>
+
+        <div class="setup-grid">
+          <section id="plume-pane" class="setup-pane" aria-label="Plume config pane">
+            <div class="setup-pane-head with-logo">
+              <span>Plume Config</span>
+              <img class="pane-head-logo" src="assets/logos/plume_logo_small.svg" alt="Plume logo">
+            </div>
+            <div class="pane-body">
+              <div class="upload-row">
+                <button type="button" class="upload-btn" data-target="plume-upload-file">Upload</button>
+                <input id="plume-upload-path" type="text" value="..............." readonly>
+                <input id="plume-upload-file" type="file" accept=".yml,.yaml" hidden>
+              </div>
+              <hr class="pane-divider">
+              <div>
+                <div class="editor-label">YAML Editor</div>
+                <textarea id="plume-yaml-editor" class="yaml-editor" spellcheck="false"># plume config placeholder
+# add keys/values here</textarea>
+              </div>
+            </div>
+          </section>
+
+          <section id="emulator-pane" class="setup-pane" aria-label="Emulator config pane">
+            <div class="setup-pane-head">Emulator Config</div>
+            <div class="pane-body">
+              <div class="upload-row">
+                <button type="button" class="upload-btn" data-target="emulator-upload-file">Upload</button>
+                <input id="emulator-upload-path" type="text" value="..............." readonly>
+                <input id="emulator-upload-file" type="file" accept=".yml,.yaml" hidden>
+              </div>
+              <hr class="pane-divider">
+              <div>
+                <div class="editor-label">YAML Editor</div>
+                <textarea id="emulator-yaml-editor" class="yaml-editor" spellcheck="false"># emulator config placeholder
+# add keys/values here</textarea>
+              </div>
+            </div>
+          </section>
+
+          <section id="grib-pane" class="setup-pane" aria-label="Grib folder pane">
+            <div class="setup-pane-head">Grib Folder</div>
+            <div class="pane-body">
+              <div class="upload-row">
+                <button type="button" class="upload-btn" data-target="grib-upload-file" data-dir-target="grib-upload-dir">Upload</button>
+                <input id="grib-upload-path" type="text" value="..............." readonly>
+                <input id="grib-upload-file" type="file" accept=".grib,.grib1,.grib2" multiple hidden>
+                <input id="grib-upload-dir" type="file" webkitdirectory directory multiple hidden>
+              </div>
+              <hr class="pane-divider">
+              <div>
+                <div class="info-label">Info (Read-Only)</div>
+                <div class="info-box"># steps: 10
+fields: u, v
+
+placeholder metadata</div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="run-checks-panel" aria-label="Run checks for setup">
+          <div class="run-checks-head">Run Checks</div>
+          <div class="run-checks-body">
+            <span>
+              <button id="run-checks-btn" class="checks-btn" type="button">(✓) Run Checks</button>
+              checks apply to the whole setup before run
+            </span>
+            <span id="checks-status" class="checks-badge">Not Run</span>
+          </div>
+        </section>
+      </section>
+    </div>
+
+    <footer class="app-footer">© 2025 ECMWF. All rights reserved.</footer>
+  </div>
+
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

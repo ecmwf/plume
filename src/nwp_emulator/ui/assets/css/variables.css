@@ -1,0 +1,13 @@
+:root {
+  --bg: #eaf2fb;
+  --panel: #ffffff;
+  --ink: #0c2740;
+  --ink-soft: #4f667d;
+  --accent: #0073c6;
+  --accent-strong: #005aa0;
+  --border: #c3d6e8;
+  --line: #dce8f4;
+  --chip: #edf5fc;
+  --ok: #166534;
+  --err: #991b1b;
+}

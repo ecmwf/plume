@@ -1,0 +1,35 @@
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .controls-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .left-panel,
+  .right-panel {
+    min-height: auto;
+  }
+
+  .options-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .map-wrap {
+    min-height: 380px;
+  }
+
+  .map-canvas {
+    min-height: 300px;
+  }
+
+  .setup-options-row,
+  .setup-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-pane {
+    min-height: auto;
+  }
+}

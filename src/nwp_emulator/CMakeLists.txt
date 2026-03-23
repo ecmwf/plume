@@ -52,4 +52,21 @@ foreach(prec sp dp)
     endif()
 endforeach()
 
+if (HAVE_NWP_EMULATOR_UI)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+    set(NWP_EMULATOR_UI_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ui)
+    set(NWP_EMULATOR_UI_BUILD_BIN_DIR ${PROJECT_BINARY_DIR}/bin)
+
+    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+        ${NWP_EMULATOR_UI_SOURCE_DIR}/ui_launcher.py ${NWP_EMULATOR_UI_BUILD_BIN_DIR}/ui_launcher.py )
+    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+        ${NWP_EMULATOR_UI_SOURCE_DIR}/index.html ${NWP_EMULATOR_UI_BUILD_BIN_DIR}/index.html )
+    # Ideally logos would be fetched from the logos repository instead of living in the assets
+    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+        ${NWP_EMULATOR_UI_SOURCE_DIR}/assets ${NWP_EMULATOR_UI_BUILD_BIN_DIR}/assets )
+    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+        ${NWP_EMULATOR_UI_SOURCE_DIR}/js ${NWP_EMULATOR_UI_BUILD_BIN_DIR}/js )
+endif()
+
 
