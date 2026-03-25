@@ -9,7 +9,8 @@ export function setRunControlsDisabled(disabled) {
   });
 }
 
-export function updateRunAvailability() {
+export function updateRunAvailability(checksState = uiState.checksState) {
+  uiState.checksState = checksState;
   setRunControlsDisabled(uiState.checksState !== "passed");
 }
 

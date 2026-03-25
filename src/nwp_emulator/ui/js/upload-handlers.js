@@ -11,36 +11,42 @@ export async function readYamlIntoEditor(fileInput, editorId) {
   editor.value = content;
 }
 
-function bindUploadPicker(button) {
+function bindUploadPicker(button, callbacks) {
   const fileInput = document.getElementById(button.dataset.target);
   if (!fileInput) {
     return;
   }
 
   const pathInput = button.parentElement.querySelector("input[type='text']");
-  const dirInput = button.dataset.dirTarget ? document.getElementById(button.dataset.dirTarget) : null;
+  const folderOnly = button.dataset.folderOnly === "true";
+  const isDirectoryInput = fileInput.hasAttribute("webkitdirectory") || fileInput.hasAttribute("directory");
 
   button.addEventListener("click", () => {
-    if (dirInput) {
-      const chooseFolder = window.confirm("OK: choose a folder. Cancel: choose .grib/.grib1/.grib2 files.");
-      if (chooseFolder) {
-        dirInput.click();
-        return;
-      }
+    if (folderOnly || isDirectoryInput) {
+      fileInput.click();
+      return;
     }
     fileInput.click();
   });
 
   fileInput.addEventListener("change", async () => {
-    const picked = fileInput.files && fileInput.files[0];
+    const allFiles = Array.from(fileInput.files || []);
+    const picked = allFiles[0];
     if (!picked || !pathInput) {
       return;
     }
 
-    if (fileInput.id === "grib-upload-file") {
-      pathInput.value = fileInput.files.length > 1
-        ? `${fileInput.files.length} grib files selected`
-        : picked.name;
+    if (folderOnly || isDirectoryInput) {
+      const relativePaths = allFiles.map((item) => item.webkitRelativePath || item.name);
+      const folderName = (picked.webkitRelativePath || picked.name).split("/")[0] || "selected-folder";
+      const topLevelEntries = relativePaths
+        .filter((entry) => entry.split("/").length === 2)
+        .map((entry) => entry.split("/")[1]);
+
+      pathInput.value = `${folderName}/`;
+      if (callbacks.onGribFolderSelected) {
+        await callbacks.onGribFolderSelected(folderName, topLevelEntries);
+      }
       return;
     }
 
@@ -48,25 +54,22 @@ function bindUploadPicker(button) {
 
     if (fileInput.id === "plume-upload-file") {
       await readYamlIntoEditor(fileInput, "plume-yaml-editor");
+      if (callbacks.onPlumeYamlUploaded) {
+        await callbacks.onPlumeYamlUploaded(document.getElementById("plume-yaml-editor").value, picked.name);
+      }
     }
     if (fileInput.id === "emulator-upload-file") {
       await readYamlIntoEditor(fileInput, "emulator-yaml-editor");
+      if (callbacks.onEmulatorYamlUploaded) {
+        await callbacks.onEmulatorYamlUploaded(document.getElementById("emulator-yaml-editor").value, picked.name);
+      }
     }
   });
 
-  if (dirInput) {
-    dirInput.addEventListener("change", () => {
-      const picked = dirInput.files && dirInput.files[0];
-      if (!picked || !pathInput) {
-        return;
-      }
-      const rel = picked.webkitRelativePath || picked.name;
-      const folderName = rel.split("/")[0];
-      pathInput.value = `${folderName}/`;
-    });
-  }
 }
 
-export function initUploadHandlers(uploadButtons) {
-  uploadButtons.forEach(bindUploadPicker);
+export function initUploadHandlers(uploadButtons, callbacks) {
+  uploadButtons.forEach((button) => {
+    bindUploadPicker(button, callbacks || {});
+  });
 }

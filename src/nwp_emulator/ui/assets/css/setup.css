@@ -113,6 +113,11 @@
   grid-template-columns: auto 1fr;
   gap: 0.5rem;
   align-items: center;
+  min-width: 0;
+}
+
+#grib-pane .upload-row {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .upload-row button {
@@ -135,12 +140,22 @@
 
 .upload-row input {
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   border: 1px solid #b7c8d4;
   border-radius: 8px;
   padding: 0.36rem 0.46rem;
   font-size: 0.8rem;
   color: #476173;
   background: #f9fcff;
+}
+
+.path-hint {
+  font-size: 0.71rem;
+  color: #6d8799;
+  font-style: italic;
+  margin-top: 0.28rem;
+  padding-left: 0.1rem;
 }
 
 .pane-divider {
@@ -158,12 +173,38 @@
   font-weight: 700;
 }
 
+.editor-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.editor-state-note {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: transparent;
+}
+
+.editor-state-note.modified {
+  color: #3e7ed8;
+}
+
+.editor-state-note.failed {
+  color: #c63a3a;
+}
+
 .yaml-editor {
   width: 100%;
-  height: 175px;
+  min-height: 215px;
+  box-sizing: border-box;
+  display: block;
   border: 1px solid #b7c8d4;
   border-radius: 8px;
   padding: 0.52rem;
+  margin-bottom: 0;
   resize: vertical;
   font-family: "SFMono-Regular", Menlo, Consolas, monospace;
   font-size: 0.79rem;
@@ -172,16 +213,39 @@
   line-height: 1.35;
 }
 
+.yaml-editor.modified {
+  border-color: #3e7ed8;
+  box-shadow: 0 0 0 2px rgba(62, 126, 216, 0.2);
+}
+
+.yaml-editor.invalid {
+  border-color: #c63a3a;
+  box-shadow: 0 0 0 2px rgba(198, 58, 58, 0.2);
+  background: #fff7f7;
+}
+
 .info-box {
+  width: 100%;
+  box-sizing: border-box;
   border: 1px solid #b7c8d4;
   border-radius: 8px;
   background: #fbfdff;
-  min-height: 175px;
+  min-height: 0;
   padding: 0.54rem;
+  margin-bottom: 0;
   font-family: "SFMono-Regular", Menlo, Consolas, monospace;
   font-size: 0.79rem;
   color: #1f3848;
   line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+}
+
+.info-box.invalid {
+  border-color: #c63a3a;
+  box-shadow: inset 0 0 0 2px rgba(198, 58, 58, 0.2);
+  background: #fff7f7;
 }
 
 .setup-pane.disabled {
@@ -216,6 +280,13 @@
   margin-bottom: 0.52rem;
 }
 
+.run-checks-subtitle {
+  color: #4f7262;
+  font-size: 0.79rem;
+  font-weight: 600;
+  margin-bottom: 0.55rem;
+}
+
 .run-checks-body {
   display: flex;
   align-items: center;
@@ -228,16 +299,25 @@
 }
 
 .checks-btn {
-  border: 1px solid #8db39b;
+  border: 1px solid #2f6b48;
   border-radius: 8px;
-  background: #ecf8f1;
-  color: #1d5138;
+  background: #2f6b48;
+  color: #f4fbf7;
   font-weight: 700;
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 0.34rem 0.56rem;
   cursor: pointer;
+}
+
+.checks-btn:hover {
+  background: #275a3d;
+}
+
+.checks-btn:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
 }
 
 .checks-badge {
@@ -267,4 +347,72 @@
   border-color: #cf9a9a;
   background: #fbefef;
   color: #8f2323;
+}
+
+.checks-list {
+  margin: 0.56rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.check-item {
+  border: 1px solid #c8d6df;
+  border-radius: 8px;
+  background: #f4f8fb;
+  color: #3a5768;
+  padding: 0.38rem 0.5rem;
+  font-size: 0.79rem;
+  font-weight: 700;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+
+.check-icon {
+  width: 1rem;
+  text-align: center;
+  font-size: 0.82rem;
+  margin-top: 0.12rem;
+}
+
+.check-content {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.check-msg {
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #6d8190;
+  white-space: pre-wrap;
+}
+
+.check-item.pass {
+  border-color: #88b8a0;
+  background: #eaf7ef;
+  color: #22563d;
+}
+
+.check-item.fail {
+  border-color: #d5a2a2;
+  background: #fbeeee;
+  color: #8e2a2a;
+}
+
+.check-item.fail .check-msg {
+  color: #8e2a2a;
+}
+
+.check-item.disabled {
+  border-color: #d5dde3;
+  background: #f2f4f6;
+  color: #8a9aa6;
+}
+
+.check-item.disabled .check-msg {
+  color: #8a9aa6;
 }

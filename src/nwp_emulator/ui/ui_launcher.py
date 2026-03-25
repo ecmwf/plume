@@ -2,23 +2,34 @@
 """Minimal local web UI to launch the nwp_emulator command from one button."""
 
 import argparse
-import json
+import importlib
 import mimetypes
 import os
 import pathlib
 import subprocess
+import sys
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from backend.api.request_parsers import parse_json_body
+from backend.api.response_builders import error_response, json_response
+from backend.api.setup_routes import SetupRoutes
+from backend.domain.errors import SetupValidationError
+from backend.services.checks_service import ChecksService
+from backend.services.setup_service import SetupService
+from backend.services.source_service import SourceService
+from backend.storage.in_memory_store import InMemorySessionStore
 
 MAX_TAIL_CHARS = 6000
 ALLOWED_BIN_NAMES = {"nwp_emulator_run_sp.x", "nwp_emulator_run_dp.x"}
 
 
 class LauncherConfig:
-    def __init__(self, command, html_path):
+    def __init__(self, command, html_path, setup_routes):
         self.command = command
         self.html_path = html_path
         self.ui_dir = html_path.parent
+        self.setup_routes = setup_routes
 
 
 def tail_text(text, max_chars=MAX_TAIL_CHARS):
@@ -37,9 +48,23 @@ def parse_args():
     return parser.parse_args()
 
 
+def ensure_eccodes_available():
+    try:
+        importlib.import_module("eccodes")
+    except Exception as exc:
+        lines = [
+            "Missing Python dependency: eccodes",
+            f"Interpreter: {sys.executable}",
+            f"Import error: {exc}",
+            "Install with the same interpreter, for example:",
+            f"  {sys.executable} -m pip install eccodes",
+            "Current sys.path:",
+        ]
+        lines.extend([f"  - {entry}" for entry in sys.path])
+        raise SystemExit("\n".join(lines)) from exc
+
+
 def validate_and_build_command(args):
-    if bool(args.config_src) == bool(args.grib_src):
-        raise ValueError("Exactly one of --config-src or --grib-src must be provided")
     if args.mpi_procs < 1:
         raise ValueError("--mpi-procs must be at least 1")
 
@@ -51,32 +76,42 @@ def validate_and_build_command(args):
         raise ValueError(f"Emulator binary not found: {emulator_path}")
 
     command = ["mpirun", "-np", str(args.mpi_procs), str(emulator_path)]
-    if args.config_src:
-        command.append(f"--config-src={args.config_src}")
-    if args.grib_src:
-        command.append(f"--grib-src={args.grib_src}")
-    if args.plume_cfg:
-        command.append(f"--plume-cfg={args.plume_cfg}")
-
     return command
 
 
 def make_handler(config):
     class LauncherHandler(BaseHTTPRequestHandler):
-        def _json_response(self, status, payload):
-            body = json.dumps(payload).encode("utf-8")
+        def _write_response(self, status, headers, body):
             self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
+            for key, value in headers.items():
+                self.send_header(key, value)
             self.end_headers()
             self.wfile.write(body)
 
+        def _json_response(self, status, payload):
+            status_code, headers, body = json_response(int(status), payload)
+            self._write_response(status_code, headers, body)
+
+        def _route_setup(self, method, path, payload):
+            try:
+                response_payload = config.setup_routes.dispatch(method, path, payload)
+                status_code, headers, body = json_response(HTTPStatus.OK, response_payload)
+            except SetupValidationError as exc:
+                status_code, headers, body = error_response(str(exc), HTTPStatus.BAD_REQUEST)
+
+            self._write_response(status_code, headers, body)
+
         def do_GET(self):
-            if self.path == "/":
+            req_path = self.path.split("?", 1)[0].split("#", 1)[0]
+
+            if req_path.startswith("/api/setup/"):
+                self._route_setup("GET", req_path, {})
+                return
+
+            if req_path == "/":
                 target = config.html_path
                 content_type = "text/html; charset=utf-8"
             else:
-                req_path = self.path.split("?", 1)[0].split("#", 1)[0]
                 rel_path = req_path.lstrip("/")
                 rel_parts = pathlib.PurePosixPath(rel_path)
 
@@ -107,17 +142,22 @@ def make_handler(config):
             self.wfile.write(body)
 
         def do_POST(self):
-            if self.path != "/launch":
-                self.send_error(HTTPStatus.NOT_FOUND)
-                return
-
+            req_path = self.path.split("?", 1)[0].split("#", 1)[0]
             content_length = int(self.headers.get("Content-Length", "0"))
             payload_raw = self.rfile.read(content_length) if content_length > 0 else b"{}"
 
             try:
-                request_payload = json.loads(payload_raw.decode("utf-8"))
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                self._json_response(HTTPStatus.BAD_REQUEST, {"error": "Invalid JSON payload"})
+                request_payload = parse_json_body(payload_raw)
+            except SetupValidationError as exc:
+                self._json_response(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                return
+
+            if req_path.startswith("/api/setup/"):
+                self._route_setup("POST", req_path, request_payload)
+                return
+
+            if req_path != "/launch":
+                self.send_error(HTTPStatus.NOT_FOUND)
                 return
 
             dev_enabled = request_payload.get("dev", True)
@@ -149,13 +189,13 @@ def make_handler(config):
 
 
 def main():
+    ensure_eccodes_available()
     args = parse_args()
 
     os.chdir(pathlib.Path(args.workdir).expanduser().resolve())
 
     try:
-        # command = validate_and_build_command(args)
-        command = ["echo", "Hello, World!"]
+        command = validate_and_build_command(args)
     except ValueError as exc:
         raise SystemExit(f"Invalid launcher configuration: {exc}") from exc
 
@@ -163,7 +203,14 @@ def main():
     if not html_path.exists():
         raise SystemExit(f"Could not find UI file: {html_path}")
 
-    config = LauncherConfig(command=command, html_path=html_path)
+    store = InMemorySessionStore()
+    setup_routes = SetupRoutes(
+        setup_service=SetupService(store),
+        source_service=SourceService(store),
+        checks_service=ChecksService(store),
+    )
+
+    config = LauncherConfig(command=command, html_path=html_path, setup_routes=setup_routes)
     handler = make_handler(config)
 
     with ThreadingHTTPServer((args.host, args.port), handler) as server:

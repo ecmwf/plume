@@ -53,20 +53,33 @@ foreach(prec sp dp)
 endforeach()
 
 if (HAVE_NWP_EMULATOR_UI)
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
     set(NWP_EMULATOR_UI_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ui)
     set(NWP_EMULATOR_UI_BUILD_BIN_DIR ${PROJECT_BINARY_DIR}/bin)
 
-    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${NWP_EMULATOR_UI_SOURCE_DIR}/ui_launcher.py ${NWP_EMULATOR_UI_BUILD_BIN_DIR}/ui_launcher.py )
-    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${NWP_EMULATOR_UI_SOURCE_DIR}/index.html ${NWP_EMULATOR_UI_BUILD_BIN_DIR}/index.html )
+    # Cleanup legacy top-level symlinks from older configurations.
     # Ideally logos would be fetched from the logos repository instead of living in the assets
-    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${NWP_EMULATOR_UI_SOURCE_DIR}/assets ${NWP_EMULATOR_UI_BUILD_BIN_DIR}/assets )
-    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${NWP_EMULATOR_UI_SOURCE_DIR}/js ${NWP_EMULATOR_UI_BUILD_BIN_DIR}/js )
+    foreach(legacy_path IN ITEMS assets js backend)
+        if (IS_SYMLINK ${NWP_EMULATOR_UI_BUILD_BIN_DIR}/${legacy_path})
+            file(REMOVE ${NWP_EMULATOR_UI_BUILD_BIN_DIR}/${legacy_path})
+        endif()
+    endforeach()
+
+    file(GLOB_RECURSE NWP_EMULATOR_UI_FILES
+        RELATIVE ${NWP_EMULATOR_UI_SOURCE_DIR}
+        LIST_DIRECTORIES FALSE
+        ${NWP_EMULATOR_UI_SOURCE_DIR}/*)
+
+    foreach(ui_file IN LISTS NWP_EMULATOR_UI_FILES)
+        get_filename_component(ui_subdir ${ui_file} DIRECTORY)
+        if (ui_subdir)
+            file(MAKE_DIRECTORY ${NWP_EMULATOR_UI_BUILD_BIN_DIR}/${ui_subdir})
+        endif()
+
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
+            ${NWP_EMULATOR_UI_SOURCE_DIR}/${ui_file}
+            ${NWP_EMULATOR_UI_BUILD_BIN_DIR}/${ui_file})
+    endforeach()
 endif()
 
 

@@ -67,7 +67,8 @@ if (HAVE_NWP_EMULATOR)
   ecbuild_add_option( FEATURE NWP_EMULATOR_UI
                       DESCRIPTION
                       "Build minimal web UI launcher for nwp emulator"
-                      DEFAULT OFF)
+                      DEFAULT OFF
+                      REQUIRED_PACKAGES "Python3 COMPONENTS Interpreter" )
 
   set( HAVE_NWP_EMULATOR_sp 0)
   set( HAVE_NWP_EMULATOR_dp 0)

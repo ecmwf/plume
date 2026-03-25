@@ -150,8 +150,8 @@
             </div>
 
             <label class="setup-control" for="mpi-n">
-              MPI_N:
-              <input id="mpi-n" class="mpi-input" type="number" min="1" value="3">
+              MPI_NP:
+              <input id="mpi-n" class="mpi-input" type="number" min="1" max="256" value="3">
             </label>
           </div>
         </div>
@@ -165,14 +165,16 @@
             <div class="pane-body">
               <div class="upload-row">
                 <button type="button" class="upload-btn" data-target="plume-upload-file">Upload</button>
-                <input id="plume-upload-path" type="text" value="..............." readonly>
+                <input id="plume-upload-path" type="text" value="" placeholder="..............." readonly>
                 <input id="plume-upload-file" type="file" accept=".yml,.yaml" hidden>
               </div>
               <hr class="pane-divider">
               <div>
-                <div class="editor-label">YAML Editor</div>
-                <textarea id="plume-yaml-editor" class="yaml-editor" spellcheck="false"># plume config placeholder
-# add keys/values here</textarea>
+                <div class="editor-label-row">
+                  <div class="editor-label">YAML Editor</div>
+                  <div id="plume-editor-state" class="editor-state-note" aria-live="polite"></div>
+                </div>
+                <textarea id="plume-yaml-editor" class="yaml-editor" spellcheck="false" placeholder="# Option 1: write your plume configuration directly in this editor&#10;# Option 2: upload a .yml/.yaml file, then refine it here if needed&#10;&#10;plugins:&#10;  - name: example-plugin&#10;    lib: libexample.so&#10;    parameters:&#10;      - name: threshold&#10;        type: FLOAT&#10;    core-config: {}"></textarea>
               </div>
             </div>
           </section>
@@ -182,14 +184,16 @@
             <div class="pane-body">
               <div class="upload-row">
                 <button type="button" class="upload-btn" data-target="emulator-upload-file">Upload</button>
-                <input id="emulator-upload-path" type="text" value="..............." readonly>
+                <input id="emulator-upload-path" type="text" value="" placeholder="..............." readonly>
                 <input id="emulator-upload-file" type="file" accept=".yml,.yaml" hidden>
               </div>
               <hr class="pane-divider">
               <div>
-                <div class="editor-label">YAML Editor</div>
-                <textarea id="emulator-yaml-editor" class="yaml-editor" spellcheck="false"># emulator config placeholder
-# add keys/values here</textarea>
+                <div class="editor-label-row">
+                  <div class="editor-label">YAML Editor</div>
+                  <div id="emulator-editor-state" class="editor-state-note" aria-live="polite"></div>
+                </div>
+                <textarea id="emulator-yaml-editor" class="yaml-editor" spellcheck="false" placeholder="# Option 1: write your emulator configuration directly in this editor&#10;# Option 2: upload a .yml/.yaml file, then refine it here if needed&#10;&#10;emulator:&#10;  n_steps: 5&#10;  grid_identifier: &quot;N80&quot;&#10;  vertical_levels: 5&#10;  fields:&#10;    t:&#10;      levtype: &quot;sfc&quot;&#10;      apply:&#10;        vortex_rollup:&#10;          time_variation: 1.1"></textarea>
               </div>
             </div>
           </section>
@@ -198,18 +202,14 @@
             <div class="setup-pane-head">Grib Folder</div>
             <div class="pane-body">
               <div class="upload-row">
-                <button type="button" class="upload-btn" data-target="grib-upload-file" data-dir-target="grib-upload-dir">Upload</button>
-                <input id="grib-upload-path" type="text" value="..............." readonly>
-                <input id="grib-upload-file" type="file" accept=".grib,.grib1,.grib2" multiple hidden>
+                <input id="grib-upload-path" type="text" placeholder="/full/path/to/grib/folder/" spellcheck="false">
                 <input id="grib-upload-dir" type="file" webkitdirectory directory multiple hidden>
               </div>
+              <div class="path-hint">Full path on server — edit after picking a folder</div>
               <hr class="pane-divider">
               <div>
                 <div class="info-label">Info (Read-Only)</div>
-                <div class="info-box"># steps: 10
-fields: u, v
-
-placeholder metadata</div>
+                <div id="grib-info-box" class="info-box">Run checks to get info about the selected data.</div>
               </div>
             </div>
           </section>
@@ -217,13 +217,43 @@ placeholder metadata</div>
 
         <section class="run-checks-panel" aria-label="Run checks for setup">
           <div class="run-checks-head">Run Checks</div>
+          <div class="run-checks-subtitle">Checks apply to the whole setup before run</div>
           <div class="run-checks-body">
             <span>
-              <button id="run-checks-btn" class="checks-btn" type="button">(✓) Run Checks</button>
-              checks apply to the whole setup before run
+              <button id="run-checks-btn" class="checks-btn" type="button">Run Checks</button>
             </span>
             <span id="checks-status" class="checks-badge">Not Run</span>
           </div>
+          <ul id="checks-list" class="checks-list" aria-label="Detailed checks list">
+            <li id="check-item-plume-template" class="check-item">
+              <span id="check-icon-plume-template" class="check-icon" aria-hidden="true">☐</span>
+              <div class="check-content">
+                <span class="check-label">Plume config YAML template</span>
+                <div id="check-msg-plume-template" class="check-msg"></div>
+              </div>
+            </li>
+            <li id="check-item-emulator-yaml" class="check-item">
+              <span id="check-icon-emulator-yaml" class="check-icon" aria-hidden="true">☐</span>
+              <div class="check-content">
+                <span class="check-label">Emulator config YAML template</span>
+                <div id="check-msg-emulator-yaml" class="check-msg"></div>
+              </div>
+            </li>
+            <li id="check-item-grib-source" class="check-item">
+              <span id="check-icon-grib-source" class="check-icon" aria-hidden="true">☐</span>
+              <div class="check-content">
+                <span class="check-label">GRIB source selection</span>
+                <div id="check-msg-grib-source" class="check-msg"></div>
+              </div>
+            </li>
+            <li id="check-item-mpi-np" class="check-item">
+              <span id="check-icon-mpi-np" class="check-icon" aria-hidden="true">☐</span>
+              <div class="check-content">
+                <span class="check-label">MPI process count</span>
+                <div id="check-msg-mpi-np" class="check-msg"></div>
+              </div>
+            </li>
+          </ul>
         </section>
       </section>
     </div>
