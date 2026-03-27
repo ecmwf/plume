@@ -1,7 +1,14 @@
-# plume
+# Plume
 
-:warning: This software is still under heavy development and not 
-yet ready for operational use
+<p align="center">
+<a href="https://github.com/ecmwf/codex/raw/refs/heads/main/Project%20Maturity">
+    <img src="https://github.com/ecmwf/codex/raw/refs/heads/main/Project%20Maturity/emerging_badge.svg" alt="Project Maturity">
+  </a>
+<a href="https://github.com/ecmwf/codex/raw/refs/heads/main/ESEE"> <img src="https://github.com/ecmwf/codex/raw/refs/heads/main/ESEE/foundation_badge.svg" alt="ESEE">
+</p>
+
+> \[!IMPORTANT\]
+> This software is **Emerging** and subject to ECMWF's guidelines on [Software Maturity](https://github.com/ecmwf/codex/raw/refs/heads/main/Project%20Maturity).
 
 ## Description
 plume (plugin mechanism) allows Earth System models to load plugins
