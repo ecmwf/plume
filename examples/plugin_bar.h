@@ -9,6 +9,9 @@
  * does it submit to any jurisdiction.
  */
 #include <string>
+
+#include "atlas/field/Field.h"
+
 #include "plume/PluginCore.h"
 #include "plume/Plugin.h"
 
@@ -38,8 +41,8 @@ public:
 
     plume::Protocol negotiate() override {
         plume::Protocol protocol;
-        protocol.requireInt("K");
-        protocol.requireAtlasField("field_dummy_1");
+        protocol.require<int>("K");
+        protocol.require<atlas::Field>("field_dummy_1");
         return protocol;
     }
 

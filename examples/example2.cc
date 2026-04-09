@@ -17,7 +17,6 @@
 
 #include "plume/Manager.h"
 #include "plume/data/ModelData.h"
-#include "plume/data/ParameterCatalogue.h"
 
 
 // Prepare a dummy Atlas Field
@@ -44,15 +43,15 @@ int main(int argc, char** argv) {
 
     // Negotiate
     plume::Protocol offers;
-    offers.offerInt("I", "always", "this is param I");
-    offers.offerInt("J", "always", "this is param J");
-    offers.offerInt("K", "always", "this is param K");
+    offers.offer<int>("I", "always", "this is param I");
+    offers.offer<int>("J", "always", "this is param J");
+    offers.offer<int>("K", "always", "this is param K");
 
-    offers.offerAtlasField("field_dummy_1", "on-request", "this is dummy_field");
+    offers.offer<atlas::Field>("field_dummy_1", "on-request", "this is dummy_field");
 
-    offers.offerInt("config-param-1", "on-request", "this is param config-param-1");
-    offers.offerDouble("config-param-2", "on-request", "this is param config-param-2");
-    offers.offerAtlasField("config-param-3", "on-request", "this is param config-param-3");
+    offers.offer<int>("config-param-1", "on-request", "this is param config-param-1");
+    offers.offer<double>("config-param-2", "on-request", "this is param config-param-2");
+    offers.offer<atlas::Field>("config-param-3", "on-request", "this is param config-param-3");
 
     plume::Manager::negotiate(offers);
 
@@ -70,9 +69,9 @@ int main(int argc, char** argv) {
 
     // Insert some int parameters (regardless of whether 
     // they are going to be requested by plugins or not..)
-    data.provideInt("I", &param_i);
-    data.provideInt("J", &param_j);
-    data.provideInt("K", &param_k);
+    data.provideParam("I", &param_i);
+    data.provideParam("J", &param_j);
+    data.provideParam("K", &param_k);
 
     // NOTE: After the negotiation, the manager knows which parameters 
     // have been requested by all activated plugins (i.e. plugins that 
@@ -87,23 +86,23 @@ int main(int argc, char** argv) {
     name = "field_dummy_1";
     if ( plume::Manager::isParamRequested(name) ) {
         field_dummy = createAtlasField(name);
-        data.provideAtlasFieldShared(name, field_dummy.get());
+        data.provideParam(name, &field_dummy);
     }
     
     name = "config-param-1";
     if ( plume::Manager::isParamRequested(name) ) {
-        data.provideInt(name, &config_param_1);
+        data.provideParam(name, &config_param_1);
     }
 
     name = "config-param-2";
     if ( plume::Manager::isParamRequested(name) ) {
-        data.provideDouble(name, &config_param_2);
+        data.provideParam(name, &config_param_2);
     }
 
     name = "config-param-3";
     if ( plume::Manager::isParamRequested(name) ) {
         config_param_3 = createAtlasField(name);
-        data.provideAtlasFieldShared(name, config_param_3.get());
+        data.provideParam(name, &config_param_3);
     }
 
     // Once data is ready.. feed the plugins!

@@ -22,7 +22,7 @@ a-posteriori data movements.
 plume features 3 major components:
 
  * Plugin Manager: that controls the loading mechanism at runtime
- * Plugin Data: data transferred from the application to the plugin
+ * [Plugin Data](./src/plume/data/): data transferred from the application to the plugin
  * Plugin: a dynamically-loadable plugin that implement specific calculations/algorithms
 
 plume offers API to this mechanism, available in multiple languages (currently C, C++ and Fortran)

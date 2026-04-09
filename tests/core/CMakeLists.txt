@@ -26,7 +26,9 @@ ecbuild_add_test( TARGET   plume_test_plugincore
 
 # -------------- test manager ---------------
 ecbuild_add_test( TARGET   plume_test_manager
-                  SOURCES  test_manager.cc
+                  SOURCES
+                    ManagerTestAccess.h
+                    test_manager.cc
                   ENVIRONMENT
                     DYLD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/lib
                   LIBS
@@ -43,11 +45,13 @@ ecbuild_add_test( TARGET   plume_test_manager_json
                     eckit
 )
 
-# simple plugin (used for testing)
-ecbuild_add_library( TARGET simple_plugin
+# simple plugins (used for testing)
+ecbuild_add_library( TARGET simple_plugins
   SOURCES 
     simple_plugin.h
     simple_plugin.cc
+    simple_atlas_plugin.h
+    simple_atlas_plugin.cc
   PRIVATE_LIBS
     plume_plugin
 )
@@ -77,6 +81,20 @@ ecbuild_add_test( TARGET   plume_test_model_data
                     plume_plugin       
 )
 
+ecbuild_add_test( TARGET   plume_test_atlas_model_data
+                  SOURCES  test_atlas_model_data.cc
+                  LIBS                    
+                    plume_plugin_manager
+                    plume_plugin       
+)
+
+ecbuild_add_test( TARGET   plume_test_update_strategies
+                  SOURCES  test_update_strategies.cc
+                  LIBS                    
+                    plume_plugin_manager
+                    plume_plugin       
+)
+
 ecbuild_add_test( TARGET   plume_test_parameter
                   SOURCES  test_parameter.cc
                   LIBS                    
@@ -97,7 +115,9 @@ ecbuild_add_test( TARGET   plume_test_configs
 
 
 ecbuild_add_test( TARGET   plume_test_plugin_params
-                  SOURCES  test_plugin_params.cc
+                  SOURCES
+                    ManagerTestAccess.h
+                    test_plugin_params.cc
                   LIBS
                     plume_plugin_manager
                     eckit

@@ -13,9 +13,8 @@
 namespace plume {
 
 
-    PluginHandler::PluginHandler(Plugin& plugin, const PluginConfig& config, const std::vector<std::string>& offeredParams) : 
-    pluginRef_{plugin}, config_{config}, offeredParams_{offeredParams} {
-}
+PluginHandler::PluginHandler(Plugin& plugin, const PluginConfig& config, const PluginDecision& decision) :
+    pluginRef_{plugin}, config_{config}, decision_{decision} {}
 
 
 void PluginHandler::activate(std::unique_ptr<PluginCore> plugincorePtr) {
@@ -28,12 +27,16 @@ void PluginHandler::activate(std::unique_ptr<PluginCore> plugincorePtr) {
 }
 
 
-bool PluginHandler::isActive() const {    
+bool PluginHandler::isActive() const {
     return (plugincorePtr_ != nullptr);
 }
 
-const std::vector<std::string>& PluginHandler::getRequiredParamNames() const {
-    return offeredParams_;
+const std::set<std::string> PluginHandler::getRequiredParamNames(bool derived) const {
+    return decision_.offeredParamNames(derived);
+}
+
+const std::set<plume::data::ParameterDefinition>& PluginHandler::getRequiredParams() const {
+    return decision_.offeredParams();
 }
 
 
@@ -61,5 +64,4 @@ std::string PluginHandler::pluginName() const {
 }
 
 
-} // namespace plume
-
+}  // namespace plume

@@ -38,8 +38,8 @@ public:
 
     plume::Protocol negotiate() override {
         plume::Protocol protocol;
-        protocol.requireInt("I");
-        protocol.requireInt("J");
+        protocol.require<int>("I");
+        protocol.require<int>("J");
         return protocol;
     }
 

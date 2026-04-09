@@ -1,6 +1,6 @@
 plugins:
   - name: "SimplePlugin"
-    lib: "simple_plugin"
+    lib: "simple_plugins"
     core-config: {}
   - name: "NWPEmulatorPlugin"
     lib: "nwp_emulator_test_plugin_sp"

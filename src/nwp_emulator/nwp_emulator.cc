@@ -15,6 +15,7 @@
 #include "eckit/filesystem/PathName.h"
 #include "eckit/mpi/Comm.h"
 
+#include "atlas/field/Field.h"
 #include "atlas/library.h"
 #include "atlas/option/Options.h"
 #include "atlas/parallel/mpi/mpi.h"
@@ -22,7 +23,6 @@
 
 #include "plume/Manager.h"
 #include "plume/data/ModelData.h"
-#include "plume/data/ParameterCatalogue.h"
 
 #include "nwp_data_provider.h"
 #include "nwp_definitions.h"
@@ -140,24 +140,24 @@ bool NWPEmulator::setupPlume(NWPDataProvider& dataProvider) {
     std::vector<std::string> updatingParams;
 
     plume::Protocol offers;  /// Define data offered by Plume
-    offers.offerInt("NSTEP", "always", "Simulation Step");
+    offers.offer<int>("NSTEP", "always", "Simulation Step");
     updatingParams.push_back("NSTEP");
-    offers.offerDouble("TSTEP", "always", "Simulation Time Step");
-    offers.offerInt("NFLEVG", "always", "Number of vertical levels");
-    offers.offerInt("WSTEP", "always", "Wave simulation time");
+    offers.offer<double>("TSTEP", "always", "Simulation Time Step");
+    offers.offer<size_t>("NFLEVG", "always", "Number of vertical levels");
+    offers.offer<double>("WSTEP", "always", "Wave simulation time");
     updatingParams.push_back("WSTEP");
     auto fields = dataProvider.getModelFieldSet();
     for (const auto& field: fields) {
-        offers.offerAtlasField(field.name(), "on-request", field.name());
+        offers.offer<atlas::Field>(field.name(), "on-request", field.name());
     }
     plume::Manager::negotiate(offers);
-    plumeData_.createInt("NSTEP", 0);  /// Initialise parameters
-    plumeData_.createDouble("TSTEP", 900.0);
-    plumeData_.createInt("NFLEVG", dataProvider.getLevels());
-    plumeData_.createInt("WSTEP", 0);
+    plumeData_.createParam("NSTEP", 0);  /// Initialise parameters
+    plumeData_.createParam("TSTEP", 900.0);
+    plumeData_.createParam("NFLEVG", dataProvider.getLevels());
+    plumeData_.createParam("WSTEP", 0.0);
     for (auto& field: fields) {
         if (plume::Manager::isParamRequested(field.name())) {
-            plumeData_.provideAtlasFieldShared(field.name(), field.get());
+            plumeData_.provideParam(field.name(), &field);
             updatingParams.push_back(field.name());
         }
     }
@@ -170,8 +170,8 @@ bool NWPEmulator::setupPlume(NWPDataProvider& dataProvider) {
 
 void NWPEmulator::runPlume(int step) {
     plume::Manager::run();
-    plumeData_.updateInt("NSTEP", step);
-    plumeData_.updateInt("WSTEP", std::ceil(step * plumeData_.getDouble("TSTEP")));
+    plumeData_.updateParam("NSTEP", step);
+    plumeData_.updateParam("WSTEP", std::ceil(step * plumeData_.getParam<double>("TSTEP")));
 }
 
 int main(int argc, char** argv) {

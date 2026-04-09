@@ -37,8 +37,8 @@ void PluginCoreFoo::run() {
     modelData().print();
 
     eckit::Log::info() << "Plugin Foo consuming parameters: (" 
-                       << "I=" << modelData().getInt("I") << ", "
-                       << "J=" << modelData().getInt("J") << ") "
+                       << "I=" << modelData().getParam<int>("I") << ", "
+                       << "J=" << modelData().getParam<int>("J") << ") "
                        << std::endl;
 }
 

@@ -12,8 +12,10 @@
 #pragma once
 
 #include "Configurable.h"
+
 #include "eckit/config/LocalConfiguration.h"
 #include "eckit/config/YAMLConfiguration.h"
+#include "eckit/exception/Exceptions.h"
 
 #include "PluginConfig.h"
 

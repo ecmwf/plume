@@ -62,7 +62,7 @@ CASE("test catalogue") {
     )YAML"));
 
 
-    filtered.insertParam( plume::data::Parameter{param_999_config} );
+    filtered.insertParam( plume::data::ParameterDefinition{param_999_config} );
     EXPECT_EQUAL(catalogue.hasParam("param-1"), true);
     EXPECT_EQUAL(catalogue.hasParam("param-2"), true);
     EXPECT_EQUAL(filtered.hasParam("param-999"), true);
@@ -99,9 +99,9 @@ CASE("test empty catalogue + insert") {
     comment: none
     )YAML"));
 
-    catalogue2.insertParam( plume::data::Parameter{param_11_config} );
-    catalogue2.insertParam( plume::data::Parameter{param_22_config} );
-    catalogue2.insertParam( plume::data::Parameter{param_33_config} );
+    catalogue2.insertParam( plume::data::ParameterDefinition{param_11_config} );
+    catalogue2.insertParam( plume::data::ParameterDefinition{param_22_config} );
+    catalogue2.insertParam( plume::data::ParameterDefinition{param_33_config} );
 
     EXPECT_EQUAL(catalogue2.hasParam("param-11"), true);
     EXPECT_EQUAL(catalogue2.hasParam("param-22"), true);

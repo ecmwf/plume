@@ -10,7 +10,7 @@
  */
 #include "eckit/testing/Test.h"
 #include "eckit/config/YAMLConfiguration.h"
-#include "plume/data/Parameter.h"
+#include "plume/data/ParameterCatalogue.h"
 
 
 using namespace eckit::testing;
@@ -61,12 +61,12 @@ CASE("test parameter") {
     eckit::YAMLConfiguration config_missing_comment(missing_comment);
 
 
-    EXPECT_NO_THROW( plume::data::Parameter param(config) );
+    EXPECT_NO_THROW( plume::data::ParameterDefinition param(config) );
 
-    EXPECT_THROWS( plume::data::Parameter param(config_missing_name) );
-    EXPECT_THROWS( plume::data::Parameter param(config_missing_type) );
-    EXPECT_NO_THROW( plume::data::Parameter param(config_missing_avail) );
-    EXPECT_NO_THROW( plume::data::Parameter param(config_missing_comment) );
+    EXPECT_THROWS( plume::data::ParameterDefinition param(config_missing_name) );
+    EXPECT_THROWS( plume::data::ParameterDefinition param(config_missing_type) );
+    EXPECT_NO_THROW( plume::data::ParameterDefinition param(config_missing_avail) );
+    EXPECT_NO_THROW( plume::data::ParameterDefinition param(config_missing_comment) );
 }
 
 //----------------------------------------------------------------------------------------------------------------------

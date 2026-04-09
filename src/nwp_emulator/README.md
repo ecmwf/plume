@@ -14,7 +14,7 @@ You can use it to emulate model runs with Plume loading the plugins from your co
 
 Once installed (check out [Plume install guide](../../README.md/#installation) for more info), the emulator tool can be used as follows:
 ```bash
-mpirun -np 2 nwp_emulator_run [--grib-src=<path> | --config-src=<path>] [--plume-cfg=<path>] [OPTION]... [--help]
+mpirun -np 2 nwp_emulator_run_<sp|dp> [--grib-src=<path> | --config-src=<path>] [--plume-cfg=<path>] [OPTION]... [--help]
 ```
 To make a dry run, omit the `--plume-cfg` flag.
 
