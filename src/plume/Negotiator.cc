@@ -84,8 +84,10 @@ PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& req
     }
 
     // 2) Check requested parameters (from the configuration)
-    // Here we check "groups" of requested parameters. A plugin can run if ANY of the "groups" are satisfied
+    // Here we check "groups" of requested parameters. A plugin can run if AT LEAST ONE of the "groups" are satisfied
     if (!config_params.empty()) {
+
+        bool any_group_accepted = false;
 
         for (const auto& param_group : config_params) {
 
@@ -107,6 +109,7 @@ PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& req
 
             if (group_satisfied) {
                 eckit::Log::info() << " ---> Parameter Group Accepted!" << std::endl;
+                any_group_accepted = true;
 
                 // add all parameters in the group to the set "allRequestedParams"
                 allRequestedParams.insert(requested_params.begin(), requested_params.end());
@@ -114,6 +117,10 @@ PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& req
             else {
                 eckit::Log::warning() << "---> Group rejected!" << std::endl;
             }
+        }
+
+        if (!any_group_accepted) {
+            return PluginDecision{false};
         }
     }
 
