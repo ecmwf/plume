@@ -8,6 +8,8 @@
  * granted to it by virtue of its status as an intergovernmental organisation nor
  * does it submit to any jurisdiction.
  */
+#include <sstream>
+
 #include "atlas/array.h"
 
 #include "plume/data/FieldProvider.h"
@@ -58,6 +60,33 @@ WindAtHeight::WindAtHeight(std::size_t height, AtlasFieldObservablePtr geopotent
         throw eckit::BadValue("Wind cannot be interpolated at heights higher than 80km", Here());
     }
 
+    // Validate field vertical shapes - fixed by the model at setup, never change
+    auto geoField  = geopotential_.lock();
+    auto windField = windComponent_.lock();
+    ASSERT(geoField && windField);
+
+    if (geoField->get().shape(1) < 2) {
+        std::ostringstream msg;
+        msg << "WindAtHeight setup failed: geopotential field has only " << geoField->get().shape(1)
+            << " vertical level(s). This usually means only surface orography was provided, but "
+            << "wind_at_height requires a vertically resolved geopotential profile.";
+        throw eckit::BadValue(msg.str(), Here());
+    }
+
+    if (windField->get().shape(1) < 2) {
+        std::ostringstream msg;
+        msg << "WindAtHeight setup failed: wind component field has only " << windField->get().shape(1)
+            << " vertical level(s), but wind_at_height requires at least 2 levels for interpolation.";
+        throw eckit::BadValue(msg.str(), Here());
+    }
+
+    if (geoField->get().shape(1) != windField->get().shape(1)) {
+        std::ostringstream msg;
+        msg << "WindAtHeight setup failed: geopotential and wind fields have inconsistent vertical dimensions "
+            << "(geopotential=" << geoField->get().shape(1) << ", wind=" << windField->get().shape(1) << ").";
+        throw eckit::BadValue(msg.str(), Here());
+    }
+
     // swap the target field array (which is a clone of the source) for a 2D array
     auto target = windAtHeight_.lock();
 
@@ -102,10 +131,15 @@ void WindAtHeight::update() {
                 }
             }
             if (!found) {
-                // when z_ is > Z[0] or < Z[N] there is a malformation that should be handled by the user
-                throw eckit::BadValue(
-                    "Wind interpolation failed: height not within geopotential range",
-                    Here());
+                const auto top = geopotential(i, 0);
+                const auto bottom = geopotential(i, wind.shape(1) - 1);
+                std::ostringstream msg;
+                msg << "Wind interpolation failed at point " << i
+                    << ": target geopotential z=" << z_
+                    << " is not bracketed by profile range [bottom=" << bottom
+                    << ", top=" << top << "]"
+                    << " (nlev=" << wind.shape(1) << ")";
+                throw eckit::BadValue(msg.str(), Here());
             }
         }
     };
