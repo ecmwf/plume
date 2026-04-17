@@ -227,8 +227,8 @@ CASE("test model data - observing params") {
     EXPECT_NOT(data.isUpdated("observable;dummy;00"));  // the newly created param is not marked as updated
 
     EXPECT_EQUAL(data.getParam<int>("observable"), 1);
-    EXPECT_EQUAL(data.getParam<int>("observable;dummy;00"), 2);
-    EXPECT_EQUAL(data.getParam<int>("observable", "00", "dummy"), 2);
+    EXPECT_EQUAL(data.getParam<int>("observable;dummy;00"), 0);  // zero-initialised; strategy not yet run
+    EXPECT_EQUAL(data.getParam<int>("observable", "00", "dummy"), 0);  // zero-initialised; strategy not yet run
     observableParam = 5;
     data.setUpdated({"observable"});
     EXPECT(data.isUpdated("observable;dummy;00"));
