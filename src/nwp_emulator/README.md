@@ -18,6 +18,218 @@ mpirun -np 2 nwp_emulator_run_<sp|dp> [--grib-src=<path> | --config-src=<path>] 
 ```
 To make a dry run, omit the `--plume-cfg` flag.
 
+## Optional UI launcher
+
+An optional full-featured local web UI can be installed to configure and launch the emulator.
+
+Enable this feature at configure time:
+```bash
+ecbuild --prefix=$installdir -- \
+  -DNWP_EMULATOR=ON \
+  -DNWP_EMULATOR_UI=ON \
+  $srcdir
+```
+
+When installed, start the launcher with the path to the emulator binary:
+
+```bash
+ui_launcher.py \
+  --emulator-bin /path/to/nwp_emulator_run_dp.x \
+  [--host 127.0.0.1] \
+  [--port 8080] \
+  [--workdir /path/to/working/directory]
+```
+
+Then open `http://127.0.0.1:8080` in your browser.
+
+### UI features
+
+**RUN tab:**
+- View active run status and execution logs
+- Monitor model steps with interactive map visualisation
+- Browse plugin-emitted map layers (polygon boundaries, scalar fields, point collections)
+- Download run artifacts (maps, field snapshots, GIF animations)
+
+**SETUP tab:**
+- Configure emulator parameters (number of steps, grid, levels, data source)
+- Choose data input: GRIB files or synthetic configuration
+- Define synthetic field generation (Vortex Rollup, Random, Step, Sinc, Gaussian)
+- Configure Plume plugins and emulator execution
+- Validate configuration before launching
+
+**Map rendering:**
+- Interactive pan and zoom on Plotly-based map
+- Layer toggle and styling controls
+- Support for multiple layer types from plugins
+
+## Plugin map overlay payloads (UI)
+
+When plugins are executed from the emulator UI, they can optionally emit map overlays in the run temp directory. Plugins should emit **one overlay file per emulator step**:
+
+```text
+<run_dir>/plugin_layers/<plugin_name>/layer_step_0.json
+<run_dir>/plugin_layers/<plugin_name>/layer_step_1.json
+<run_dir>/plugin_layers/<plugin_name>/layer_step_2.json
+...
+<run_dir>/plugin_layers/<plugin_name>/metadata.json   # optional (shared metadata for plugin)
+```
+
+The UI dynamically discovers overlays from step-numbered files and renders the active step's layers. Overlays are rendered on an interactive map with pan, zoom, and layer controls.
+
+### Runtime expectations for plugin developers
+
+- Emit overlays only when running under emulator mode (`PLUME_EMULATOR_MODE=1`).
+- Use `PLUME_RUN_TMPDIR` as the base run directory for layer output.
+- Create the plugin layer directory structure: `<PLUME_RUN_TMPDIR>/plugin_layers/<plugin_name>/`
+- Output one overlay file per emulator step: `layer_step_<N>.json` (N is the step index).
+- Write valid JSON; malformed payloads are skipped non-fatally by the UI.
+- Keep payloads reasonably compact (typically <1 MB per step) for responsive rendering.
+- If your layer covers only a local area, include explicit boundaries so the area is clearly visible.
+- Optionally include a shared `metadata.json` file to provide plugin-level metadata (e.g., plugin name, description, version).
+
+### Supported layer types
+
+#### 1) `point_collection`
+
+Use for plotting specific locations with special information (for example power output at turbine locations, anomalies, or descriptive annotations).
+
+Example:
+
+```json
+{
+  "type": "point_collection",
+  "points": [
+    {
+      "lon": 2.35,
+      "lat": 48.85,
+      "label": "Paris node",
+      "value": 128.4,
+      "info": "Power output (MW)",
+      "style": { "color": "#0f766e", "size": 10 }
+    },
+    {
+      "lon": -3.7,
+      "lat": 40.4,
+      "label": "Madrid node",
+      "value": 97.1,
+      "info": "Reduced due to maintenance"
+    }
+  ],
+  "style": { "symbol": "circle" }
+}
+```
+
+Accepted point fields:
+- required: `lon`, `lat`
+- optional: `label` or `name`, `value`, `info` or `description`, `style.color` (CSS color), `style.size` (pixel diameter)
+- Note: Points are rendered on the map centered at the given coordinates; consider offsetting nearby points or using hover tooltips for clarity.
+
+#### 2) `scalar_field`
+
+Use for plotting global or local fields as values at coordinates.
+
+Example (global field):
+
+```json
+{
+  "type": "scalar_field",
+  "name": "power_density",
+  "lon": [0.0, 0.5, 1.0],
+  "lat": [50.0, 50.0, 50.0],
+  "values": [12.2, 13.7, 11.9],
+  "style": { "opacity": 0.6, "size": 4 }
+}
+```
+
+Example (local field with visible boundaries):
+
+```json
+{
+  "type": "scalar_field",
+  "name": "local_temperature_anomaly",
+  "lon": [-5.0, -4.5, -4.0],
+  "lat": [42.0, 42.0, 42.0],
+  "values": [1.2, 1.4, 1.1],
+  "local_areas": [
+    {
+      "name": "Iberia test zone",
+      "boundary": [[-10.0, 35.0], [5.0, 35.0], [5.0, 45.0], [-10.0, 45.0], [-10.0, 35.0]]
+    }
+  ]
+}
+```
+
+Accepted scalar-field fields:
+- required: `lon[]`, `lat[]`, `values[]` (all arrays must be the same length)
+- optional: `name` or `field_name` (display name in UI), `style.opacity` (0-1), `style.size` (marker size in pixels)
+- for local fields: `local_areas[]` with `name` and `boundary` (closed polygon as lat/lon coordinates) to highlight specific regions
+- Note: Large arrays (>5000 points) may impact rendering performance; consider downsampling or tiling.
+
+#### 3) `polygon_boundary`
+
+Use for polygons and closed regions (for example extreme-event zones, warning areas, or geographic boundaries). Renders as outlined regions on the map.
+
+Example:
+
+```json
+{
+  "type": "polygon_boundary",
+  "regions": [
+    {
+      "name": "high-risk zone",
+      "coordinates": [[-20, 30], [20, 30], [20, 50], [-20, 50], [-20, 30]],
+      "style": {
+        "stroke_color": "#b40426",
+        "fill_color": "rgba(180,4,38,0.22)",
+        "stroke_width": 2
+      }
+    }
+  ]
+}
+```
+
+Accepted polygon-boundary fields:
+- required: `regions[]` (array of region objects), `regions[].name`, `regions[].coordinates` (closed polygon as [lon, lat] pairs)
+- optional: `regions[].style.stroke_color` (CSS hex or rgba), `regions[].style.fill_color` (CSS rgba recommended for transparency), `regions[].style.stroke_width` (pixels)
+- Note: Polygons must be closed (first and last point identical); multi-part regions should be separate region objects. Wrapped longitudes (crossing ±180°) are handled automatically.
+
+### Multi-layer payloads
+
+A single emulator step file can contain one layer or multiple layers. To emit multiple layer types in one step, use a container with `layers`:
+
+```json
+{
+  "layers": [
+    {
+      "type": "point_collection",
+      "points": [{ "lon": 10, "lat": 50, "label": "Node A", "value": 42 }]
+    },
+    {
+      "type": "scalar_field",
+      "name": "temperature_anomaly",
+      "lon": [10, 11, 12],
+      "lat": [50, 50, 50],
+      "values": [1.2, 1.4, 1.1]
+    },
+    {
+      "type": "polygon_boundary",
+      "regions": [{ "name": "zone1", "coordinates": [[10, 50], [12, 50], [12, 52], [10, 52], [10, 50]] }]
+    }
+  ]
+}
+```
+
+Alternatively, a single layer can be emitted directly:
+
+```json
+{
+  "type": "polygon_boundary",
+  "regions": [...]
+}
+```
+
+Unknown layer types and malformed payloads are logged and ignored safely by the UI.
+
 ## Quick start
 ### GRIB source
 
