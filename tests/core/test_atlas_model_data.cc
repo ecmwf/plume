@@ -115,9 +115,9 @@ CASE("test model data - observing atlas fields") {
     EXPECT_EQUAL(oberservableView.shape(0), 4);
     EXPECT_EQUAL(oberservableView(0), 1);
     EXPECT_EQUAL(oberserverView.shape(0), 4);
-    EXPECT_EQUAL(oberserverView(0), 2);
+    EXPECT_EQUAL(oberserverView(0), 1);  // cloned from source before first strategy run
     EXPECT_EQUAL(oberservableView(3), 4);
-    EXPECT_EQUAL(oberserverView(3), 5);
+    EXPECT_EQUAL(oberserverView(3), 4);  // cloned from source before first strategy run
 
     for (size_t i = 0; i < oberservableView.shape(0); ++i) {
         oberservableView(i) = 10 * i;

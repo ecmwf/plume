@@ -134,10 +134,7 @@ void ModelData::addDependency(const std::string& observer, const std::string& ob
     field_provider::StrategyArgList strategyArgs = strategyHelpers_.at(type)(config, valueMap_, observable, observer);
     // 3. create update strategy
     auto strategy = strategyRegistry_.at(type)(strategyArgs);
-    // 4. set initial observer value
-    strategy->update();
-    valueMap_.at(observer)->setUpdated(false);
-    // 5. attach strategy to observer
+    // 4. attach strategy to observer (initial value populated on first step run)
     subscriber->setUpdateStrategy(std::move(strategy));
 }
 
