@@ -399,7 +399,7 @@ function renderToggleNames(fieldNames, pluginOutputNames) {
 
   dom.pluginToggleList.innerHTML = pluginOutputNames.length
     ? pluginOutputNames
-        .map((name) => `<li><label><input type="checkbox"> ${escapeHtml(name)}</label></li>`)
+        .map((name) => `<li><label><input type="checkbox" value="${escapeHtml(name)}"> ${escapeHtml(name)}</label></li>`)
         .join("")
     : '<li class="options-placeholder">No plugin outputs available yet.</li>';
 

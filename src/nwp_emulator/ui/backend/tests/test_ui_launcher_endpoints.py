@@ -612,7 +612,7 @@ class UiLauncherEndpointsTest(unittest.TestCase):
 
     def test_step_mode_play_full_session_reaches_complete(self):
         """Play in step mode then advance through all steps reaches complete."""
-        server, thread, base_url, config = self._step_server()
+        server, thread, base_url, _config = self._step_server()
         try:
             launch_payload = self._step_launch(base_url)
             step2 = self._step_next(base_url)

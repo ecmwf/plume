@@ -404,6 +404,23 @@
   cursor: default;
 }
 
+#plugin-toggle-list li.plugin-output-no-data label {
+  color: #9b2c2c;
+}
+
+.plugin-output-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.02rem 0.34rem;
+  border-radius: 999px;
+  border: 1px solid #efcaca;
+  background: #fff1f1;
+  color: #9b2c2c;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 #field-toggle-list li.special-field-toggle label {
   color: #d0533a;
 }

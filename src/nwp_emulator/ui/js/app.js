@@ -45,6 +45,31 @@ function buildRunOutput(result, fallbackExecutionMode = "full") {
   ].join("\n");
 }
 
+function startOutputProgressTicker(prefixText) {
+  if (!dom.output) {
+    return () => {};
+  }
+
+  const spinner = ["|", "/", "-", "\\"];
+  let tick = 0;
+  const startedAt = Date.now();
+
+  const render = () => {
+    const elapsedSec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    dom.output.textContent = [
+      `${prefixText} ${spinner[tick % spinner.length]}`,
+      `Elapsed: ${elapsedSec}s`,
+      "",
+      "Working... this may take a while for large MPI runs.",
+    ].join("\n");
+    tick += 1;
+  };
+
+  render();
+  const timerId = window.setInterval(render, 1000);
+  return () => window.clearInterval(timerId);
+}
+
 function statusForViewedStep(stepNumber) {
   if (stepNumber <= 0) {
     return uiState.runStatus;
@@ -54,6 +79,152 @@ function statusForViewedStep(stepNumber) {
     return "complete";
   }
   return "step-complete";
+}
+
+function selectedPluginNames() {
+  if (!dom.pluginToggleList) {
+    return [];
+  }
+  return [...dom.pluginToggleList.querySelectorAll('input[type="checkbox"]:checked')]
+    .map((cb) => String(cb.value || "").trim())
+    .filter(Boolean);
+}
+
+function pluginLayerCacheKey(pluginName, stepNumber = uiState.stepCurrent) {
+  const name = String(pluginName || "").trim();
+  const step = Math.max(0, Math.floor(Number(stepNumber) || 0));
+  if (!name || step <= 0) {
+    return "";
+  }
+  return `${name}::${step}`;
+}
+
+function pluginHasDataForStep(entry, stepNumber = uiState.stepCurrent) {
+  if (!entry || typeof entry !== "object") {
+    return false;
+  }
+  const step = Math.max(0, Math.floor(Number(stepNumber) || 0));
+  if (step <= 0) {
+    return false;
+  }
+  const availableSteps = Array.isArray(entry.available_steps) ? entry.available_steps : [];
+  return availableSteps.includes(step);
+}
+
+function updatePluginToggleAvailabilityIndicators() {
+  if (!dom.pluginToggleList) {
+    return;
+  }
+
+  const available = uiState.pluginLayersAvailable || {};
+  const inputs = dom.pluginToggleList.querySelectorAll('input[type="checkbox"]');
+  inputs.forEach((input) => {
+    const pluginName = String(input.value || "").trim();
+    const item = input.closest("li");
+    const label = input.closest("label");
+    if (!item || !label || !pluginName) {
+      return;
+    }
+
+    item.classList.remove("plugin-output-no-data");
+    label.title = "";
+    const existingStatus = label.querySelector(".plugin-output-status");
+    if (existingStatus) {
+      existingStatus.remove();
+    }
+
+    const hasAvailableLayer = pluginHasDataForStep(available[pluginName], uiState.stepCurrent);
+    if (input.checked && !hasAvailableLayer) {
+      item.classList.add("plugin-output-no-data");
+      label.title = "Selected plugin output has no data for this step.";
+      const badge = document.createElement("span");
+      badge.className = "plugin-output-status";
+      badge.textContent = "no data";
+      label.appendChild(badge);
+    }
+  });
+}
+
+async function fetchAvailablePluginLayers() {
+  try {
+    const response = await fetch("/api/run/plugins/available");
+    if (!response.ok) {
+      uiState.pluginLayersAvailable = {};
+      updatePluginToggleAvailabilityIndicators();
+      return {};
+    }
+    const payload = await response.json();
+    const available = {};
+    for (const entry of Array.isArray(payload?.plugins) ? payload.plugins : []) {
+      const name = String(entry?.name || "").trim();
+      if (!name) {
+        continue;
+      }
+      available[name] = entry;
+    }
+    uiState.pluginLayersAvailable = available;
+    updatePluginToggleAvailabilityIndicators();
+    return available;
+  } catch {
+    uiState.pluginLayersAvailable = {};
+    updatePluginToggleAvailabilityIndicators();
+    return {};
+  }
+}
+
+async function fetchPluginLayer(pluginName, stepNumber = uiState.stepCurrent) {
+  const name = String(pluginName || "").trim();
+  if (!name) {
+    return null;
+  }
+  const step = Math.max(0, Math.floor(Number(stepNumber) || 0));
+  if (step <= 0) {
+    return null;
+  }
+  const cacheKey = pluginLayerCacheKey(name, step);
+  if (cacheKey && Object.prototype.hasOwnProperty.call(uiState.pluginLayers, cacheKey)) {
+    return uiState.pluginLayers[cacheKey];
+  }
+  try {
+    const encoded = encodeURIComponent(name);
+    const endpoint = `/api/run/plugins/${encoded}/layer/step/${step}`;
+    const response = await fetch(endpoint);
+    if (!response.ok) {
+      uiState.pluginLayers[cacheKey] = null;
+      return null;
+    }
+    const payload = await response.json();
+    uiState.pluginLayers[cacheKey] = payload;
+    return payload;
+  } catch {
+    uiState.pluginLayers[cacheKey] = null;
+    return null;
+  }
+}
+
+async function ensureSelectedPluginLayersLoaded(stepNumber = uiState.stepCurrent) {
+  const step = Math.max(0, Math.floor(Number(stepNumber) || 0));
+  const selected = selectedPluginNames();
+  if (selected.length === 0) {
+    return;
+  }
+  const available = Object.keys(uiState.pluginLayersAvailable || {}).length
+    ? uiState.pluginLayersAvailable
+    : await fetchAvailablePluginLayers();
+  const fetches = selected
+    .filter((name) => pluginHasDataForStep(available[name], step))
+    .map((name) => fetchPluginLayer(name, step));
+
+  selected
+    .filter((name) => !pluginHasDataForStep(available[name], step))
+    .forEach((name) => {
+      const cacheKey = pluginLayerCacheKey(name, step);
+      uiState.pluginLayers[cacheKey] = null;
+    });
+
+  if (fetches.length > 0) {
+    await Promise.all(fetches);
+  }
 }
 
 async function fetchStepMapSnapshot(stepNumber) {
@@ -105,6 +276,7 @@ async function renderMapForViewedStep(stepNumber) {
     renderStepMapOverlay(null);
     return;
   }
+  updatePluginToggleAvailabilityIndicators();
   // Always ensure global snapshot is available in stepMapData so that
   // renderStepMapOverlay can derive scale from global data even when a rank is selected.
   const key = String(Math.floor(Number(stepNumber) || 0));
@@ -118,6 +290,7 @@ async function renderMapForViewedStep(stepNumber) {
       }
     } catch { /* non-fatal */ }
   }
+  await ensureSelectedPluginLayersLoaded(stepNumber);
   const snapshot = await fetchStepMapSnapshot(stepNumber);
   renderStepMapOverlay(snapshot);
 }
@@ -228,10 +401,13 @@ async function handleLaunch() {
     dom.transportPlay.disabled = true;
   }
   setStatus("running");
-  dom.output.textContent = "Launching emulator...";
+  let stopProgressTicker = startOutputProgressTicker("Launching emulator");
 
   try {
     syncBrowserPointCapFromSetup();
+    uiState.pluginLayers = {};
+    uiState.pluginLayersAvailable = {};
+    updatePluginToggleAvailabilityIndicators();
     const executionMode = dom.execModeStep && dom.execModeStep.checked ? "step" : "full";
     setExecutionMode(executionMode);
     if (executionMode !== "step") {
@@ -245,6 +421,10 @@ async function handleLaunch() {
     });
 
     const result = await response.json();
+    if (stopProgressTicker) {
+      stopProgressTicker();
+      stopProgressTicker = null;
+    }
     if (!response.ok) {
       if (result.status === "not-ready") {
         setStatus("not-ready");
@@ -261,6 +441,9 @@ async function handleLaunch() {
       recordStepHistory(currentStep, outputText);
       populateRankSelector(result.mpi_np ?? 1);
       if (currentStep > 0) {
+        setViewedStep(currentStep);
+        await fetchAvailablePluginLayers();
+        await ensureSelectedPluginLayersLoaded(currentStep);
         await fetchStepMapSnapshot(currentStep);
         await renderMapForViewedStep(currentStep);
       }
@@ -288,6 +471,8 @@ async function handleLaunch() {
         for (let step = 1; step <= inferredTotal; step += 1) {
           recordStepHistory(step, outputText);
         }
+        await fetchAvailablePluginLayers();
+        await ensureSelectedPluginLayersLoaded(initialStep);
         await fetchStepMapSnapshot(initialStep);
       }
       updateStepProgress({
@@ -298,6 +483,7 @@ async function handleLaunch() {
         requestInFlight: false,
       });
       if (initialStep > 0) {
+        setViewedStep(initialStep);
         await renderMapForViewedStep(initialStep);
       }
     }
@@ -305,11 +491,19 @@ async function handleLaunch() {
     const mappedStatus = result.status || (result.return_code === 0 ? "complete" : "failed");
     setStatus(mappedStatus);
   } catch (error) {
+    if (stopProgressTicker) {
+      stopProgressTicker();
+      stopProgressTicker = null;
+    }
     if (!String(error).toLowerCase().includes("not-ready")) {
       setStatus("failed");
     }
     dom.output.textContent = String(error);
   } finally {
+    if (stopProgressTicker) {
+      stopProgressTicker();
+      stopProgressTicker = null;
+    }
     updateRunAvailability();
   }
 }
@@ -334,6 +528,7 @@ async function handleStepNext() {
 
   updateStepProgress({ requestInFlight: true });
   setStatus("running");
+  let stopProgressTicker = startOutputProgressTicker("Advancing step");
 
   try {
     const response = await fetch("/api/session/step/next", {
@@ -343,6 +538,10 @@ async function handleStepNext() {
     });
 
     const result = await response.json();
+    if (stopProgressTicker) {
+      stopProgressTicker();
+      stopProgressTicker = null;
+    }
     if (!response.ok) {
       if (result.status === "not-ready") {
         setStatus("not-ready");
@@ -357,6 +556,9 @@ async function handleStepNext() {
     const totalSteps = Number(result.total_steps);
     recordStepHistory(currentStep, outputText);
     if (currentStep > 0) {
+      setViewedStep(currentStep);
+      await fetchAvailablePluginLayers();
+      await ensureSelectedPluginLayersLoaded(currentStep);
       await fetchStepMapSnapshot(currentStep);
       await renderMapForViewedStep(currentStep);
     }
@@ -373,11 +575,20 @@ async function handleStepNext() {
     });
     setStatus(result.status || (result.step_finished ? "complete" : "ready"));
   } catch (error) {
+    if (stopProgressTicker) {
+      stopProgressTicker();
+      stopProgressTicker = null;
+    }
     updateStepProgress({ requestInFlight: false });
     if (!String(error).toLowerCase().includes("not-ready")) {
       setStatus("failed");
     }
     dom.output.textContent = String(error);
+  } finally {
+    if (stopProgressTicker) {
+      stopProgressTicker();
+      stopProgressTicker = null;
+    }
   }
 }
 
@@ -395,6 +606,9 @@ async function handleReplay() {
 
   dom.output.textContent = "No run yet.";
   resetStepProgress();
+  uiState.pluginLayers = {};
+  uiState.pluginLayersAvailable = {};
+  updatePluginToggleAvailabilityIndicators();
   renderStepMapOverlay(null);
   setStatus(dom.runControlPanel.classList.contains("locked") ? "not-ready" : "ready");
 }
@@ -452,6 +666,17 @@ async function initApp() {
         await renderMapForViewedStep(uiState.stepCurrent);
       } else {
         renderStepMapOverlay(null);
+      }
+    });
+  }
+
+  if (dom.pluginToggleList) {
+    dom.pluginToggleList.addEventListener("change", async () => {
+      if (uiState.stepSessionActive && uiState.stepCurrent > 0) {
+        await fetchAvailablePluginLayers();
+        await ensureSelectedPluginLayersLoaded(uiState.stepCurrent);
+        updatePluginToggleAvailabilityIndicators();
+        await renderMapForViewedStep(uiState.stepCurrent);
       }
     });
   }

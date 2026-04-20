@@ -169,7 +169,6 @@ class EmulatorRuntimeExecutionTest(unittest.TestCase):
         self.assertIn("Rank 1: return_code=0, status=complete", aggregated["stdout"])
         runtime.cleanup_all()
 
-
 class _FakeRunResult:
     """Minimal stand-in for the pybind RunResult object."""
     def __init__(self, return_code=0, plume_run=False, last_step_run=-1):

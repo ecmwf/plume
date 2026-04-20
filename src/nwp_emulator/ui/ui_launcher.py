@@ -12,7 +12,6 @@ import re
 import subprocess
 import tarfile
 import tempfile
-import traceback
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -133,17 +132,30 @@ class LauncherConfig:
         self.runtime.record_result(payload)
 
     def build_launch_exception_payload(self, exc, dev_enabled):
-        trace = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        run_id = "unknown"
+        run_dir = "unknown"
+        run_log = "unknown"
+
+        active_run_dir = self.runtime.get_active_run_dir()
+        if active_run_dir is not None:
+            run_id = active_run_dir.name
+            run_dir = str(active_run_dir)
+            log_path = active_run_dir / "run.log"
+            if log_path.exists():
+                run_log = str(log_path)
+
+        # Prefer the actual backend/runtime error text over a Python traceback.
+        error_text = str(exc).strip() or exc.__class__.__name__
         return {
             "command": [],
             "dev": bool(dev_enabled),
             "return_code": 1,
             "status": "failed",
             "stdout_tail": "",
-            "stderr_tail": trace,
-            "run_id": "unknown",
-            "run_dir": "unknown",
-            "run_log": "unknown",
+            "stderr_tail": error_text,
+            "run_id": run_id,
+            "run_dir": run_dir,
+            "run_log": run_log,
         }
 
     def launch_from_setup_state(self, setup_state, cwd, dev_enabled):
@@ -181,6 +193,35 @@ class LauncherConfig:
         if not rank_file.exists():
             return None
         return rank_file
+
+    def get_plugin_layers_index(self):
+        run_dir = self.get_active_run_dir()
+        if run_dir is None:
+            return None
+        index_file = run_dir / "plugin_layers_index.json"
+        if not index_file.exists():
+            return None
+        return index_file
+
+    def get_plugin_layer_file(self, plugin_name, step=None):
+        run_dir = self.get_active_run_dir()
+        if run_dir is None:
+            return None
+        plugin_dir = run_dir / "plugin_layers" / str(plugin_name)
+        if step is not None:
+            step_target = plugin_dir / f"layer_step_{int(step)}.json"
+            if step_target.exists() and step_target.is_file():
+                return step_target
+        return None
+
+    def get_plugin_metadata_file(self, plugin_name):
+        run_dir = self.get_active_run_dir()
+        if run_dir is None:
+            return None
+        target = run_dir / "plugin_layers" / str(plugin_name) / "metadata.json"
+        if not target.exists() or not target.is_file():
+            return None
+        return target
 
 
 def parse_args():
@@ -249,6 +290,120 @@ def make_handler(config):
 
             if req_path.startswith("/api/setup/"):
                 self._route_setup("GET", req_path, {})
+                return
+
+            if req_path == "/api/run/plugins/available":
+                index_file_callable = getattr(config, "get_plugin_layers_index", None)
+                index_file = index_file_callable() if callable(index_file_callable) else None
+                if index_file is None:
+                    self._json_response(HTTPStatus.OK, {"plugins": []})
+                    return
+                assert isinstance(index_file, pathlib.Path)
+                try:
+                    body = index_file.read_bytes()
+                except OSError as exc:
+                    status_code, headers, body = error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
+                    self._write_response(status_code, headers, body)
+                    return
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            plugin_layer_step_match = re.fullmatch(r"/api/run/plugins/([A-Za-z0-9_.-]+)/layer/step/(\d+)", req_path)
+            if plugin_layer_step_match:
+                plugin_name = plugin_layer_step_match.group(1)
+                step = int(plugin_layer_step_match.group(2))
+                layer_file_callable = getattr(config, "get_plugin_layer_file", None)
+                layer_file = layer_file_callable(plugin_name, step=step) if callable(layer_file_callable) else None
+                if layer_file is None:
+                    status_code, headers, body = error_response(
+                        f"No plugin layer found for plugin {plugin_name} at step {step}", HTTPStatus.NOT_FOUND
+                    )
+                    self._write_response(status_code, headers, body)
+                    return
+                assert isinstance(layer_file, pathlib.Path)
+                try:
+                    body = layer_file.read_bytes()
+                except OSError as exc:
+                    status_code, headers, body = error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
+                    self._write_response(status_code, headers, body)
+                    return
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            plugin_layer_match = re.fullmatch(r"/api/run/plugins/([A-Za-z0-9_.-]+)/layer", req_path)
+            if plugin_layer_match:
+                plugin_name = plugin_layer_match.group(1)
+                layer_file_callable = getattr(config, "get_plugin_layer_file", None)
+                layer_file = layer_file_callable(plugin_name) if callable(layer_file_callable) else None
+                if layer_file is None:
+                    status_code, headers, body = error_response(
+                        f"No plugin layer found for plugin {plugin_name}", HTTPStatus.NOT_FOUND
+                    )
+                    self._write_response(status_code, headers, body)
+                    return
+                assert isinstance(layer_file, pathlib.Path)
+                try:
+                    body = layer_file.read_bytes()
+                except OSError as exc:
+                    status_code, headers, body = error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
+                    self._write_response(status_code, headers, body)
+                    return
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            plugin_meta_match = re.fullmatch(r"/api/run/plugins/([A-Za-z0-9_.-]+)/metadata", req_path)
+            if plugin_meta_match:
+                plugin_name = plugin_meta_match.group(1)
+                metadata_file_callable = getattr(config, "get_plugin_metadata_file", None)
+                metadata_file = metadata_file_callable(plugin_name) if callable(metadata_file_callable) else None
+                if metadata_file is not None:
+                    assert isinstance(metadata_file, pathlib.Path)
+                    try:
+                        body = metadata_file.read_bytes()
+                    except OSError as exc:
+                        status_code, headers, body = error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
+                        self._write_response(status_code, headers, body)
+                        return
+                    self.send_response(HTTPStatus.OK)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+
+                layer_file_callable = getattr(config, "get_plugin_layer_file", None)
+                layer_file = layer_file_callable(plugin_name) if callable(layer_file_callable) else None
+                if layer_file is None:
+                    status_code, headers, body = error_response(
+                        f"No plugin metadata found for plugin {plugin_name}", HTTPStatus.NOT_FOUND
+                    )
+                    self._write_response(status_code, headers, body)
+                    return
+                assert isinstance(layer_file, pathlib.Path)
+                try:
+                    stat_result = layer_file.stat()
+                except OSError as exc:
+                    status_code, headers, body = error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
+                    self._write_response(status_code, headers, body)
+                    return
+                self._json_response(HTTPStatus.OK, {
+                    "name": plugin_name,
+                    "source": "fallback",
+                    "layer_size_bytes": stat_result.st_size,
+                    "layer_mtime": stat_result.st_mtime,
+                })
                 return
 
             rank_map_match = re.fullmatch(r"/api/run/map/step/(\d+)/rank/(\d+)", req_path)

@@ -531,7 +531,7 @@ def main() -> int:
             module_search_dirs,
             rank,
         )
-    except (ImportError, AttributeError, KeyError, OSError, ValueError, TypeError) as exc:
+    except (ImportError, AttributeError, KeyError, OSError, ValueError, TypeError, RuntimeError) as exc:
         result_file = run_dir / f"rank_{rank}.json"
         result_file.write_text(json.dumps({
             "rank": rank,

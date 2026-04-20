@@ -175,6 +175,8 @@ export function resetStepProgress() {
   uiState.stepMapImages = {};
   uiState.stepMapData = {};
   uiState.stepRankMapData = {};
+  uiState.pluginLayersAvailable = {};
+  uiState.pluginLayers = {};
   uiState.selectedFieldKey = "";
   uiState.selectedMapRank = null;
   uiState.runMpiNp = 1;

@@ -15,8 +15,90 @@ function getSelectedFieldName() {
 function getSelectedPluginNames() {
   if (!dom.pluginToggleList) return [];
   return [...dom.pluginToggleList.querySelectorAll('input[type="checkbox"]:checked')]
-    .map((cb) => cb.closest("label")?.textContent?.trim() || "")
+    .map((cb) => String(cb.value || "").trim())
     .filter(Boolean);
+}
+
+function pluginLayerCacheKey(pluginName, stepNumber) {
+  const name = String(pluginName || "").trim();
+  const step = Math.max(0, Math.floor(Number(stepNumber) || 0));
+  if (!name || step <= 0) {
+    return "";
+  }
+  return `${name}::${step}`;
+}
+
+async function fetchAvailablePluginLayers() {
+  try {
+    const response = await fetch("/api/run/plugins/available");
+    if (!response.ok) {
+      return {};
+    }
+    const payload = await response.json();
+    const available = {};
+    for (const entry of Array.isArray(payload?.plugins) ? payload.plugins : []) {
+      const name = String(entry?.name || "").trim();
+      if (name) {
+        available[name] = entry;
+      }
+    }
+    return available;
+  } catch {
+    return {};
+  }
+}
+
+async function ensureSelectedPluginLayersLoadedForStep(stepNumber) {
+  const step = Math.max(0, Math.floor(Number(stepNumber) || 0));
+  if (step <= 0) {
+    return;
+  }
+
+  const selectedPlugins = getSelectedPluginNames();
+  if (selectedPlugins.length === 0) {
+    return;
+  }
+
+  const available = Object.keys(uiState.pluginLayersAvailable || {}).length
+    ? uiState.pluginLayersAvailable
+    : await fetchAvailablePluginLayers();
+  uiState.pluginLayersAvailable = available;
+
+  const fetches = selectedPlugins.map(async (pluginName) => {
+    const cacheKey = pluginLayerCacheKey(pluginName, step);
+    if (!cacheKey) {
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(uiState.pluginLayers, cacheKey)) {
+      return;
+    }
+
+    const entry = available[pluginName];
+    const availableSteps = Array.isArray(entry?.available_steps) ? entry.available_steps : [];
+    if (!availableSteps.includes(step)) {
+      uiState.pluginLayers[cacheKey] = null;
+      return;
+    }
+
+    try {
+      const encoded = encodeURIComponent(pluginName);
+      const response = await fetch(`/api/run/plugins/${encoded}/layer/step/${step}`);
+      if (!response.ok) {
+        uiState.pluginLayers[cacheKey] = null;
+        return;
+      }
+      const payload = await response.json();
+      uiState.pluginLayers[cacheKey] = payload;
+    } catch {
+      uiState.pluginLayers[cacheKey] = null;
+    }
+  });
+
+  await Promise.all(fetches);
+}
+
+async function flushUiFrame() {
+  await new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 function getSelectedFieldKey() {
@@ -113,6 +195,21 @@ function snapshotForCurrentView() {
   return ensureComputedWindSpeedFields(snap);
 }
 
+function snapshotForStepWithCurrentRank(stepNumber) {
+  const key = String(Math.floor(Number(stepNumber) || 0));
+  if (!key || key === "0") {
+    return null;
+  }
+  if (uiState.selectedMapRank !== null && Number.isFinite(uiState.selectedMapRank)) {
+    const rankSnap = uiState.stepRankMapData?.[`${key}:${uiState.selectedMapRank}`] || null;
+    if (rankSnap) {
+      return ensureComputedWindSpeedFields(rankSnap);
+    }
+  }
+  const globalSnap = uiState.stepMapData?.[key] || null;
+  return ensureComputedWindSpeedFields(globalSnap);
+}
+
 async function withSaveResolutionMode(work) {
   const prevEnabled = uiState.browserPointCapEnabled;
   const saveFull = shouldSaveFullResolution();
@@ -130,8 +227,53 @@ async function withSaveResolutionMode(work) {
   }
 }
 
-function currentScaleText() {
-  return dom.mapScaleNote?.textContent?.trim() || "";
+function wrapLegendLabel(text, maxCharsPerLine = 22) {
+  const words = String(text || "").split(/\s+/);
+  if (words.length === 0) return "";
+  
+  const lines = [];
+  let currentLine = "";
+  
+  for (const word of words) {
+    if (!currentLine) {
+      currentLine = word;
+    } else if ((currentLine.length + 1 + word.length) <= maxCharsPerLine) {
+      currentLine += " " + word;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+  
+  return lines.join("<br>");
+}
+
+function polygonBoundaryLegendEntries() {
+  const traces = Array.isArray(dom.mapDiv?.data) ? dom.mapDiv.data : [];
+  const entries = [];
+  const seen = new Set();
+
+  for (let i = 0; i < traces.length; i += 1) {
+    const trace = traces[i];
+    const meta = trace?.meta;
+    if (!meta?.regionHoverHighlight) {
+      continue;
+    }
+
+    const label = String(meta.legendLabel || "region").trim() || "region";
+    const color = String(meta.legendColor || trace?.line?.color || "#d62728");
+    const key = `${label}::${color}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    entries.push({ traceIndex: i, label, color, key, wrappedLabel: wrapLegendLabel(label) });
+  }
+
+  return entries;
 }
 
 function buildTickValues(cmin, cmax, count = 5) {
@@ -168,6 +310,8 @@ export async function captureMapPng(titleText) {
   const prevTitle = dom.mapDiv.layout?.title ?? "";
   const prevMargin = dom.mapDiv.layout?.margin ?? { l: 0, r: 0, t: 0, b: 0 };
   const prevAnnotations = dom.mapDiv.layout?.annotations ?? [];
+  const prevLegend = dom.mapDiv.layout?.legend ?? undefined;
+  const prevShowLegend = dom.mapDiv.layout?.showlegend ?? false;
   const prevMarker = dom.mapDiv.data?.[0]?.marker || {};
   const prevSize = Number(prevMarker.size);
   const exportSize = Number.isFinite(prevSize) ? prevSize * 1.5 : 6;
@@ -178,20 +322,40 @@ export async function captureMapPng(titleText) {
   const tickvals = hasScale ? buildTickValues(cmin, cmax, 5) : [];
   const ticktext = tickvals.map((value) => Number(value).toFixed(3));
 
-  const scaleText = currentScaleText();
-  const scaleAnnotation = scaleText
-    ? [{
-        text: scaleText,
-        xref: "paper",
-        yref: "paper",
-        x: 0.5,
-        y: -0.04,
-        xanchor: "center",
-        yanchor: "top",
-        showarrow: false,
-        font: { size: 10, color: "#223f54" },
-      }]
-    : [];
+  const polygonLegendEntries = polygonBoundaryLegendEntries();
+
+  if (polygonLegendEntries.length > 0) {
+    const restoreIndices = polygonLegendEntries.map((entry) => entry.traceIndex);
+    const restoreShowLegend = [];
+    const restoreName = [];
+    const restoreLegendGroup = [];
+    const restoreLineColor = [];
+
+    for (const entry of polygonLegendEntries) {
+      const trace = dom.mapDiv.data?.[entry.traceIndex] || {};
+      restoreShowLegend.push(Boolean(trace.showlegend));
+      restoreName.push(Object.prototype.hasOwnProperty.call(trace, "name") ? trace.name : "");
+      restoreLegendGroup.push(Object.prototype.hasOwnProperty.call(trace, "legendgroup") ? trace.legendgroup : "");
+      restoreLineColor.push(String(trace?.line?.color || entry.color));
+    }
+
+    await Plotly.restyle(dom.mapDiv, {
+      showlegend: polygonLegendEntries.map(() => true),
+      name: polygonLegendEntries.map((entry) => entry.wrappedLabel),
+      legendgroup: polygonLegendEntries.map((entry) => entry.key),
+      "line.color": polygonLegendEntries.map((entry) => entry.color),
+    }, restoreIndices);
+
+    dom.mapDiv.__exportLegendRestore = {
+      indices: restoreIndices,
+      showlegend: restoreShowLegend,
+      name: restoreName,
+      legendgroup: restoreLegendGroup,
+      lineColor: restoreLineColor,
+    };
+  } else {
+    dom.mapDiv.__exportLegendRestore = null;
+  }
 
   await Plotly.restyle(dom.mapDiv, {
     marker: [{
@@ -202,7 +366,7 @@ export async function captureMapPng(titleText) {
         orientation: "h",
         x: 0.5,
         xanchor: "center",
-        y: -0.26,
+        y: -0.02,
         yanchor: "top",
         len: 0.72,
         thickness: 12,
@@ -215,9 +379,26 @@ export async function captureMapPng(titleText) {
   }, [0]);
 
   await Plotly.relayout(dom.mapDiv, {
-    title: { text: titleText || "", font: { size: 11, color: "#223f54" } },
-    margin: { l: 0, r: 0, t: 28, b: hasScale ? 110 : (scaleText ? 52 : 0) },
-    annotations: scaleAnnotation,
+    title: { text: titleText || "", font: { size: 16, weight: "bold", color: "#223f54" } },
+    margin: {
+      l: 0,
+      r: polygonLegendEntries.length > 0 ? 210 : 0,
+      t: 28,
+      b: hasScale ? 58 : 0,
+    },
+    showlegend: polygonLegendEntries.length > 0,
+    legend: polygonLegendEntries.length > 0 ? {
+      x: 1.02,
+      xanchor: "left",
+      y: 1.0,
+      yanchor: "top",
+      bgcolor: "rgba(255,255,255,0.92)",
+      bordercolor: "#c9d8e4",
+      borderwidth: 1,
+      font: { size: 10, color: "#223f54" },
+      traceorder: "normal",
+    } : prevLegend,
+    annotations: [],
   });
 
   // Ensure coastlines render on top for export
@@ -226,6 +407,17 @@ export async function captureMapPng(titleText) {
   try {
     return await Plotly.toImage(dom.mapDiv, { format: "png", width: 1200, height: 700 });
   } finally {
+    const legendRestore = dom.mapDiv.__exportLegendRestore;
+    if (legendRestore && Array.isArray(legendRestore.indices) && legendRestore.indices.length > 0) {
+      await Plotly.restyle(dom.mapDiv, {
+        showlegend: legendRestore.showlegend,
+        name: legendRestore.name,
+        legendgroup: legendRestore.legendgroup,
+        "line.color": legendRestore.lineColor,
+      }, legendRestore.indices);
+    }
+    dom.mapDiv.__exportLegendRestore = null;
+
     await Plotly.restyle(dom.mapDiv, {
       marker: [{
         ...prevMarker,
@@ -233,7 +425,13 @@ export async function captureMapPng(titleText) {
         showscale: false,
       }],
     }, [0]);
-    await Plotly.relayout(dom.mapDiv, { title: prevTitle, margin: prevMargin, annotations: prevAnnotations });
+    await Plotly.relayout(dom.mapDiv, {
+      title: prevTitle,
+      margin: prevMargin,
+      annotations: prevAnnotations,
+      showlegend: prevShowLegend,
+      legend: prevLegend,
+    });
   }
 }
 
@@ -283,6 +481,7 @@ export async function handleSaveGif() {
   await new Promise(resolve => setTimeout(resolve, 10));
   const frames = [];
   const viewedStep = Number(uiState.stepCurrent || 0);
+  const previousStepForExport = uiState.stepCurrent;
   let gifBuildStartTime = Date.now();
   const GIF_BUILD_TIMEOUT_MS = 5 * 60 * 1000;
   let errorMessage = null;
@@ -301,6 +500,7 @@ export async function handleSaveGif() {
         }
       }
       updateLoadingOverlay(`Building GIF... Processing step ${i}/${uiState.stepLatest}`);
+      await flushUiFrame();
       const key = String(i);
       const rank = uiState.selectedMapRank;
       let snapshot = null;
@@ -347,26 +547,36 @@ export async function handleSaveGif() {
       if (!snapshot || !snapshot.fields || !snapshot.fields[selectedFieldKey]) {
         continue;
       }
+
+      uiState.stepCurrent = i;
+      await ensureSelectedPluginLayersLoadedForStep(i);
       renderStepMapOverlay(snapshot);
+      await flushUiFrame();
       const title = `${buildGifTitle().replaceAll("_", " ")} step ${i}`;
       const dataUrl = await captureMapPng(title);
       frames.push({ step: i, png_base64: dataUrl.replace(/^data:image\/png;base64,/, "") });
     }
   });
 
+  uiState.stepCurrent = previousStepForExport;
+
   if (errorMessage) {
     console.error("GIF build interrupted:", errorMessage);
     updateLoadingOverlay(`Error: ${errorMessage}`);
     await new Promise(resolve => setTimeout(resolve, 3000));
     hideLoadingOverlay();
-    if (viewedStep > 0 && uiState.stepMapData?.[String(viewedStep)]) {
-      renderStepMapOverlay(uiState.stepMapData[String(viewedStep)]);
+    const restoreSnapshot = snapshotForStepWithCurrentRank(viewedStep);
+    if (restoreSnapshot) {
+      uiState.stepCurrent = viewedStep;
+      renderStepMapOverlay(restoreSnapshot);
     }
     return;
   }
 
-  if (viewedStep > 0 && uiState.stepMapData?.[String(viewedStep)]) {
-    renderStepMapOverlay(uiState.stepMapData[String(viewedStep)]);
+  const restoreSnapshot = snapshotForStepWithCurrentRank(viewedStep);
+  if (restoreSnapshot) {
+    uiState.stepCurrent = viewedStep;
+    renderStepMapOverlay(restoreSnapshot);
   }
 
   if (frames.length === 0) {

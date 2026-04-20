@@ -75,6 +75,8 @@ MAX_TAIL_CHARS = 6000
 _STEP_POLL_INTERVAL = 0.05   # 50 ms between file-existence polls
 _STEP_SETUP_TIMEOUT = 30.0   # seconds to wait for all workers to complete setup
 _STEP_ADVANCE_TIMEOUT = 120.0  # seconds to wait for each step advance
+_PLUGIN_LAYER_DIRNAME = "plugin_layers"
+_PLUGIN_LAYER_INDEX_FILENAME = "plugin_layers_index.json"
 
 
 def tail_text(text: str, max_chars: int = MAX_TAIL_CHARS) -> str:
@@ -399,15 +401,14 @@ class EmulatorRuntime:
     ) -> dict[str, Any]:
         """Execute through the Python-bound C++ core (single or multi-rank).
 
-        For mpi_np=1: Discovers the pybind11 extension module, stages the run
-        workspace, translates args to typed RunOptions, and executes directly
-        (in-process, no subprocess).
-
-        For mpi_np>1: Orchestrates multi-rank execution by:
+        For all mpi_np values: Orchestrates execution via worker subprocesses by:
         1. Staging run options to JSON in the workspace.
-        2. Invoking mpirun with the worker entrypoint.
+        2. Invoking worker entrypoint (through mpirun -np N, including N=1).
         3. Collecting per-rank outcomes and aggregating results.
         4. Writing unified run.log and returning aggregated payload.
+
+        This process isolation prevents native crashes in the bound C++ core
+        from terminating the launcher/UI process.
 
         Raises ImportError if the pybind module cannot be located, allowing
         callers to fall back gracefully (if fallback is still enabled).
@@ -436,19 +437,14 @@ class EmulatorRuntime:
         mod = self._import_bound_module(module_name, cwd)
 
         if execution_mode == "step":
-            if mpi_np > 1:
-                return self._start_step_session_multirank_python(
-                    setup_state, cwd, dev_enabled, mod, module_name, mpi_np
-                )
-            return self._start_step_session_python(setup_state, dev_enabled, mod, module_name)
-
-        # Route to single-rank or multi-rank path based on mpi_np.
-        if mpi_np > 1:
-            return self._run_multirank_from_setup_state_python(
-                setup_state, cwd, dev_enabled, mpi_np, mod
+            return self._start_step_session_multirank_python(
+                setup_state, cwd, dev_enabled, mod, module_name, mpi_np
             )
-        else:
-            return self._run_single_rank_python(setup_state, cwd, dev_enabled, mod)
+
+        # Use worker-subprocess path for full mode as well, including mpi_np=1.
+        return self._run_multirank_from_setup_state_python(
+            setup_state, cwd, dev_enabled, mpi_np, mod
+        )
 
     def advance_step_from_session(self) -> dict[str, Any]:
         """Advance an active step session by one step and return updated payload."""
@@ -491,7 +487,11 @@ class EmulatorRuntime:
             def _advance_once() -> bool:
                 return bool(core.run_step())
 
-            has_step, captured_stdout, captured_stderr = self._with_plugin_dev_capture(_advance_once, dev_enabled)
+            has_step, captured_stdout, captured_stderr = self._with_plugin_dev_capture(
+                _advance_once,
+                dev_enabled,
+                pathlib.Path(session["run_dir"]),
+            )
             if has_step:
                 session["current_step"] = int(core.current_step())
                 snapshot_path, field_keys = self._capture_single_rank_step_field_snapshot(
@@ -517,6 +517,8 @@ class EmulatorRuntime:
                 has_next = False
                 session["status"] = "step-finished"
                 self._finalize_step_session_locked(session)
+
+            self._scan_and_index_plugin_layers(pathlib.Path(session["run_dir"]))
 
             if not has_next:
                 finalize_stdout = str(session.get("finalize_stdout") or "").strip()
@@ -582,7 +584,11 @@ class EmulatorRuntime:
             first_step = bool(core.run_step())
             return True, plume_run, first_step
 
-        launch_result, captured_stdout, captured_stderr = self._with_plugin_dev_capture(_launch_first_step, dev_enabled)
+        launch_result, captured_stdout, captured_stderr = self._with_plugin_dev_capture(
+            _launch_first_step,
+            dev_enabled,
+            run_workspace["run_dir"],
+        )
         valid_opts, plume_run, first_step = launch_result
         if not valid_opts:
             raise SetupValidationError("Invalid emulator run options")
@@ -603,6 +609,8 @@ class EmulatorRuntime:
             )
             if snapshot_path is not None:
                 step_field_files[str(current_step)] = str(snapshot_path)
+
+        self._scan_and_index_plugin_layers(run_workspace["run_dir"])
 
         session = {
             "session_id": self.session_id,
@@ -707,15 +715,16 @@ class EmulatorRuntime:
         stderr_text: str,
         has_next: bool,
     ) -> dict[str, Any]:
-        finished = not has_next
-        status = "complete" if finished else "step-complete"
+        failed = str(session.get("status", "")).lower() == "failed"
+        finished = not has_next and not failed
+        status = "failed" if failed else ("complete" if finished else "step-complete")
         current_step = int(session.get("current_step") or 0)
         step_field_files_raw = session.get("step_field_files")
         step_field_files: dict[str, str] = step_field_files_raw if isinstance(step_field_files_raw, dict) else {}
         return {
             "command": session.get("command", []),
             "dev": bool(session.get("dev_enabled", False)),
-            "return_code": 0,
+            "return_code": 1 if failed else 0,
             "stdout_tail": tail_text(stdout_text),
             "stderr_tail": tail_text(stderr_text),
             "run_id": session.get("run_id", "unknown"),
@@ -776,9 +785,18 @@ class EmulatorRuntime:
             run_log_path.write_text(header + section, encoding="utf-8")
 
     @staticmethod
-    def _with_plugin_dev_capture(func: Any, dev_enabled: bool) -> tuple[Any, str, str]:
+    def _with_plugin_dev_capture(
+        func: Any,
+        dev_enabled: bool,
+        run_dir: pathlib.Path | None = None,
+    ) -> tuple[Any, str, str]:
         prev = os.environ.get("PLUME_PLUGIN_DEV")
+        prev_emulator = os.environ.get("PLUME_EMULATOR_MODE")
+        prev_tmpdir = os.environ.get("PLUME_RUN_TMPDIR")
         os.environ["PLUME_PLUGIN_DEV"] = "true" if dev_enabled else "false"
+        os.environ["PLUME_EMULATOR_MODE"] = "1"
+        if run_dir is not None:
+            os.environ["PLUME_RUN_TMPDIR"] = str(run_dir)
         try:
             return EmulatorRuntime._call_with_captured_fds(func)
         finally:
@@ -786,6 +804,14 @@ class EmulatorRuntime:
                 os.environ.pop("PLUME_PLUGIN_DEV", None)
             else:
                 os.environ["PLUME_PLUGIN_DEV"] = prev
+            if prev_emulator is None:
+                os.environ.pop("PLUME_EMULATOR_MODE", None)
+            else:
+                os.environ["PLUME_EMULATOR_MODE"] = prev_emulator
+            if prev_tmpdir is None:
+                os.environ.pop("PLUME_RUN_TMPDIR", None)
+            else:
+                os.environ["PLUME_RUN_TMPDIR"] = prev_tmpdir
 
     @staticmethod
     def _read_text_delta(path: pathlib.Path, offset: int) -> tuple[str, int]:
@@ -862,6 +888,7 @@ class EmulatorRuntime:
                 _, finalize_stdout, finalize_stderr = self._with_plugin_dev_capture(
                     _finalize_single_rank,
                     bool(session.get("dev_enabled", False)),
+                    pathlib.Path(session["run_dir"]),
                 )
                 session["finalize_stdout"] = (session.get("finalize_stdout") or "") + finalize_stdout
                 session["finalize_stderr"] = (session.get("finalize_stderr") or "") + finalize_stderr
@@ -955,6 +982,85 @@ class EmulatorRuntime:
         return False
 
     @staticmethod
+    def _wait_for_rank_files_or_proc_exit(
+        run_dir: pathlib.Path,
+        mpi_np: int,
+        filename_template: str,
+        timeout: float,
+        proc: subprocess.Popen[Any],
+    ) -> tuple[bool, bool]:
+        """Poll until all rank files exist, process exits, or timeout.
+
+        Returns:
+            (all_files_ready, process_exited_early)
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if all(
+                (run_dir / filename_template.format(rank=r)).exists()
+                for r in range(mpi_np)
+            ):
+                return True, False
+
+            if proc.poll() is not None:
+                return False, True
+
+            time.sleep(_STEP_POLL_INTERVAL)
+
+        return False, proc.poll() is not None
+
+    @staticmethod
+    def _collect_step_failure_details(
+        run_dir: pathlib.Path,
+        mpi_np: int,
+        step: int,
+        worker_stdout_path: pathlib.Path | None,
+        worker_stderr_path: pathlib.Path | None,
+    ) -> str:
+        """Collect concrete failure details for a step from rank outputs and stderr."""
+        details: list[str] = []
+
+        for r in range(mpi_np):
+            fname = run_dir / f"rank_{r}_step_{step}_done.json"
+            if not fname.exists():
+                continue
+            try:
+                data = json.loads(fname.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                details.append(f"rank {r}: step result file unreadable")
+                continue
+
+            status = str(data.get("status", "unknown"))
+            return_code = int(data.get("return_code", 0) or 0)
+            error = str(data.get("error", "") or "").strip()
+            if status.lower() == "failed" or return_code != 0 or error:
+                if error:
+                    details.append(f"rank {r}: {error}")
+                else:
+                    details.append(f"rank {r}: status={status}, return_code={return_code}")
+
+        if worker_stdout_path is not None and worker_stdout_path.exists():
+            try:
+                stdout_excerpt = tail_text(worker_stdout_path.read_text(encoding="utf-8"), 2500).strip()
+            except OSError:
+                stdout_excerpt = ""
+            if stdout_excerpt:
+                details.append("worker stdout tail:\n" + stdout_excerpt)
+
+        if worker_stderr_path is not None and worker_stderr_path.exists():
+            try:
+                stderr_excerpt = tail_text(worker_stderr_path.read_text(encoding="utf-8"), 2500).strip()
+            except OSError:
+                stderr_excerpt = ""
+            if stderr_excerpt:
+                details.append("worker stderr tail:\n" + stderr_excerpt)
+
+        if not details:
+            return "no rank step failure file found; worker exited before writing completion results"
+
+        return " | ".join(details)
+
+    @staticmethod
     def _aggregate_step_rank_results(
         run_dir: pathlib.Path,
         mpi_np: int,
@@ -971,6 +1077,10 @@ class EmulatorRuntime:
             rank_results.append(data)
 
         has_step = all(d.get("has_step", False) for d in rank_results)
+        failed = any(
+            str(d.get("status", "")).lower() == "failed" or int(d.get("return_code", 0) or 0) != 0
+            for d in rank_results
+        )
         plume_run = any(d.get("plume_run", False) for d in rank_results)
 
         stdout_parts: list[str] = []
@@ -988,10 +1098,11 @@ class EmulatorRuntime:
 
         return {
             "has_step": has_step,
+            "failed": failed,
             "plume_run": plume_run,
             "stdout": "\n".join(stdout_parts),
             "stderr": "\n".join(stderr_parts),
-            "return_code": 0 if has_step else 1,
+            "return_code": 1 if failed else 0,
         }
 
     @staticmethod
@@ -1016,6 +1127,63 @@ class EmulatorRuntime:
             # Non-fatal: log error but don't fail the run
             print(f"Warning: Failed to archive full-resolution fields: {e}", file=sys.stderr)
             return None
+
+    @staticmethod
+    def _scan_and_index_plugin_layers(run_dir: pathlib.Path) -> dict[str, Any]:
+        """Scan plugin-owned layer outputs and persist a lightweight index."""
+        plugins_root = run_dir / _PLUGIN_LAYER_DIRNAME
+        entries: list[dict[str, Any]] = []
+
+        if plugins_root.exists() and plugins_root.is_dir():
+            for plugin_dir in sorted(plugins_root.iterdir()):
+                if not plugin_dir.is_dir():
+                    continue
+
+                plugin_name = plugin_dir.name
+                metadata_path = plugin_dir / "metadata.json"
+                step_files = sorted(plugin_dir.glob("layer_step_*.json"))
+                available_steps: list[int] = []
+                for step_file in step_files:
+                    match = re.fullmatch(r"layer_step_(\d+)\.json", step_file.name)
+                    if match is None:
+                        continue
+                    try:
+                        available_steps.append(int(match.group(1)))
+                    except ValueError:
+                        continue
+                available_steps = sorted(set(available_steps))
+
+                metadata_payload: dict[str, Any] | None = None
+                if metadata_path.exists() and metadata_path.is_file():
+                    try:
+                        loaded = json.loads(metadata_path.read_text(encoding="utf-8"))
+                        if isinstance(loaded, dict):
+                            metadata_payload = loaded
+                    except (OSError, json.JSONDecodeError):
+                        metadata_payload = None
+
+                entry: dict[str, Any] = {
+                    "name": plugin_name,
+                    "layer_available": bool(available_steps),
+                    "metadata_available": metadata_path.exists() and metadata_path.is_file(),
+                    "available_steps": available_steps,
+                }
+                if metadata_payload is not None:
+                    entry["metadata"] = metadata_payload
+                entries.append(entry)
+
+        index_payload: dict[str, Any] = {
+            "plugins": entries,
+            "plugin_layers_root": str(plugins_root),
+        }
+        try:
+            (run_dir / _PLUGIN_LAYER_INDEX_FILENAME).write_text(
+                json.dumps(index_payload, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+        return index_payload
 
     @staticmethod
     def _persist_step_field_snapshot(
@@ -1171,6 +1339,8 @@ class EmulatorRuntime:
         worker_cmd = [
             "mpirun", "-np", str(mpi_np),
             "-x", "PLUME_PLUGIN_DEV",
+            "-x", "PLUME_EMULATOR_MODE",
+            "-x", "PLUME_RUN_TMPDIR",
             "python", str(worker_script),
             str(run_dir),
             "--step-mode",
@@ -1201,7 +1371,11 @@ class EmulatorRuntime:
         worker_stderr_path = run_dir / "worker_stderr.log"
 
         _prev_dev = os.environ.get("PLUME_PLUGIN_DEV")
+        _prev_emulator = os.environ.get("PLUME_EMULATOR_MODE")
+        _prev_tmpdir = os.environ.get("PLUME_RUN_TMPDIR")
         os.environ["PLUME_PLUGIN_DEV"] = "true" if dev_enabled else "false"
+        os.environ["PLUME_EMULATOR_MODE"] = "1"
+        os.environ["PLUME_RUN_TMPDIR"] = str(run_dir)
         try:
             with open(worker_stdout_path, "w", encoding="utf-8") as stdout_file, \
                   open(worker_stderr_path, "w", encoding="utf-8") as stderr_file:
@@ -1217,6 +1391,14 @@ class EmulatorRuntime:
                 os.environ.pop("PLUME_PLUGIN_DEV", None)
             else:
                 os.environ["PLUME_PLUGIN_DEV"] = _prev_dev
+            if _prev_emulator is None:
+                os.environ.pop("PLUME_EMULATOR_MODE", None)
+            else:
+                os.environ["PLUME_EMULATOR_MODE"] = _prev_emulator
+            if _prev_tmpdir is None:
+                os.environ.pop("PLUME_RUN_TMPDIR", None)
+            else:
+                os.environ["PLUME_RUN_TMPDIR"] = _prev_tmpdir
 
         # Wait for all workers to complete provider setup.
         ready = self._wait_for_rank_files(
@@ -1224,11 +1406,48 @@ class EmulatorRuntime:
         )
         if not ready:
             self._terminate_proc(proc)
+
+            detail_lines: list[str] = []
+
+            # Collect any partial rank-ready failures that were written before timeout.
+            for r in range(mpi_np):
+                ready_file = run_dir / f"rank_{r}_ready.json"
+                if not ready_file.exists():
+                    continue
+                try:
+                    data = json.loads(ready_file.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    detail_lines.append(f"rank {r}: ready file unreadable")
+                    continue
+                status = str(data.get("status", "unknown"))
+                if status != "ready":
+                    error_msg = str(data.get("error", "unknown"))
+                    detail_lines.append(f"rank {r}: status={status}, error={error_msg}")
+
+            # Include worker stderr tail to expose native crashes or plugin exceptions.
+            stderr_excerpt = ""
+            try:
+                if worker_stderr_path.exists():
+                    stderr_excerpt = tail_text(worker_stderr_path.read_text(encoding="utf-8"), 2500).strip()
+            except OSError:
+                stderr_excerpt = ""
+
             _append_launch_diagnostic(
                 f"ERROR: workers did not signal readiness within {_STEP_SETUP_TIMEOUT}s"
             )
+            for line in detail_lines:
+                _append_launch_diagnostic(f"DETAIL: {line}")
+            if stderr_excerpt:
+                _append_launch_diagnostic("DETAIL: worker_stderr_tail follows")
+                _append_launch_diagnostic(stderr_excerpt)
+
+            detail_suffix = ""
+            if detail_lines:
+                detail_suffix += " | " + " ; ".join(detail_lines)
+            if stderr_excerpt:
+                detail_suffix += " | worker stderr tail available in run.log"
             raise RuntimeError(
-                f"Step-mode workers did not signal readiness within {_STEP_SETUP_TIMEOUT}s"
+                f"Step-mode workers did not signal readiness within {_STEP_SETUP_TIMEOUT}s{detail_suffix}"
             )
 
         # Abort if any rank failed during setup.
@@ -1288,31 +1507,51 @@ class EmulatorRuntime:
         # Signal workers to execute step 1.
         (run_dir / "step_advance_1").touch()
 
-        done = self._wait_for_rank_files(
-            run_dir, mpi_np, "rank_{rank}_step_1_done.json", _STEP_ADVANCE_TIMEOUT
+        done, proc_exited = self._wait_for_rank_files_or_proc_exit(
+            run_dir, mpi_np, "rank_{rank}_step_1_done.json", _STEP_ADVANCE_TIMEOUT, proc
         )
         if not done:
             (run_dir / "step_abort").touch()
             self._terminate_proc(proc)
+            detail = self._collect_step_failure_details(
+                run_dir,
+                mpi_np,
+                step=1,
+                worker_stdout_path=worker_stdout_path,
+                worker_stderr_path=worker_stderr_path,
+            )
+            if proc_exited:
+                _append_launch_diagnostic(
+                    "ERROR: worker process exited before all ranks reported step 1 completion"
+                )
+                _append_launch_diagnostic(f"DETAIL: {detail}")
+                raise RuntimeError(
+                    "Step-mode worker process exited before all ranks reported step 1 completion: "
+                    + detail
+                )
             _append_launch_diagnostic(
                 f"ERROR: workers did not complete step 1 within {_STEP_ADVANCE_TIMEOUT}s"
             )
+            _append_launch_diagnostic(f"DETAIL: {detail}")
             raise RuntimeError(
-                f"Step-mode workers did not complete step 1 within {_STEP_ADVANCE_TIMEOUT}s"
+                f"Step-mode workers did not complete step 1 within {_STEP_ADVANCE_TIMEOUT}s: {detail}"
             )
 
         aggregated = self._aggregate_step_rank_results(run_dir, mpi_np, step=1)
         has_step = aggregated["has_step"]
+        failed = bool(aggregated.get("failed", False))
         plume_run = bool(aggregated.get("plume_run", False))
         total_steps = self._infer_total_steps(setup_state, run_workspace)
 
         current_step = 1 if has_step else 0
         step_field_files: dict[str, str] = {}
         field_keys: list[str] = []
-        if has_step:
+        if has_step and not failed:
             snapshot_path, field_keys = self._aggregate_step_rank_field_snapshots(run_dir, mpi_np, step=1)
             if snapshot_path is not None:
                 step_field_files[str(current_step)] = str(snapshot_path)
+
+        self._scan_and_index_plugin_layers(run_dir)
 
         session: dict[str, Any] = {
             "session_id": self.session_id,
@@ -1341,8 +1580,11 @@ class EmulatorRuntime:
             "step_field_files": step_field_files,
         }
 
-        has_next = has_step and self._step_has_next(session)
-        if has_step and has_next:
+        has_next = (not failed) and has_step and self._step_has_next(session)
+        if failed:
+            session["status"] = "failed"
+            self._finalize_step_session_locked(session)
+        elif has_step and has_next:
             session["status"] = "step-complete"
             with self._lock:
                 self._step_session = session
@@ -1410,26 +1652,45 @@ class EmulatorRuntime:
 
         (run_dir / f"step_advance_{next_step}").touch()
 
-        done = self._wait_for_rank_files(
-            run_dir, mpi_np, f"rank_{{rank}}_step_{next_step}_done.json", _STEP_ADVANCE_TIMEOUT
+        proc = session.get("proc")
+        if proc is None:
+            raise RuntimeError("Missing worker process handle for multi-rank step session")
+
+        done, proc_exited = self._wait_for_rank_files_or_proc_exit(
+            run_dir, mpi_np, f"rank_{{rank}}_step_{next_step}_done.json", _STEP_ADVANCE_TIMEOUT, proc
         )
         if not done:
             session["status"] = "failed"
+            worker_stdout_path = session.get("worker_stdout_path")
+            worker_stderr_path = session.get("worker_stderr_path")
+            detail = self._collect_step_failure_details(
+                run_dir,
+                mpi_np,
+                step=next_step,
+                worker_stdout_path=worker_stdout_path if isinstance(worker_stdout_path, pathlib.Path) else None,
+                worker_stderr_path=worker_stderr_path if isinstance(worker_stderr_path, pathlib.Path) else None,
+            )
+            if proc_exited:
+                error_msg = (
+                    f"Step-mode worker process exited before all ranks reported step {next_step} completion"
+                )
+            else:
+                error_msg = f"Step-mode workers did not complete step {next_step} within {_STEP_ADVANCE_TIMEOUT}s"
+            error_msg = f"{error_msg}: {detail}"
             self._append_step_log_locked(
                 session,
                 "",
-                f"Step-mode workers did not complete step {next_step} within {_STEP_ADVANCE_TIMEOUT}s",
+                error_msg,
                 action="advance-timeout",
                 has_step=False,
             )
-            raise RuntimeError(
-                f"Step-mode workers did not complete step {next_step} within {_STEP_ADVANCE_TIMEOUT}s"
-            )
+            raise RuntimeError(error_msg)
 
         aggregated = self._aggregate_step_rank_results(run_dir, mpi_np, step=next_step)
         has_step = aggregated["has_step"]
+        failed = bool(aggregated.get("failed", False))
 
-        if has_step:
+        if has_step and not failed:
             session["current_step"] = next_step
             snapshot_path, field_keys = self._aggregate_step_rank_field_snapshots(run_dir, mpi_np, step=next_step)
             if field_keys:
@@ -1441,8 +1702,13 @@ class EmulatorRuntime:
                 step_field_files[str(next_step)] = str(snapshot_path)
                 session["step_field_files"] = step_field_files
 
-        has_next = has_step and self._step_has_next(session)
-        if not has_next:
+            self._scan_and_index_plugin_layers(run_dir)
+
+        has_next = (not failed) and has_step and self._step_has_next(session)
+        if failed:
+            session["status"] = "failed"
+            self._finalize_step_session_locked(session)
+        elif not has_next:
             session["status"] = "step-finished"
             self._finalize_step_session_locked(session)
         else:
@@ -1498,7 +1764,11 @@ class EmulatorRuntime:
 
         # Set PLUME_PLUGIN_DEV so the C++ core and any loaded plugins see it.
         _prev_dev = os.environ.get("PLUME_PLUGIN_DEV")
+        _prev_emulator = os.environ.get("PLUME_EMULATOR_MODE")
+        _prev_tmpdir = os.environ.get("PLUME_RUN_TMPDIR")
         os.environ["PLUME_PLUGIN_DEV"] = "true" if dev_enabled else "false"
+        os.environ["PLUME_EMULATOR_MODE"] = "1"
+        os.environ["PLUME_RUN_TMPDIR"] = str(run_workspace["run_dir"])
         try:
             result, captured_stdout, captured_stderr = self._call_with_captured_fds(mod.execute, run_options)
         finally:
@@ -1506,6 +1776,14 @@ class EmulatorRuntime:
                 os.environ.pop("PLUME_PLUGIN_DEV", None)
             else:
                 os.environ["PLUME_PLUGIN_DEV"] = _prev_dev
+            if _prev_emulator is None:
+                os.environ.pop("PLUME_EMULATOR_MODE", None)
+            else:
+                os.environ["PLUME_EMULATOR_MODE"] = _prev_emulator
+            if _prev_tmpdir is None:
+                os.environ.pop("PLUME_RUN_TMPDIR", None)
+            else:
+                os.environ["PLUME_RUN_TMPDIR"] = _prev_tmpdir
 
         stem = self.emulator_path.stem
         prec = stem[-2:]
@@ -1538,6 +1816,7 @@ class EmulatorRuntime:
 
         # Archive full-resolution field data for post-run analysis
         self._archive_full_resolution_fields(run_workspace["run_dir"])
+        self._scan_and_index_plugin_layers(run_workspace["run_dir"])
 
         run_workspace["run_log_path"].write_text(run_log_text, encoding="utf-8")
 
@@ -1609,6 +1888,8 @@ class EmulatorRuntime:
             "-np", str(mpi_np),
             # Propagate PLUME_PLUGIN_DEV to all MPI ranks (OpenMPI -x flag).
             "-x", "PLUME_PLUGIN_DEV",
+            "-x", "PLUME_EMULATOR_MODE",
+            "-x", "PLUME_RUN_TMPDIR",
             "python", str(worker_script),
             str(run_dir),
             "--module-search-dirs",
@@ -1617,7 +1898,11 @@ class EmulatorRuntime:
 
         # Set the env var in the launcher process so mpirun inherits and forwards it.
         _prev_dev = os.environ.get("PLUME_PLUGIN_DEV")
+        _prev_emulator = os.environ.get("PLUME_EMULATOR_MODE")
+        _prev_tmpdir = os.environ.get("PLUME_RUN_TMPDIR")
         os.environ["PLUME_PLUGIN_DEV"] = "true" if dev_enabled else "false"
+        os.environ["PLUME_EMULATOR_MODE"] = "1"
+        os.environ["PLUME_RUN_TMPDIR"] = str(run_dir)
         try:
             # Invoke workers via mpirun.
             cwd_path = pathlib.Path(cwd).expanduser().resolve()
@@ -1633,10 +1918,18 @@ class EmulatorRuntime:
                 os.environ.pop("PLUME_PLUGIN_DEV", None)
             else:
                 os.environ["PLUME_PLUGIN_DEV"] = _prev_dev
+            if _prev_emulator is None:
+                os.environ.pop("PLUME_EMULATOR_MODE", None)
+            else:
+                os.environ["PLUME_EMULATOR_MODE"] = _prev_emulator
+            if _prev_tmpdir is None:
+                os.environ.pop("PLUME_RUN_TMPDIR", None)
+            else:
+                os.environ["PLUME_RUN_TMPDIR"] = _prev_tmpdir
 
         # Aggregate per-rank results and build unified log.
         aggregated = self._aggregate_multirank_results(
-            run_dir, mpi_np, completed.stdout, completed.stderr
+            run_dir, mpi_np, completed.stdout, completed.stderr, completed.returncode
         )
 
         # Build aggregated per-step map snapshots from rank-local step files.
@@ -1649,6 +1942,7 @@ class EmulatorRuntime:
 
         # Archive full-resolution field data for post-run analysis
         self._archive_full_resolution_fields(run_dir)
+        self._scan_and_index_plugin_layers(run_dir)
 
         return {
             "command": worker_cmd,
@@ -1716,7 +2010,7 @@ class EmulatorRuntime:
                 core.finalize_plume()
 
         try:
-            self._with_plugin_dev_capture(_replay_and_capture, bool(dev_enabled))
+            self._with_plugin_dev_capture(_replay_and_capture, bool(dev_enabled), run_dir)
         except (AttributeError, RuntimeError, TypeError, ValueError):
             return []
 
@@ -1728,6 +2022,7 @@ class EmulatorRuntime:
         mpi_np: int,
         mpirun_stdout: str,
         mpirun_stderr: str,
+        mpirun_return_code: int | None = None,
     ) -> dict[str, Any]:
         """Collect per-rank JSON results and aggregate into unified outcome.
 
@@ -1750,18 +2045,35 @@ class EmulatorRuntime:
                 # Log failure but continue aggregation.
                 print(f"Failed to load rank result from {rank_file}: {e}", file=sys.stderr)
 
-        # Aggregate return codes: 0 if all succeed, else non-zero.
+        # Aggregate return codes/statuses: success requires all rank outputs to
+        # be present, return_code==0, and success-like status values.
         aggregated_return_code = 0
+        if isinstance(mpirun_return_code, int) and mpirun_return_code != 0:
+            aggregated_return_code = 1
+
+        if not rank_results:
+            aggregated_return_code = 1
+
         for rank in range(mpi_np):
             if rank not in rank_results:
                 aggregated_return_code = 1
                 break
-            if rank_results[rank].get("return_code", 1) != 0:
+            rank_payload = rank_results[rank]
+            if rank_payload.get("return_code", 1) != 0:
+                aggregated_return_code = 1
+            rank_status = str(rank_payload.get("status", "")).strip().lower()
+            if rank_status not in {"complete", "ok", "success"}:
                 aggregated_return_code = 1
 
         # Merge stdout/stderr from all ranks.
         all_stdout_lines = [mpirun_stdout] if mpirun_stdout else []
         all_stderr_lines = [mpirun_stderr] if mpirun_stderr else []
+        if isinstance(mpirun_return_code, int):
+            all_stdout_lines.append(f"mpirun return_code={mpirun_return_code}")
+            if mpirun_return_code != 0:
+                all_stderr_lines.append(
+                    f"mpirun exited with non-zero return code: {mpirun_return_code}"
+                )
         plume_run = None
         last_step_run = None
 

@@ -18,6 +18,8 @@ export const uiState = {
   stepMapImages: {},
   stepMapData: {},
   stepRankMapData: {},
+  pluginLayersAvailable: {},
+  pluginLayers: {},
   selectedFieldKey: "",
   selectedMapRank: null,
   runMpiNp: 1,
