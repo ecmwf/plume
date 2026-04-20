@@ -3,9 +3,15 @@
 
 import argparse
 import atexit
+import base64
+import io
 import mimetypes
 import os
 import pathlib
+import re
+import subprocess
+import tarfile
+import tempfile
 import traceback
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,17 +27,78 @@ from backend.services.source_service import SourceService
 from backend.storage.in_memory_store import InMemorySessionStore
 
 ALLOWED_BIN_NAMES = {"nwp_emulator_run_sp.x", "nwp_emulator_run_dp.x"}
-ALLOWED_ENGINES = {"python", "subprocess"}
+
+
+def _create_gif_from_frames(frames: list[dict]) -> bytes:
+    """Convert a list of base64-encoded PNG dicts to an animated GIF via ffmpeg.
+
+    Each frame dict must have a ``png_base64`` key (raw base64 without the
+    data-URL prefix).  The GIF is created at 1 frame per second with palette
+    optimisation for image quality.
+    """
+    with tempfile.TemporaryDirectory(prefix="nwp_gif_") as tmpdir:
+        tmpdir_path = pathlib.Path(tmpdir)
+
+        for i, frame in enumerate(frames):
+            png_b64 = frame.get("png_base64", "")
+            if not png_b64:
+                raise ValueError(f"Frame {i} has no PNG data")
+            try:
+                png_data = base64.b64decode(png_b64)
+            except Exception as exc:
+                raise ValueError(f"Frame {i} has invalid base64 data") from exc
+            (tmpdir_path / f"frame_{i:04d}.png").write_bytes(png_data)
+
+        palette_path = tmpdir_path / "palette.png"
+        output_path = tmpdir_path / "output.gif"
+
+        # Step 1: build an optimal colour palette from all frames.
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-framerate", "1",
+                "-i", str(tmpdir_path / "frame_%04d.png"),
+                "-vf", "palettegen",
+                str(palette_path),
+            ],
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                "GIF palette generation failed: "
+                + result.stderr.decode(errors="replace")
+            )
+
+        # Step 2: encode GIF using the palette (infinite loop).
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-framerate", "1",
+                "-i", str(tmpdir_path / "frame_%04d.png"),
+                "-i", str(palette_path),
+                "-lavfi", "paletteuse",
+                "-loop", "0",
+                str(output_path),
+            ],
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                "GIF creation failed: "
+                + result.stderr.decode(errors="replace")
+            )
+
+        return output_path.read_bytes()
 
 
 class LauncherConfig:
-    def __init__(self, emulator_path, html_path, setup_routes, engine, fallback_subprocess):
+    def __init__(self, emulator_path, html_path, setup_routes):
         self.emulator_path = emulator_path
         self.html_path = html_path
         self.ui_dir = html_path.parent
         self.setup_routes = setup_routes
-        self.engine = engine
-        self.fallback_subprocess = bool(fallback_subprocess)
         self.runtime = EmulatorRuntime(emulator_path, module_search_dirs=[self.ui_dir])
 
     def configure(self, setup_state):
@@ -77,47 +144,25 @@ class LauncherConfig:
             "run_id": "unknown",
             "run_dir": "unknown",
             "run_log": "unknown",
-            "engine": getattr(self, "engine", "unknown"),
-            "engine_requested": getattr(self, "engine", "unknown"),
-            "engine_fallback": False,
         }
 
     def launch_from_setup_state(self, setup_state, cwd, dev_enabled):
         self.configure(setup_state)
         self.runtime.set_running()
 
-        if self.engine == "subprocess":
-            payload = self.runtime.run_from_setup_state(setup_state, cwd=cwd, dev_enabled=dev_enabled)
-            payload["engine"] = "subprocess"
-            payload["engine_requested"] = "subprocess"
-            payload["engine_fallback"] = False
-            payload["status"] = "complete" if int(payload.get("return_code", 1)) == 0 else "failed"
-            self._record_result(payload)
-            return payload
+        payload = self.runtime.run_from_setup_state_python(setup_state, cwd=cwd, dev_enabled=dev_enabled)
+        payload["status"] = "complete" if int(payload.get("return_code", 1)) == 0 else "failed"
+        self._record_result(payload)
+        return payload
 
-        if self.engine == "python":
-            try:
-                payload = self.runtime.run_from_setup_state_python(setup_state, cwd=cwd, dev_enabled=dev_enabled)
-                payload["engine"] = "python"
-                payload["engine_requested"] = "python"
-                payload["engine_fallback"] = False
-                payload["status"] = "complete" if int(payload.get("return_code", 1)) == 0 else "failed"
-                self._record_result(payload)
-                return payload
-            except (NotImplementedError, ImportError, RuntimeError) as exc:
-                if not self.fallback_subprocess:
-                    raise
+    def advance_step_from_session(self):
+        self.runtime.set_running()
+        payload = self.runtime.advance_step_from_session()
+        self._record_result(payload)
+        return payload
 
-                payload = self.runtime.run_from_setup_state(setup_state, cwd=cwd, dev_enabled=dev_enabled)
-                payload["engine"] = "subprocess"
-                payload["engine_requested"] = "python"
-                payload["engine_fallback"] = True
-                payload["engine_fallback_reason"] = str(exc)
-                payload["status"] = "complete" if int(payload.get("return_code", 1)) == 0 else "failed"
-                self._record_result(payload)
-                return payload
-
-        raise ValueError(f"Unsupported launcher engine: {self.engine}")
+    def get_active_run_dir(self):
+        return self.runtime.get_active_run_dir()
 
 
 def parse_args():
@@ -125,27 +170,11 @@ def parse_args():
     parser.add_argument("--host", default="127.0.0.1", help="Host address for the local web server")
     parser.add_argument("--port", type=int, default=8080, help="Port for the local web server")
     parser.add_argument("--emulator-bin", required=True, help="Path to nwp_emulator executable")
-    parser.add_argument("--mpi-procs", type=int, default=1, help="MPI process count")
     parser.add_argument("--workdir", default=os.getcwd(), help="Working directory for emulator execution")
-    parser.add_argument(
-        "--engine",
-        default="python",
-        choices=sorted(ALLOWED_ENGINES),
-        help="Execution engine for launch requests",
-    )
-    parser.add_argument(
-        "--fallback-subprocess",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Allow subprocess fallback when --engine=python is unavailable",
-    )
     return parser.parse_args()
 
 
 def validate_and_build_command(args):
-    if args.mpi_procs < 1:
-        raise ValueError("--mpi-procs must be at least 1")
-
     emulator_path = pathlib.Path(args.emulator_bin).expanduser().resolve()
     if emulator_path.name not in ALLOWED_BIN_NAMES:
         allowed = ", ".join(sorted(ALLOWED_BIN_NAMES))
@@ -204,6 +233,31 @@ def make_handler(config):
                 self._route_setup("GET", req_path, {})
                 return
 
+            if req_path == "/api/run/archive":
+                run_dir_callable = getattr(config, "get_active_run_dir", None)
+                run_dir = run_dir_callable() if callable(run_dir_callable) else None
+                if run_dir is None:
+                    status_code, headers, body = error_response(
+                        "No active run directory available", HTTPStatus.NOT_FOUND
+                    )
+                    self._write_response(status_code, headers, body)
+                    return
+                assert isinstance(run_dir, pathlib.Path)
+                buf = io.BytesIO()
+                with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+                    tar.add(str(run_dir), arcname=run_dir.name)
+                archive_data = buf.getvalue()
+                archive_name = f"{run_dir.name}.tar.gz"
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/gzip")
+                self.send_header(
+                    "Content-Disposition", f'attachment; filename="{archive_name}"'
+                )
+                self.send_header("Content-Length", str(len(archive_data)))
+                self.end_headers()
+                self.wfile.write(archive_data)
+                return
+
             if req_path == "/":
                 target = config.html_path
                 content_type = "text/html; charset=utf-8"
@@ -257,6 +311,26 @@ def make_handler(config):
                 self._json_response(HTTPStatus.OK, {"ok": True, "removed_run_dirs": removed})
                 return
 
+            if req_path == "/api/session/step/next":
+                if content_length > 0:
+                    self.rfile.read(content_length)
+                advance_callable = getattr(config, "advance_step_from_session", None)
+                if not callable(advance_callable):
+                    self._json_response(HTTPStatus.NOT_FOUND, {"error": "Step endpoint is unavailable"})
+                    return
+                try:
+                    payload = advance_callable()
+                except (SetupValidationError, ValueError) as exc:
+                    self._json_response(HTTPStatus.BAD_REQUEST, {"error": str(exc), "status": "not-ready"})
+                    return
+                except (ImportError, RuntimeError, TypeError) as exc:
+                    payload = config.build_launch_exception_payload(exc, dev_enabled=False)
+                    record_callable = getattr(config, "_record_result", None)
+                    if callable(record_callable):
+                        record_callable(payload)
+                self._json_response(HTTPStatus.OK, payload)
+                return
+
             if req_path == "/api/session/heartbeat":
                 if content_length > 0:
                     self.rfile.read(content_length)
@@ -272,7 +346,40 @@ def make_handler(config):
                 return
 
             if req_path.startswith("/api/setup/"):
+                if req_path == "/api/setup/checks/run":
+                    stop_callable = getattr(config, "stop_or_teardown", None)
+                    if callable(stop_callable):
+                        stop_callable()
                 self._route_setup("POST", req_path, request_payload)
+                return
+
+            if req_path == "/api/run/save-gif":
+                frames = request_payload.get("frames", [])
+                if not frames or not isinstance(frames, list):
+                    status_code, headers, body = error_response(
+                        "No frames provided", HTTPStatus.BAD_REQUEST
+                    )
+                    self._write_response(status_code, headers, body)
+                    return
+                title = str(request_payload.get("title", "animation"))
+                try:
+                    gif_data = _create_gif_from_frames(frames)
+                except (RuntimeError, ValueError, OSError) as exc:
+                    status_code, headers, body = error_response(
+                        str(exc), HTTPStatus.INTERNAL_SERVER_ERROR
+                    )
+                    self._write_response(status_code, headers, body)
+                    return
+                safe_title = re.sub(r"[^a-zA-Z0-9._\-]", "_", title)
+                gif_name = f"{safe_title}.gif"
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "image/gif")
+                self.send_header(
+                    "Content-Disposition", f'attachment; filename="{gif_name}"'
+                )
+                self.send_header("Content-Length", str(len(gif_data)))
+                self.end_headers()
+                self.wfile.write(gif_data)
                 return
 
             if req_path != "/launch":
@@ -282,19 +389,24 @@ def make_handler(config):
             dev_enabled = request_payload.get("dev", True)
             if not isinstance(dev_enabled, bool):
                 dev_enabled = bool(dev_enabled)
+            execution_mode = request_payload.get("execution_mode", "full")
+            if execution_mode not in {"full", "step"}:
+                execution_mode = "full"
 
             launch_callable = getattr(config, "launch_from_setup_state", None)
             try:
+                launch_state = dict(config.setup_routes.get_state())
+                launch_state["execution_mode"] = execution_mode
                 if callable(launch_callable):
                     payload = launch_callable(
-                        config.setup_routes.get_state(),
+                        launch_state,
                         cwd=os.getcwd(),
                         dev_enabled=dev_enabled,
                     )
                 else:
                     # Backward-compatible path for tests using a lightweight config stub.
                     payload = config.runtime.run_from_setup_state(
-                        config.setup_routes.get_state(),
+                        launch_state,
                         cwd=os.getcwd(),
                         dev_enabled=dev_enabled,
                     )
@@ -304,7 +416,7 @@ def make_handler(config):
             except (SetupValidationError, ValueError) as exc:
                 self._json_response(HTTPStatus.BAD_REQUEST, {"error": str(exc), "status": "not-ready"})
                 return
-            except Exception as exc:  # noqa: BLE001
+            except (ImportError, RuntimeError, TypeError) as exc:
                 payload = config.build_launch_exception_payload(exc, dev_enabled=dev_enabled)
                 record_callable = getattr(config, "_record_result", None)
                 if callable(record_callable):
@@ -345,8 +457,6 @@ def main():
         emulator_path=emulator_path,
         html_path=html_path,
         setup_routes=setup_routes,
-        engine=args.engine,
-        fallback_subprocess=args.fallback_subprocess,
     )
     atexit.register(config.cleanup_all)
     config.start_reaper()
@@ -356,9 +466,7 @@ def main():
         print(f"NWP emulator UI available at http://{args.host}:{args.port}")
         print("Configured emulator binary:")
         print(str(config.emulator_path))
-        print(f"Configured launch engine: {config.engine}")
-        if config.engine == "python" and config.fallback_subprocess:
-            print("Subprocess fallback enabled")
+        print("Execution mode: Python-only (MPI-capable)")
         try:
             server.serve_forever()
         finally:

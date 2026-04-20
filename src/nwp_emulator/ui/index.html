@@ -63,21 +63,27 @@
 
             <div class="step-card" aria-live="polite">
               <div class="label">Current Step</div>
-              <div id="current-step-value" class="value">0 / ?</div>
+              <div class="step-counter-row">
+                <button id="transport-prev" type="button" aria-label="Previous step">&#9664;</button>
+                <span id="current-step-value" class="value">0 / ?</span>
+                <button id="transport-next" type="button" aria-label="Next step">&#9654;</button>
+              </div>
             </div>
 
             <div id="run-panel-lock-hint" class="run-panel-lock-hint">Pass setup checks to unlock run controls.</div>
 
             <div class="transport" role="group" aria-label="Transport controls">
-              <button id="transport-prev" type="button" aria-label="Previous step">&#9664;</button>
-              <button id="transport-pause" type="button" aria-label="Pause">&#10074;&#10074;</button>
-              <button id="transport-next" type="button" aria-label="Next step">&#9654;</button>
+              <button id="transport-play" type="button" aria-label="Run">&#9654;</button>
+              <button id="transport-replay" type="button" aria-label="Reset and replay">&#8635;</button>
             </div>
 
-            <div class="save-grid" role="group" aria-label="Save controls">
-              <button class="save-btn" type="button">save step</button>
-              <button class="save-btn" type="button">save gif</button>
-              <button class="save-btn" type="button">save run</button>
+            <div class="saving-options-box" role="group" aria-label="Saving options">
+              <div class="saving-options-title">Saving Options</div>
+              <div class="save-grid">
+                <button id="save-step-btn" class="save-btn" type="button">save step</button>
+                <button id="save-gif-btn" class="save-btn" type="button">save gif</button>
+                <button id="save-run-btn" class="save-btn" type="button">save run</button>
+              </div>
             </div>
 
           </div>
@@ -87,19 +93,29 @@
           <div class="panel-title">Run Workspace</div>
           <div class="right-inner">
             <div class="controls-grid">
-              <div class="box">
+              <div class="box options-box">
                 <div class="box-title">Options</div>
                 <div class="options-layout">
-                  <div class="option-group">
+                  <div class="option-group option-group-field">
                     <div class="group-title">Field Toggles</div>
                     <div id="field-toggle-lock-hint" class="options-lock-hint">Pass setup checks to unlock options.</div>
-                    <ul id="field-toggle-list" class="check-list"></ul>
+                    <div class="toggle-scroll-shell">
+                      <ul id="field-toggle-list" class="check-list"></ul>
+                      <div class="toggle-scrollbar" aria-hidden="true">
+                        <span class="toggle-scrollbar-thumb"></span>
+                      </div>
+                    </div>
                   </div>
 
-                  <div class="option-group">
+                  <div class="option-group option-group-plugin">
                     <div class="group-title">Plugin Outputs Toggles</div>
                     <div id="plugin-toggle-lock-hint" class="options-lock-hint">Pass setup checks to unlock options.</div>
-                    <ul id="plugin-toggle-list" class="check-list"></ul>
+                    <div class="toggle-scroll-shell">
+                      <ul id="plugin-toggle-list" class="check-list"></ul>
+                      <div class="toggle-scrollbar" aria-hidden="true">
+                        <span class="toggle-scrollbar-thumb"></span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

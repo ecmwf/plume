@@ -1,11 +1,14 @@
 .app {
   width: min(1320px, 100%);
+  max-height: calc(100vh - 2rem);
   margin: 0 auto;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 22px 44px rgba(16, 34, 49, 0.1);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .brand-strip {
@@ -52,6 +55,9 @@
 }
 
 .tab-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
   padding: 0.9rem;
 }
 
@@ -124,6 +130,7 @@
   grid-template-rows: 1fr;
   gap: 0.65rem;
   height: calc(100% - 33px);
+  min-height: 0;
 }
 
 .controls-grid {
@@ -131,6 +138,7 @@
   grid-template-columns: minmax(220px, 0.85fr) minmax(0, 2.15fr);
   gap: 0.65rem;
   height: 100%;
+  min-height: 0;
   align-items: stretch;
 }
 

@@ -165,6 +165,9 @@
   border-radius: 10px;
   background: #fafcff;
   padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .box-title {
@@ -174,6 +177,7 @@
   font-size: 0.71rem;
   font-weight: 700;
   margin-bottom: 0.45rem;
+  flex-shrink: 0;
 }
 
 .run-btn,
@@ -246,6 +250,21 @@
   gap: 0.45rem;
 }
 
+.saving-options-box {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0.55rem 0.6rem;
+}
+
+.saving-options-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  margin-bottom: 0.4rem;
+}
+
 .save-btn {
   border: 1px solid var(--border);
   border-radius: 9px;
@@ -277,7 +296,7 @@
 
 .transport {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.45rem;
 }
 
@@ -290,6 +309,11 @@
   font-weight: 700;
   font-size: 0.9rem;
   cursor: pointer;
+}
+
+#transport-replay {
+  font-size: 1.35rem;
+  line-height: 1;
 }
 
 .left-inner button:disabled,
@@ -305,6 +329,25 @@
   background: #f9fcff;
   padding: 0.6rem;
   text-align: center;
+}
+
+.step-counter-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  margin-top: 0.2rem;
+}
+
+.step-counter-row button {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #f7fbfe;
+  color: var(--ink);
+  padding: 0.2rem 0.55rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  line-height: 1;
 }
 
 .step-card .label {
@@ -323,13 +366,16 @@
 
 .check-list {
   margin: 0;
-  padding: 0;
+  padding: 0.5rem;
   list-style: none;
   display: grid;
   gap: 0.45rem;
   color: var(--ink);
   font-weight: 600;
   font-size: 0.88rem;
+  border: 1px solid #d7e2eb;
+  border-radius: 8px;
+  background: #f9fcff;
 }
 
 .check-list label {
@@ -337,6 +383,60 @@
   align-items: center;
   gap: 0.45rem;
   cursor: default;
+}
+
+#field-toggle-list,
+#plugin-toggle-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: none;
+  padding-right: 0.7rem;
+}
+
+.toggle-scroll-shell {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.toggle-scroll-shell .check-list {
+  height: 100%;
+}
+
+#field-toggle-list::-webkit-scrollbar,
+#plugin-toggle-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.toggle-scrollbar {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.18rem;
+  bottom: 0.5rem;
+  width: 0.48rem;
+  border-radius: 999px;
+  background: #eaf1f7;
+  pointer-events: none;
+}
+
+.toggle-scrollbar.hidden {
+  display: none;
+}
+
+.toggle-scrollbar-thumb {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  border-radius: 999px;
+  background: #8fa5b8;
+}
+
+#field-toggle-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 0.6rem;
 }
 
 .options-lock-hint {
@@ -348,10 +448,26 @@
   font-size: 0.79rem;
   font-weight: 700;
   padding: 0.5rem 0.56rem;
+  flex-shrink: 0;
 }
 
 .option-group {
   margin-top: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.option-group-field {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: calc(50% - 0.325rem);
+  overflow: hidden;
+}
+
+.option-group-plugin {
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .option-group:first-of-type {
@@ -359,9 +475,31 @@
 }
 
 .options-layout {
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 0.65rem;
+  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.options-box {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.option-group.empty .group-title {
+  border-color: transparent;
+  background: transparent;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.option-group.empty .check-list {
+  border-color: transparent;
+  background: transparent;
+  padding: 0;
 }
 
 .group-title {
@@ -370,7 +508,12 @@
   letter-spacing: 0.07em;
   font-size: 0.69rem;
   font-weight: 700;
-  margin-bottom: 0.36rem;
+  margin-bottom: 0.34rem;
+  padding: 0.32rem 0.46rem;
+  border: 1px solid #d7e2eb;
+  border-radius: 7px;
+  background: #eef5fb;
+  flex-shrink: 0;
 }
 
 .colorbar {

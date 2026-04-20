@@ -16,7 +16,7 @@ class _StubSetupRoutes:
     def __init__(self, state):
         self._state = state
 
-    def dispatch(self, method, path, payload):
+    def dispatch(self, method, path, _payload):
         return {"method": method, "path": path, "ok": True}
 
     def get_state(self):
@@ -28,6 +28,7 @@ class _StubRuntime:
         self.touched = 0
         self.launch_calls = []
         self.cleanup_calls = 0
+        self.stop_calls = 0
 
     def touch_session(self):
         self.touched += 1
@@ -49,36 +50,9 @@ class _StubRuntime:
         self.cleanup_calls += 1
         return 2
 
-
-class _EngineRuntimeStub:
-    def __init__(self):
-        self.python_calls = 0
-        self.subprocess_calls = 0
-        self.running_calls = 0
-        self.recorded = None
-
-    def set_running(self):
-        self.running_calls += 1
-
-    def record_result(self, payload):
-        self.recorded = dict(payload)
-
-    def run_from_setup_state_python(self, setup_state, cwd, dev_enabled):
-        self.python_calls += 1
-        raise NotImplementedError("python engine unavailable")
-
-    def run_from_setup_state(self, setup_state, cwd, dev_enabled):
-        self.subprocess_calls += 1
-        return {
-            "command": ["mpirun", "-np", "1", "/tmp/nwp_emulator_run_dp.x"],
-            "dev": bool(dev_enabled),
-            "return_code": 0,
-            "stdout_tail": "ok",
-            "stderr_tail": "",
-            "run_id": "run-fallback",
-            "run_dir": "/tmp/session/run-fallback",
-            "run_log": "/tmp/session/run-fallback/run.log",
-        }
+    def stop_or_teardown(self):
+        self.stop_calls += 1
+        return 2
 
 
 class _RaisingConfig:
@@ -94,7 +68,7 @@ class _RaisingConfig:
         return 0
 
     def launch_from_setup_state(self, setup_state, cwd, dev_enabled):
-        raise NotImplementedError("Python engine supports single-rank only")
+        raise ImportError("Failed to import binding module: nwp_emulator_core_dp")
 
     def build_launch_exception_payload(self, exc, dev_enabled):
         return ui_launcher.LauncherConfig.build_launch_exception_payload(self, exc, dev_enabled)
@@ -103,6 +77,72 @@ class _RaisingConfig:
 class _SetupInvalidConfig(_RaisingConfig):
     def launch_from_setup_state(self, setup_state, cwd, dev_enabled):
         raise ui_launcher.SetupValidationError("setup not ready")
+
+
+class _StepConfig(_RaisingConfig):
+    STEP_LIMIT = 3
+
+    def __init__(self, html_path, base, setup_state):
+        super().__init__(html_path, base, setup_state)
+        self._step = 1
+        self.advance_calls = 0
+
+    def launch_from_setup_state(self, setup_state, cwd, dev_enabled):
+        return {
+            "command": ["mpirun", "-np", "1", "/tmp/nwp_emulator_run_dp.x"],
+            "dev": bool(dev_enabled),
+            "return_code": 0,
+            "status": "step-complete",
+            "stdout_tail": "",
+            "stderr_tail": "",
+            "run_id": "run-step",
+            "run_dir": "/tmp/session/run-step",
+            "run_log": "/tmp/session/run-step/run.log",
+            "execution_mode": "step",
+            "current_step": 1,
+            "total_steps": self.STEP_LIMIT,
+            "has_next": True,
+            "step_finished": False,
+        }
+
+    def advance_step_from_session(self):
+        self.advance_calls += 1
+        # At terminal: return complete without incrementing step counter.
+        if self._step >= self.STEP_LIMIT:
+            return {
+                "command": ["mpirun", "-np", "1", "/tmp/nwp_emulator_run_dp.x"],
+                "dev": False,
+                "return_code": 0,
+                "status": "complete",
+                "stdout_tail": "",
+                "stderr_tail": "",
+                "run_id": "run-step",
+                "run_dir": "/tmp/session/run-step",
+                "run_log": "/tmp/session/run-step/run.log",
+                "execution_mode": "step",
+                "current_step": self._step,
+                "total_steps": self.STEP_LIMIT,
+                "has_next": False,
+                "step_finished": True,
+            }
+        self._step += 1
+        has_next = self._step < self.STEP_LIMIT
+        return {
+            "command": ["mpirun", "-np", "1", "/tmp/nwp_emulator_run_dp.x"],
+            "dev": False,
+            "return_code": 0,
+            "status": "step-complete" if has_next else "complete",
+            "stdout_tail": "",
+            "stderr_tail": "",
+            "run_id": "run-step",
+            "run_dir": "/tmp/session/run-step",
+            "run_log": "/tmp/session/run-step/run.log",
+            "execution_mode": "step",
+            "current_step": self._step,
+            "total_steps": self.STEP_LIMIT,
+            "has_next": has_next,
+            "step_finished": not has_next,
+        }
 
 
 class _StatefulConfig(_RaisingConfig):
@@ -160,6 +200,7 @@ class UiLauncherEndpointsTest(unittest.TestCase):
         self.config.runtime = self.runtime
         self.config.touch_session = self.runtime.touch_session
         self.config.cleanup_session_runs = self.runtime.cleanup_session_runs
+        self.config.stop_or_teardown = self.runtime.stop_or_teardown
 
         handler = ui_launcher.make_handler(self.config)
         self.server = ui_launcher.ThreadingHTTPServer(("127.0.0.1", 0), handler)
@@ -205,8 +246,82 @@ class UiLauncherEndpointsTest(unittest.TestCase):
         self.assertEqual(payload["status"], "complete")
         self.assertEqual(payload["run_id"], "run-test")
         self.assertEqual(len(self.runtime.launch_calls), 1)
-        self.assertEqual(self.runtime.launch_calls[0]["state"], self.setup_state)
+        expected_state = dict(self.setup_state)
+        expected_state["execution_mode"] = "full"
+        self.assertEqual(self.runtime.launch_calls[0]["state"], expected_state)
         self.assertEqual(self.runtime.launch_calls[0]["dev_enabled"], False)
+
+    def test_run_checks_endpoint_stops_active_session_before_dispatch(self):
+        status, payload = self._post_json("/api/setup/checks/run", {})
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["path"], "/api/setup/checks/run")
+        self.assertEqual(self.runtime.stop_calls, 1)
+
+    def test_launch_step_mode_returns_first_step_payload(self):
+        config = _StepConfig(self.html_path, self.base, self.setup_state)
+        handler = ui_launcher.make_handler(config)
+        server = ui_launcher.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+
+        try:
+            body = json.dumps({"dev": False, "execution_mode": "step"}).encode("utf-8")
+            req = urllib.request.Request(
+                url=base_url + "/launch",
+                data=body,
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(response.status, 200)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual(payload["execution_mode"], "step")
+        self.assertEqual(payload["current_step"], 1)
+        self.assertEqual(payload["has_next"], True)
+
+    def test_step_next_endpoint_advances_step_session(self):
+        config = _StepConfig(self.html_path, self.base, self.setup_state)
+        handler = ui_launcher.make_handler(config)
+        server = ui_launcher.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+
+        try:
+            launch_body = json.dumps({"dev": False, "execution_mode": "step"}).encode("utf-8")
+            launch_req = urllib.request.Request(
+                url=base_url + "/launch",
+                data=launch_body,
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(launch_req, timeout=5) as response:
+                self.assertEqual(response.status, 200)
+
+            next_req = urllib.request.Request(
+                url=base_url + "/api/session/step/next",
+                data=b"{}",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(next_req, timeout=5) as response:
+                next_payload = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(response.status, 200)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual(next_payload["execution_mode"], "step")
+        self.assertEqual(next_payload["current_step"], 2)
+        self.assertEqual(next_payload["has_next"], True)
 
     def test_launch_endpoint_returns_traceback_in_stderr_tail(self):
         config = _RaisingConfig(self.html_path, self.base, self.setup_state)
@@ -235,8 +350,8 @@ class UiLauncherEndpointsTest(unittest.TestCase):
         self.assertEqual(payload["return_code"], 1)
         self.assertEqual(payload["status"], "failed")
         self.assertEqual(payload["stdout_tail"], "")
-        self.assertIn("NotImplementedError", payload["stderr_tail"])
-        self.assertIn("Python engine supports single-rank only", payload["stderr_tail"])
+        self.assertIn("ImportError", payload["stderr_tail"])
+        self.assertIn("Failed to import binding module", payload["stderr_tail"])
 
     def test_launch_endpoint_setup_invalid_returns_not_ready_status(self):
         config = _SetupInvalidConfig(self.html_path, self.base, self.setup_state)
@@ -267,7 +382,7 @@ class UiLauncherEndpointsTest(unittest.TestCase):
         self.assertIn("setup not ready", payload["error"])
 
     def test_status_endpoint_returns_idle_before_launch(self):
-        status, payload = self._post_json("/api/session/heartbeat", {})
+        status, _payload = self._post_json("/api/session/heartbeat", {})
         self.assertEqual(status, 200)
 
         with urllib.request.urlopen(self.base_url + "/api/session/status", timeout=5) as response:
@@ -315,94 +430,113 @@ class UiLauncherEndpointsTest(unittest.TestCase):
         self.assertEqual(status_payload["last_result"]["run_id"], "run-stateful")
         self.assertEqual(last_payload["last_result"]["run_id"], "run-stateful")
 
-        def test_failed_launch_status_persists(self):
-            config = _StatefulConfig(self.html_path, self.base, self.setup_state, return_code=1)
-            handler = ui_launcher.make_handler(config)
-            server = ui_launcher.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
-            base_url = f"http://127.0.0.1:{server.server_port}"
+    def test_failed_launch_status_persists(self):
+        config = _StatefulConfig(self.html_path, self.base, self.setup_state, return_code=1)
+        handler = ui_launcher.make_handler(config)
+        server = ui_launcher.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
 
-            try:
-                body = json.dumps({"dev": False}).encode("utf-8")
-                req = urllib.request.Request(
-                    url=base_url + "/launch",
-                    data=body,
-                    method="POST",
-                    headers={"Content-Type": "application/json"},
-                )
-                with urllib.request.urlopen(req, timeout=5) as response:
-                    launch_payload = json.loads(response.read().decode("utf-8"))
-                    self.assertEqual(response.status, 200)
-
-                with urllib.request.urlopen(base_url + "/api/session/status", timeout=5) as response:
-                    status_payload = json.loads(response.read().decode("utf-8"))
-                    self.assertEqual(response.status, 200)
-            finally:
-                server.shutdown()
-                server.server_close()
-                thread.join(timeout=2)
-
-            self.assertEqual(launch_payload["return_code"], 1)
-            self.assertEqual(launch_payload["status"], "failed")
-            self.assertEqual(status_payload["status"], "failed")
-            self.assertEqual(status_payload["last_result"]["return_code"], 1)
-
-
-class LauncherConfigEngineRoutingTest(unittest.TestCase):
-    def test_python_engine_falls_back_to_subprocess_when_enabled(self):
-        cfg = ui_launcher.LauncherConfig(
-            emulator_path="/tmp/nwp_emulator_run_dp.x",
-            html_path=pathlib.Path("/tmp/index.html"),
-            setup_routes=_StubSetupRoutes({}),
-            engine="python",
-            fallback_subprocess=True,
-        )
-        cfg.runtime = _EngineRuntimeStub()
-        payload = cfg.launch_from_setup_state({"options": {"mpi_np": 1}}, cwd="/tmp", dev_enabled=False)
-
-        self.assertEqual(payload["engine"], "subprocess")
-        self.assertEqual(payload["engine_requested"], "python")
-        self.assertEqual(payload["engine_fallback"], True)
-        self.assertEqual(payload["status"], "complete")
-        self.assertEqual(cfg.runtime.python_calls, 1)
-        self.assertEqual(cfg.runtime.subprocess_calls, 1)
-        self.assertEqual(cfg.runtime.running_calls, 1)
-        self.assertEqual(cfg.runtime.recorded["run_id"], "run-fallback")
-
-    def test_python_engine_raises_when_fallback_disabled(self):
-        cfg = ui_launcher.LauncherConfig(
-            emulator_path="/tmp/nwp_emulator_run_dp.x",
-            html_path=pathlib.Path("/tmp/index.html"),
-            setup_routes=_StubSetupRoutes({}),
-            engine="python",
-            fallback_subprocess=False,
-        )
-        cfg.runtime = _EngineRuntimeStub()
-        with self.assertRaises(NotImplementedError):
-            cfg.launch_from_setup_state({"options": {"mpi_np": 1}}, cwd="/tmp", dev_enabled=False)
-
-        def test_subprocess_engine_runs_subprocess_directly(self):
-            """engine=subprocess routes to subprocess with no python attempt."""
-            cfg = ui_launcher.LauncherConfig(
-                emulator_path="/tmp/nwp_emulator_run_dp.x",
-                html_path=pathlib.Path("/tmp/index.html"),
-                setup_routes=_StubSetupRoutes({}),
-                engine="subprocess",
-                fallback_subprocess=False,
+        try:
+            body = json.dumps({"dev": False}).encode("utf-8")
+            req = urllib.request.Request(
+                url=base_url + "/launch",
+                data=body,
+                method="POST",
+                headers={"Content-Type": "application/json"},
             )
-            cfg.runtime = _EngineRuntimeStub()
-            payload = cfg.launch_from_setup_state({"options": {"mpi_np": 1}}, cwd="/tmp", dev_enabled=False)
+            with urllib.request.urlopen(req, timeout=5) as response:
+                launch_payload = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(response.status, 200)
 
-            self.assertEqual(payload["engine"], "subprocess")
-            self.assertEqual(payload["engine_requested"], "subprocess")
-            self.assertEqual(payload["engine_fallback"], False)
-            self.assertEqual(payload["status"], "complete")
-            self.assertEqual(cfg.runtime.python_calls, 0)
-            self.assertEqual(cfg.runtime.subprocess_calls, 1)
-            self.assertEqual(cfg.runtime.running_calls, 1)
-            self.assertEqual(cfg.runtime.recorded["run_id"], "run-fallback")
+            with urllib.request.urlopen(base_url + "/api/session/status", timeout=5) as response:
+                status_payload = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(response.status, 200)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual(launch_payload["return_code"], 1)
+        self.assertEqual(launch_payload["status"], "failed")
+        self.assertEqual(status_payload["status"], "failed")
+        self.assertEqual(status_payload["last_result"]["return_code"], 1)
+
+    def _step_server(self):
+        """Spin up a _StepConfig server; return (server, thread, base_url, config)."""
+        config = _StepConfig(self.html_path, self.base, self.setup_state)
+        handler = ui_launcher.make_handler(config)
+        server = ui_launcher.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+        return server, thread, base_url, config
+
+    def _step_launch(self, base_url):
+        body = json.dumps({"dev": False, "execution_mode": "step"}).encode("utf-8")
+        req = urllib.request.Request(
+            url=base_url + "/launch",
+            data=body,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def _step_next(self, base_url):
+        req = urllib.request.Request(
+            url=base_url + "/api/session/step/next",
+            data=b"{}",
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def test_step_mode_play_full_session_reaches_complete(self):
+        """Play in step mode then advance through all steps reaches complete."""
+        server, thread, base_url, config = self._step_server()
+        try:
+            launch_payload = self._step_launch(base_url)
+            step2 = self._step_next(base_url)
+            step3 = self._step_next(base_url)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual(launch_payload["current_step"], 1)
+        self.assertEqual(launch_payload["has_next"], True)
+        self.assertEqual(step2["current_step"], 2)
+        self.assertEqual(step2["has_next"], True)
+        self.assertEqual(step3["current_step"], 3)
+        self.assertEqual(step3["has_next"], False)
+        self.assertEqual(step3["status"], "complete")
+        self.assertEqual(step3["step_finished"], True)
+
+    def test_step_mode_forward_at_terminal_is_idempotent(self):
+        """Calling forward at the last step returns complete without running more steps."""
+        server, thread, base_url, config = self._step_server()
+        try:
+            self._step_launch(base_url)      # step 1
+            self._step_next(base_url)         # step 2
+            self._step_next(base_url)         # step 3 (terminal)
+            advance_calls_after_completion = config.advance_calls
+            terminal_payload = self._step_next(base_url)   # extra forward at terminal
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        # The extra forward at terminal should NOT have incremented the step counter.
+        self.assertEqual(terminal_payload["has_next"], False)
+        self.assertEqual(terminal_payload["status"], "complete")
+        self.assertEqual(terminal_payload["current_step"], _StepConfig.STEP_LIMIT)
+        # Advance was called for step-to-terminal and then once more (idempotent call).
+        self.assertEqual(config.advance_calls, advance_calls_after_completion + 1)
 
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -1,5 +1,5 @@
 import { dom } from "./dom.js";
-import { updateRunAvailability } from "./run-controls.js";
+import { resetStepProgress, updateRunAvailability } from "./run-controls.js";
 
 let plumeUploadedReference = null;
 let emulatorUploadedReference = null;
@@ -279,6 +279,114 @@ export function updateSetupAvailability() {
   updateGribInfoBox();
 }
 
+function clearToggleNames() {
+  if (!dom.fieldToggleList || !dom.pluginToggleList) {
+    return;
+  }
+  dom.fieldToggleList.innerHTML = '<li class="options-placeholder">No fields available yet.</li>';
+  dom.pluginToggleList.innerHTML = '<li class="options-placeholder">No plugin outputs available yet.</li>';
+  dom.fieldToggleList.closest(".option-group")?.classList.add("empty");
+  dom.pluginToggleList.closest(".option-group")?.classList.add("empty");
+  requestAnimationFrame(updateAllToggleScrollbars);
+}
+
+function updateToggleScrollbar(listEl) {
+  const shell = listEl?.closest(".toggle-scroll-shell");
+  const track = shell?.querySelector(".toggle-scrollbar");
+  const thumb = track?.querySelector(".toggle-scrollbar-thumb");
+  if (!shell || !track || !thumb) {
+    return;
+  }
+
+  const scrollHeight = listEl.scrollHeight;
+  const clientHeight = listEl.clientHeight;
+  const maxScroll = Math.max(0, scrollHeight - clientHeight);
+
+  if (maxScroll <= 0 || clientHeight <= 0) {
+    track.classList.add("hidden");
+    thumb.style.height = "0px";
+    thumb.style.transform = "translateY(0)";
+    return;
+  }
+
+  track.classList.remove("hidden");
+
+  const trackHeight = track.clientHeight;
+  const thumbHeight = Math.max(20, Math.round((clientHeight / scrollHeight) * trackHeight));
+  const maxThumbTop = Math.max(0, trackHeight - thumbHeight);
+  const thumbTop = Math.round((listEl.scrollTop / maxScroll) * maxThumbTop);
+
+  thumb.style.height = `${thumbHeight}px`;
+  thumb.style.transform = `translateY(${thumbTop}px)`;
+}
+
+function updateAllToggleScrollbars() {
+  if (dom.fieldToggleList) {
+    updateToggleScrollbar(dom.fieldToggleList);
+  }
+  if (dom.pluginToggleList) {
+    updateToggleScrollbar(dom.pluginToggleList);
+  }
+}
+
+export function refreshToggleScrollbars() {
+  requestAnimationFrame(updateAllToggleScrollbars);
+}
+
+let _paramsFetchGen = 0;
+
+async function fetchAndRenderParams() {
+  const gen = ++_paramsFetchGen;
+  try {
+    const data = await fetchJson("/api/setup/params", undefined);
+    if (gen !== _paramsFetchGen) {
+      return;
+    }
+    renderToggleNames(data.field_names || [], data.plugin_output_names || []);
+  } catch (_) {
+    // Non-fatal: toggles stay empty until params are available.
+  }
+}
+
+function renderToggleNames(fieldNames, pluginOutputNames) {
+  if (!dom.fieldToggleList || !dom.pluginToggleList) {
+    return;
+  }
+
+  const escapeHtml = (value) => String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
+  if (dom.fieldToggleLockHint) {
+    dom.fieldToggleLockHint.style.display = "none";
+  }
+  if (dom.pluginToggleLockHint) {
+    dom.pluginToggleLockHint.style.display = "none";
+  }
+
+  dom.fieldToggleList.innerHTML = fieldNames.length
+    ? ["None", ...fieldNames]
+        .map((name, i) => {
+          const value = i === 0 ? "" : name;
+          return `<li><label><input type="radio" name="field-toggle" value="${escapeHtml(value)}"${i === 0 ? " checked" : ""}> ${escapeHtml(name)}</label></li>`;
+        })
+        .join("")
+    : '<li class="options-placeholder">No fields available yet.</li>';
+
+  dom.pluginToggleList.innerHTML = pluginOutputNames.length
+    ? pluginOutputNames
+        .map((name) => `<li><label><input type="checkbox"> ${escapeHtml(name)}</label></li>`)
+        .join("")
+    : '<li class="options-placeholder">No plugin outputs available yet.</li>';
+
+  dom.fieldToggleList.closest(".option-group")?.classList.toggle("empty", fieldNames.length === 0);
+  dom.pluginToggleList.closest(".option-group")?.classList.toggle("empty", pluginOutputNames.length === 0);
+  requestAnimationFrame(updateAllToggleScrollbars);
+}
+
 export function setChecksStatus(state, label) {
   dom.checksStatus.textContent = label;
   dom.checksStatus.classList.remove("pending", "ok", "err");
@@ -287,14 +395,30 @@ export function setChecksStatus(state, label) {
   if (state === "running") {
     dom.checksStatus.classList.add("pending");
     dom.setupTabDot.classList.add("pending");
+    if (dom.output) {
+      dom.output.textContent = "No run yet.";
+    }
   }
   if (state === "passed") {
     dom.checksStatus.classList.add("ok");
     dom.setupTabDot.classList.add("ok");
+    fetchAndRenderParams();
   }
   if (state === "failed") {
     dom.checksStatus.classList.add("err");
     dom.setupTabDot.classList.add("err");
+    clearToggleNames();
+    resetStepProgress();
+    if (dom.output) {
+      dom.output.textContent = "No run yet.";
+    }
+  }
+  if (state === "idle" || state === "running") {
+    clearToggleNames();
+    resetStepProgress();
+    if (dom.output) {
+      dom.output.textContent = "No run yet.";
+    }
   }
 
   updateRunAvailability(state, {
@@ -430,6 +554,9 @@ export async function saveGribSource(sourceType, selectedPaths, pathDisplay) {
 
 export function initSetupControls() {
   const handleOptionsChange = async () => {
+    ++_paramsFetchGen;
+    clearToggleNames();
+    resetStepProgress();
     try {
       await postOptions();
     } catch (error) {
@@ -458,6 +585,9 @@ export function initSetupControls() {
   dom.mpiInput.addEventListener("change", handleOptionsChange);
   dom.plumeEditor.addEventListener("input", updatePlumeEditorHighlights);
   dom.emulatorEditor.addEventListener("input", updateEmulatorEditorHighlights);
+  dom.fieldToggleList?.addEventListener("scroll", () => updateToggleScrollbar(dom.fieldToggleList));
+  dom.pluginToggleList?.addEventListener("scroll", () => updateToggleScrollbar(dom.pluginToggleList));
+  window.addEventListener("resize", updateAllToggleScrollbars);
 
   dom.gribUploadPath.addEventListener("change", async () => {
     try {

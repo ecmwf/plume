@@ -13,7 +13,19 @@
   }
 
   .options-layout {
-    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .options-box {
+    height: auto;
+  }
+
+  .option-group-field {
+    max-height: none;
+  }
+
+  #field-toggle-list {
+    grid-template-columns: 1fr !important;
   }
 
   .map-wrap {
