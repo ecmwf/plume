@@ -109,6 +109,66 @@ class EmulatorRuntimeExecutionTest(unittest.TestCase):
         self.assertIn("Rank 0: return_code=0, status=complete", run_log_text)
         runtime.cleanup_all()
 
+    def test_aggregate_multirank_results_ignores_step_and_field_json_files(self):
+        runtime = runtime_module.EmulatorRuntime(self.emulator_path)
+
+        run_dir = runtime.session_root / "aggregate-ignore-step-files"
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        (run_dir / "rank_0.json").write_text(
+            json.dumps(
+                {
+                    "rank": 0,
+                    "return_code": 0,
+                    "status": "complete",
+                    "stdout": "",
+                    "stderr": "",
+                    "plume_run": False,
+                    "last_step_run": 2,
+                }
+            ),
+            encoding="utf-8",
+        )
+        (run_dir / "rank_1.json").write_text(
+            json.dumps(
+                {
+                    "rank": 1,
+                    "return_code": 0,
+                    "status": "complete",
+                    "stdout": "",
+                    "stderr": "",
+                    "plume_run": False,
+                    "last_step_run": 2,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        # These files must be ignored by rank-result aggregation.
+        (run_dir / "rank_0_step_1_done.json").write_text(
+            json.dumps({"rank": 0, "step": 1, "status": "ok", "has_step": True}),
+            encoding="utf-8",
+        )
+        (run_dir / "rank_1_step_1_done.json").write_text(
+            json.dumps({"rank": 1, "step": 1, "status": "ok", "has_step": True}),
+            encoding="utf-8",
+        )
+        (run_dir / "rank_0_step_1_fields.json").write_text(
+            json.dumps({"rank": 0, "step": 1, "fields": {"t,sfc,0": {}}}),
+            encoding="utf-8",
+        )
+        (run_dir / "rank_1_step_1_fields.json").write_text(
+            json.dumps({"rank": 1, "step": 1, "fields": {"t,sfc,0": {}}}),
+            encoding="utf-8",
+        )
+
+        aggregated = runtime._aggregate_multirank_results(run_dir, 2, "", "")
+
+        self.assertEqual(aggregated["return_code"], 0)
+        self.assertIn("Rank 0: return_code=0, status=complete", aggregated["stdout"])
+        self.assertIn("Rank 1: return_code=0, status=complete", aggregated["stdout"])
+        runtime.cleanup_all()
+
 
 class _FakeRunResult:
     """Minimal stand-in for the pybind RunResult object."""
@@ -169,6 +229,24 @@ class _FakeStepCore:
 
     def current_step(self):
         return self._step
+
+    def available_field_keys(self):
+        return ["t,sfc,0", "u,ml,1"]
+
+    def get_field_overlay_snapshot(self, field_key):
+        values = [1.0 + self._step, 2.0 + self._step, 3.0 + self._step]
+        if str(field_key).startswith("u,"):
+            values = [value * 2.0 for value in values]
+        return {
+            "field_key": field_key,
+            "lon": [0.0, 10.0, 20.0],
+            "lat": [0.0, 5.0, 10.0],
+            "values": values,
+            "step": self._step,
+            "rank": 0,
+            "root": 0,
+            "nprocs": 1,
+        }
 
 
 _FakeModule.NWPEmulatorCore = _FakeStepCore
@@ -321,6 +399,10 @@ class EmulatorRuntimePythonEngineTest(unittest.TestCase):
         self.assertEqual(payload["current_step"], 1)
         self.assertEqual(payload["has_next"], True)
         self.assertEqual(payload["status"], "step-complete")
+        self.assertIn("field_keys", payload)
+        self.assertIn("t,sfc,0", payload["field_keys"])
+        self.assertTrue(payload.get("field_snapshot"))
+        self.assertTrue(pathlib.Path(payload["field_snapshot"]).exists())
         runtime.cleanup_all()
 
     def test_python_engine_step_mode_advance_progresses_one_step(self):
@@ -339,6 +421,8 @@ class EmulatorRuntimePythonEngineTest(unittest.TestCase):
         self.assertEqual(launch_payload["current_step"], 1)
         self.assertEqual(next_payload["current_step"], 2)
         self.assertEqual(next_payload["has_next"], True)
+        self.assertTrue(next_payload.get("field_snapshot"))
+        self.assertTrue(pathlib.Path(next_payload["field_snapshot"]).exists())
         self.assertEqual(last_payload["current_step"], 3)
         self.assertEqual(last_payload["has_next"], False)
         self.assertEqual(last_payload["status"], "complete")

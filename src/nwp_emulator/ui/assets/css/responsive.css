@@ -13,7 +13,18 @@
   }
 
   .options-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr 1fr;
+    row-gap: 0.3rem;
     height: auto;
+  }
+
+  .option-group-field {
+    grid-row: auto;
+  }
+
+  .option-group-plugin {
+    grid-row: auto;
   }
 
   .options-box {

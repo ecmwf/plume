@@ -89,12 +89,10 @@ function statusClass(state) {
 }
 
 function syncTransportButtons() {
+  const hasLocalStepNavigation = uiState.stepSessionActive && uiState.stepLatest > 0;
+
   if (dom.transportPrev) {
-    dom.transportPrev.disabled = !(
-      uiState.executionMode === "step" &&
-      uiState.stepSessionActive &&
-      uiState.stepCurrent > 1
-    );
+    dom.transportPrev.disabled = !(hasLocalStepNavigation && uiState.stepCurrent > 1);
   }
 
   if (uiState.executionMode === "step" && uiState.stepSessionActive) {
@@ -118,7 +116,7 @@ function syncTransportButtons() {
   }
 
   if (dom.transportNext) {
-    dom.transportNext.disabled = true;
+    dom.transportNext.disabled = !(hasLocalStepNavigation && uiState.stepCurrent < uiState.stepLatest);
   }
 
   if (dom.transportPlay) {
@@ -175,6 +173,22 @@ export function resetStepProgress() {
   uiState.stepRequestInFlight = false;
   uiState.stepHistory = {};
   uiState.stepMapImages = {};
+  uiState.stepMapData = {};
+  uiState.stepRankMapData = {};
+  uiState.selectedFieldKey = "";
+  uiState.selectedMapRank = null;
+  uiState.runMpiNp = 1;
+  uiState.mapScaleLocked = false;
+  uiState.mapScaleLockedField = "";
+  if (dom.mapRankSelector) {
+    dom.mapRankSelector.innerHTML = '<option value="global">Global (all ranks)</option>';
+  }
+  if (dom.mapRankSelectorGroup) {
+    dom.mapRankSelectorGroup.hidden = true;
+  }
+  if (dom.mapScaleLockCheckbox) {
+    dom.mapScaleLockCheckbox.checked = false;
+  }
   updateCurrentStepDisplay(uiState.checksState, uiState.runContext);
   syncTransportButtons();
 }

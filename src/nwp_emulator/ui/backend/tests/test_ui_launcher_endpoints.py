@@ -86,6 +86,40 @@ class _StepConfig(_RaisingConfig):
         super().__init__(html_path, base, setup_state)
         self._step = 1
         self.advance_calls = 0
+        self._map_dir = base / "map_fields"
+        self._map_dir.mkdir(parents=True, exist_ok=True)
+        for step in range(1, self.STEP_LIMIT + 1):
+            (self._map_dir / f"step_{step}.json").write_text(
+                json.dumps({
+                    "step": step,
+                    "field_keys": ["t,sfc,0"],
+                    "fields": {
+                        "t,sfc,0": {
+                            "lon": [0.0, 10.0],
+                            "lat": [0.0, 5.0],
+                            "values": [step * 1.0, step * 2.0],
+                        }
+                    },
+                }),
+                encoding="utf-8",
+            )
+            (self.ui_dir / f"rank_0_step_{step}_fields.json").write_text(
+                json.dumps({
+                    "rank": 0,
+                    "step": step,
+                    "fields": {
+                        "t,sfc,0": {
+                            "lon": [0.0, 10.0],
+                            "lat": [0.0, 5.0],
+                            "values": [step * 1.0, step * 2.0],
+                            "step": step,
+                            "rank": 0,
+                            "nprocs": 2,
+                        }
+                    },
+                }),
+                encoding="utf-8",
+            )
 
     def launch_from_setup_state(self, setup_state, cwd, dev_enabled):
         return {
@@ -103,6 +137,8 @@ class _StepConfig(_RaisingConfig):
             "total_steps": self.STEP_LIMIT,
             "has_next": True,
             "step_finished": False,
+            "field_keys": ["t,sfc,0"],
+            "field_snapshot": str(self._map_dir / "step_1.json"),
         }
 
     def advance_step_from_session(self):
@@ -124,6 +160,8 @@ class _StepConfig(_RaisingConfig):
                 "total_steps": self.STEP_LIMIT,
                 "has_next": False,
                 "step_finished": True,
+                "field_keys": ["t,sfc,0"],
+                "field_snapshot": str(self._map_dir / f"step_{self._step}.json"),
             }
         self._step += 1
         has_next = self._step < self.STEP_LIMIT
@@ -142,7 +180,17 @@ class _StepConfig(_RaisingConfig):
             "total_steps": self.STEP_LIMIT,
             "has_next": has_next,
             "step_finished": not has_next,
+            "field_keys": ["t,sfc,0"],
+            "field_snapshot": str(self._map_dir / f"step_{self._step}.json"),
         }
+
+    def get_step_map_snapshot(self, step):
+        step_file = self._map_dir / f"step_{int(step)}.json"
+        return step_file if step_file.exists() else None
+
+    def get_step_rank_field_snapshot(self, step, rank):
+        rank_file = self.ui_dir / f"rank_{int(rank)}_step_{int(step)}_fields.json"
+        return rank_file if rank_file.exists() else None
 
 
 class _StatefulConfig(_RaisingConfig):
@@ -285,6 +333,7 @@ class UiLauncherEndpointsTest(unittest.TestCase):
         self.assertEqual(payload["execution_mode"], "step")
         self.assertEqual(payload["current_step"], 1)
         self.assertEqual(payload["has_next"], True)
+        self.assertIn("field_snapshot", payload)
 
     def test_step_next_endpoint_advances_step_session(self):
         config = _StepConfig(self.html_path, self.base, self.setup_state)
@@ -322,6 +371,73 @@ class UiLauncherEndpointsTest(unittest.TestCase):
         self.assertEqual(next_payload["execution_mode"], "step")
         self.assertEqual(next_payload["current_step"], 2)
         self.assertEqual(next_payload["has_next"], True)
+        self.assertIn("field_snapshot", next_payload)
+
+    def test_map_step_endpoint_returns_snapshot_json(self):
+        config = _StepConfig(self.html_path, self.base, self.setup_state)
+        handler = ui_launcher.make_handler(config)
+        server = ui_launcher.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+
+        try:
+            req = urllib.request.Request(url=base_url + "/api/run/map/step/1", method="GET")
+            with urllib.request.urlopen(req, timeout=5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(response.status, 200)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual(payload["step"], 1)
+        self.assertIn("t,sfc,0", payload["fields"])
+
+    def test_map_rank_step_endpoint_returns_rank_snapshot_json(self):
+        config = _StepConfig(self.html_path, self.base, self.setup_state)
+        handler = ui_launcher.make_handler(config)
+        server = ui_launcher.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+
+        try:
+            req = urllib.request.Request(url=base_url + "/api/run/map/step/1/rank/0", method="GET")
+            with urllib.request.urlopen(req, timeout=5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(response.status, 200)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual(payload["rank"], 0)
+        self.assertEqual(payload["step"], 1)
+        self.assertIn("t,sfc,0", payload["fields"])
+
+    def test_map_rank_step_endpoint_missing_rank_returns_404(self):
+        config = _StepConfig(self.html_path, self.base, self.setup_state)
+        handler = ui_launcher.make_handler(config)
+        server = ui_launcher.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+
+        status = None
+        try:
+            req = urllib.request.Request(url=base_url + "/api/run/map/step/1/rank/99", method="GET")
+            try:
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    status = response.status
+            except urllib.error.HTTPError as exc:
+                status = exc.code
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual(status, 404)
 
     def test_launch_endpoint_returns_traceback_in_stderr_tail(self):
         config = _RaisingConfig(self.html_path, self.base, self.setup_state)

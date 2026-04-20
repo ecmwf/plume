@@ -79,6 +79,10 @@
 
             <div class="saving-options-box" role="group" aria-label="Saving options">
               <div class="saving-options-title">Saving Options</div>
+              <label class="save-resolution-option" for="save-full-resolution">
+                <input id="save-full-resolution" type="checkbox">
+                Full resolution
+              </label>
               <div class="save-grid">
                 <button id="save-step-btn" class="save-btn" type="button">save step</button>
                 <button id="save-gif-btn" class="save-btn" type="button">save gif</button>
@@ -96,6 +100,22 @@
               <div class="box options-box">
                 <div class="box-title">Options</div>
                 <div class="options-layout">
+                  <div id="rank-selector-group" class="option-group option-group-rank" hidden>
+                    <div class="group-title">Data Source</div>
+                    <select id="map-rank-selector" class="rank-select" aria-label="Data source rank">
+                      <option value="global">Global (all ranks)</option>
+                    </select>
+                  </div>
+
+                  <div class="option-group option-group-rank">
+                    <div class="group-title">Point Limit</div>
+                    <select id="map-point-limit-preset" class="rank-select" aria-label="Point limit preset">
+                      <option value="full">No limit (full resolution)</option>
+                      <option value="balanced" selected>Balanced (~50k points)</option>
+                      <option value="fast">Fast (~10k points)</option>
+                    </select>
+                  </div>
+
                   <div class="option-group option-group-field">
                     <div class="group-title">Field Toggles</div>
                     <div id="field-toggle-lock-hint" class="options-lock-hint">Pass setup checks to unlock options.</div>
@@ -132,8 +152,14 @@
 
                 <div class="box">
                   <div class="box-title">Scale</div>
-                  <div class="colorbar" aria-label="Coolwarm scale placeholder"></div>
-                  <div class="scale-note">Units and graduations to be defined.</div>
+                  <div id="map-scale-colorbar" class="colorbar" aria-label="Coolwarm scale placeholder"></div>
+                  <div id="map-scale-note" class="scale-note">Units and graduations to be defined.</div>
+                  <div class="scale-lock-container">
+                    <label for="map-scale-lock" class="scale-lock-label">
+                      <input id="map-scale-lock" type="checkbox" class="scale-lock-checkbox" />
+                      Lock scale across steps
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -273,6 +299,13 @@
     </div>
 
     <footer class="app-footer">© 2025 ECMWF. All rights reserved.</footer>
+  </div>
+
+  <div id="save-loading-overlay" class="save-loading-overlay" hidden>
+    <div class="save-loading-content">
+      <div class="save-loading-spinner"></div>
+      <div class="save-loading-text">Processing...</div>
+    </div>
   </div>
 
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>

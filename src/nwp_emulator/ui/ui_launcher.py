@@ -164,6 +164,24 @@ class LauncherConfig:
     def get_active_run_dir(self):
         return self.runtime.get_active_run_dir()
 
+    def get_step_map_snapshot(self, step):
+        run_dir = self.get_active_run_dir()
+        if run_dir is None:
+            return None
+        step_file = run_dir / "map_fields" / f"step_{int(step)}.json"
+        if not step_file.exists():
+            return None
+        return step_file
+
+    def get_step_rank_field_snapshot(self, step, rank):
+        run_dir = self.get_active_run_dir()
+        if run_dir is None:
+            return None
+        rank_file = run_dir / f"rank_{int(rank)}_step_{int(step)}_fields.json"
+        if not rank_file.exists():
+            return None
+        return rank_file
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Serve a minimal UI to launch nwp_emulator")
@@ -231,6 +249,57 @@ def make_handler(config):
 
             if req_path.startswith("/api/setup/"):
                 self._route_setup("GET", req_path, {})
+                return
+
+            rank_map_match = re.fullmatch(r"/api/run/map/step/(\d+)/rank/(\d+)", req_path)
+            if rank_map_match:
+                step = int(rank_map_match.group(1))
+                rank = int(rank_map_match.group(2))
+                rank_file_callable = getattr(config, "get_step_rank_field_snapshot", None)
+                step_file = rank_file_callable(step, rank) if callable(rank_file_callable) else None
+                if step_file is None:
+                    status_code, headers, body = error_response(
+                        f"No rank snapshot found for step {step} rank {rank}", HTTPStatus.NOT_FOUND
+                    )
+                    self._write_response(status_code, headers, body)
+                    return
+                assert isinstance(step_file, pathlib.Path)
+                try:
+                    body = step_file.read_bytes()
+                except OSError as exc:
+                    status_code, headers, body = error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
+                    self._write_response(status_code, headers, body)
+                    return
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            map_match = re.fullmatch(r"/api/run/map/step/(\d+)", req_path)
+            if map_match:
+                step = int(map_match.group(1))
+                step_file_callable = getattr(config, "get_step_map_snapshot", None)
+                step_file = step_file_callable(step) if callable(step_file_callable) else None
+                if step_file is None:
+                    status_code, headers, body = error_response(
+                        f"No map snapshot found for step {step}", HTTPStatus.NOT_FOUND
+                    )
+                    self._write_response(status_code, headers, body)
+                    return
+                assert isinstance(step_file, pathlib.Path)
+                try:
+                    body = step_file.read_bytes()
+                except OSError as exc:
+                    status_code, headers, body = error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
+                    self._write_response(status_code, headers, body)
+                    return
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
                 return
 
             if req_path == "/api/run/archive":

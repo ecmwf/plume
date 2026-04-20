@@ -155,11 +155,123 @@ def _import_and_execute(
         sys.stderr = old_stderr
 
 
+def _import_and_execute_with_step_snapshots(
+    run_dir: pathlib.Path,
+    run_options: dict[str, Any],
+    module_search_dirs: list[pathlib.Path],
+    rank: int,
+) -> tuple[int, str, str, Any, Any]:
+    """Import binding module and execute full run step-by-step with snapshots."""
+    module_name = str(run_options.get("module_name", "")).strip() or "nwp_emulator_core_dp"
+
+    original_path = sys.path.copy()
+    for search_dir in module_search_dirs:
+        if str(search_dir) not in sys.path:
+            sys.path.insert(0, str(search_dir))
+
+    try:
+        mod = __import__(module_name)
+    except ImportError as exc:
+        raise ImportError(
+            f"Failed to import {module_name}. "
+            f"Searched: {module_search_dirs}. "
+            f"Error: {exc}"
+        ) from exc
+    finally:
+        sys.path = original_path
+
+    run_options_obj = mod.RunOptions()
+    data_source_type_name = str(run_options.get("data_source_type", "CONFIG"))
+    data_source_type = getattr(mod.DataSourceType, data_source_type_name, None)
+    if data_source_type is None:
+        data_source_type = getattr(mod.DataSourceType, "INVALID", mod.DataSourceType.CONFIG)
+    run_options_obj.data_source_type = data_source_type
+    run_options_obj.data_source_path = run_options.get("data_source_path", "")
+    run_options_obj.plume_config_path = run_options.get("plume_config_path", "")
+
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    captured_stdout = StringIO()
+    captured_stderr = StringIO()
+
+    try:
+        sys.stdout = captured_stdout
+        sys.stderr = captured_stderr
+
+        core = mod.NWPEmulatorCore()
+        if not bool(core.validate_run_options(run_options_obj)):
+            return 1, captured_stdout.getvalue(), captured_stderr.getvalue(), False, 0
+        if not bool(core.setup_data_provider(run_options_obj)):
+            return 1, captured_stdout.getvalue(), captured_stderr.getvalue(), False, 0
+
+        plume_run = False
+        if getattr(run_options_obj, "plume_config_path", ""):
+            if not bool(core.setup_plume_provider()):
+                return 1, captured_stdout.getvalue(), captured_stderr.getvalue(), False, 0
+            plume_run = True
+
+        last_step_run = 0
+        while True:
+            has_step = bool(core.run_step())
+            if not has_step:
+                break
+            last_step_run = int(core.current_step())
+            _write_step_field_snapshot(run_dir, rank, last_step_run, core)
+
+        if hasattr(core, "finalize_run"):
+            core.finalize_run()
+        else:
+            core.finalize_plume()
+
+        return 0, captured_stdout.getvalue(), captured_stderr.getvalue(), plume_run, last_step_run
+    finally:
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+
+
 def _write_json(path: pathlib.Path, data: dict[str, Any]) -> None:
     """Write data as JSON to path atomically via a temp-then-rename pattern."""
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
     tmp.rename(path)
+
+
+def _write_step_field_snapshot(run_dir: pathlib.Path, rank: int, step: int, core: Any) -> None:
+    """Persist rank-local field overlays for one step as JSON.
+
+    This worker-side snapshot is aggregated across ranks by the launcher runtime
+    into a global step file used by the map UI.
+    """
+    if not hasattr(core, "available_field_keys") or not hasattr(core, "get_field_overlay_snapshot"):
+        return
+
+    payload: dict[str, Any] = {
+        "rank": rank,
+        "step": step,
+        "fields": {},
+    }
+
+    try:
+        field_keys = list(core.available_field_keys())
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        field_keys = []
+
+    for field_key in field_keys:
+        try:
+            snapshot = core.get_field_overlay_snapshot(field_key)
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            continue
+
+        payload["fields"][str(field_key)] = {
+            "lon": snapshot.get("lon", []),
+            "lat": snapshot.get("lat", []),
+            "values": snapshot.get("values", []),
+            "step": int(snapshot.get("step", step)),
+            "rank": int(snapshot.get("rank", rank)),
+            "nprocs": int(snapshot.get("nprocs", 1)),
+        }
+
+    _write_json(run_dir / f"rank_{rank}_step_{step}_fields.json", payload)
 
 
 def _run_step_mode(
@@ -248,7 +360,7 @@ def _run_step_mode(
             print(f"[Rank {rank}] Plume provider setup completed: {plume_run}")
         
         print(f"[Rank {rank}] Step-mode setup completed successfully.")
-    except Exception as exc:  # noqa: BLE001
+    except (AttributeError, RuntimeError, TypeError, ValueError, OSError) as exc:
         sys.stdout, sys.stderr = old_stdout, old_stderr
         _write_json(run_dir / f"rank_{rank}_ready.json", {
             "rank": rank, "status": "failed",
@@ -297,7 +409,7 @@ def _run_step_mode(
                 else:
                     core.finalize_plume()
                 finalized = True
-            except Exception as exc:  # noqa: BLE001
+            except (AttributeError, RuntimeError, TypeError, ValueError, OSError) as exc:
                 finalize_error = str(exc)
                 return_code = 1
             finally:
@@ -324,7 +436,7 @@ def _run_step_mode(
             has_step = bool(core.run_step())
             if has_step:
                 step = int(core.current_step())
-        except Exception as exc:  # noqa: BLE001
+        except (AttributeError, RuntimeError, TypeError, ValueError, OSError) as exc:
             sys.stdout, sys.stderr = old_stdout, old_stderr
             return_code = 1
             _write_json(run_dir / f"rank_{rank}_step_{next_step}_done.json", {
@@ -342,6 +454,9 @@ def _run_step_mode(
             break
         finally:
             sys.stdout, sys.stderr = old_stdout, old_stderr
+
+        if has_step:
+            _write_step_field_snapshot(run_dir, rank, step, core)
 
         _write_json(run_dir / f"rank_{rank}_step_{next_step}_done.json", {
             "rank": rank,
@@ -408,9 +523,14 @@ def main() -> int:
     if args.step_mode:
         return _run_step_mode(run_dir, run_options, module_search_dirs)
 
-    # Full-run mode: import and execute binding.
+    # Full-run mode: import binding and execute with step-by-step snapshots.
     try:
-        return_code, stdout_text, stderr_text, plume_run, last_step_run = _import_and_execute(run_options, module_search_dirs)
+        return_code, stdout_text, stderr_text, plume_run, last_step_run = _import_and_execute_with_step_snapshots(
+            run_dir,
+            run_options,
+            module_search_dirs,
+            rank,
+        )
     except (ImportError, AttributeError, KeyError, OSError, ValueError, TypeError) as exc:
         result_file = run_dir / f"rank_{rank}.json"
         result_file.write_text(json.dumps({

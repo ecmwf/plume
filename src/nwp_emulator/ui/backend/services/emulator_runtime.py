@@ -494,6 +494,19 @@ class EmulatorRuntime:
             has_step, captured_stdout, captured_stderr = self._with_plugin_dev_capture(_advance_once, dev_enabled)
             if has_step:
                 session["current_step"] = int(core.current_step())
+                snapshot_path, field_keys = self._capture_single_rank_step_field_snapshot(
+                    pathlib.Path(session["run_dir"]),
+                    core,
+                    int(session["current_step"]),
+                )
+                if field_keys:
+                    session["field_keys"] = field_keys
+                if snapshot_path is not None:
+                    step_field_files = session.get("step_field_files")
+                    if not isinstance(step_field_files, dict):
+                        step_field_files = {}
+                    step_field_files[str(int(session["current_step"]))] = str(snapshot_path)
+                    session["step_field_files"] = step_field_files
                 has_next = self._step_has_next(session)
                 if has_next:
                     session["status"] = "step-complete"
@@ -580,6 +593,17 @@ class EmulatorRuntime:
                 core.finalize_plume()
 
         current_step = int(core.current_step()) if first_step else 0
+        step_field_files: dict[str, str] = {}
+        field_keys: list[str] = []
+        if first_step and current_step > 0:
+            snapshot_path, field_keys = self._capture_single_rank_step_field_snapshot(
+                run_workspace["run_dir"],
+                core,
+                current_step,
+            )
+            if snapshot_path is not None:
+                step_field_files[str(current_step)] = str(snapshot_path)
+
         session = {
             "session_id": self.session_id,
             "run_id": run_workspace["run_id"],
@@ -595,6 +619,8 @@ class EmulatorRuntime:
             "status": "step-running",
             "is_finalized": not first_step,
             "module_name": module_name,
+            "field_keys": field_keys,
+            "step_field_files": step_field_files,
         }
 
         has_next = first_step and self._step_has_next(session)
@@ -683,6 +709,9 @@ class EmulatorRuntime:
     ) -> dict[str, Any]:
         finished = not has_next
         status = "complete" if finished else "step-complete"
+        current_step = int(session.get("current_step") or 0)
+        step_field_files_raw = session.get("step_field_files")
+        step_field_files: dict[str, str] = step_field_files_raw if isinstance(step_field_files_raw, dict) else {}
         return {
             "command": session.get("command", []),
             "dev": bool(session.get("dev_enabled", False)),
@@ -693,13 +722,16 @@ class EmulatorRuntime:
             "run_dir": str(session.get("run_dir", "unknown")),
             "run_log": str(session.get("run_log_path", "unknown")),
             "plume_run": bool(session.get("plume_run", False)),
-            "last_step_run": int(session.get("current_step") or 0),
+            "last_step_run": current_step,
             "execution_mode": "step",
-            "current_step": int(session.get("current_step") or 0),
+            "current_step": current_step,
             "total_steps": session.get("total_steps"),
             "has_next": bool(has_next),
             "step_finished": finished,
             "status": status,
+            "field_keys": session.get("field_keys", []),
+            "field_snapshot": step_field_files.get(str(current_step)),
+            "mpi_np": int(str(session.get("command", ["mpirun", "-np", "1"])[2])),
         }
 
     @staticmethod
@@ -962,6 +994,133 @@ class EmulatorRuntime:
             "return_code": 0 if has_step else 1,
         }
 
+    @staticmethod
+    def _archive_full_resolution_fields(run_dir: pathlib.Path) -> pathlib.Path | None:
+        """Archive full-resolution field data before sampled data overwrites it.
+        
+        Creates a tar.gz archive containing all per-step field JSON files for
+        post-run analysis. Returns path to archive, or None if no fields exist.
+        """
+        map_fields_dir = run_dir / "map_fields"
+        if not map_fields_dir.exists() or not list(map_fields_dir.glob("step_*.json")):
+            return None
+        
+        archive_path = run_dir / "map_fields_full_resolution.tar.gz"
+        try:
+            import tarfile
+            with tarfile.open(archive_path, "w:gz") as tar:
+                for step_file in sorted(map_fields_dir.glob("step_*.json")):
+                    tar.add(step_file, arcname=step_file.name)
+            return archive_path
+        except (OSError, tarfile.TarError) as e:
+            # Non-fatal: log error but don't fail the run
+            print(f"Warning: Failed to archive full-resolution fields: {e}", file=sys.stderr)
+            return None
+
+    @staticmethod
+    def _persist_step_field_snapshot(
+        run_dir: pathlib.Path,
+        step: int,
+        snapshot: dict[str, Any],
+    ) -> pathlib.Path:
+        """Persist field snapshot to compact JSON.
+
+        Frontend point-capping is applied at render time when enabled.
+        """
+        field_dir = run_dir / "map_fields"
+        field_dir.mkdir(parents=True, exist_ok=True)
+
+        out_path = field_dir / f"step_{step}.json"
+        # Compact JSON avoids overhead from pretty-printing huge arrays.
+        out_path.write_text(json.dumps(snapshot), encoding="utf-8")
+        return out_path
+
+    @staticmethod
+    def _capture_single_rank_step_field_snapshot(
+        run_dir: pathlib.Path,
+        core: Any,
+        step: int,
+    ) -> tuple[pathlib.Path | None, list[str]]:
+        if not hasattr(core, "available_field_keys") or not hasattr(core, "get_field_overlay_snapshot"):
+            return None, []
+
+        try:
+            field_keys = [str(k) for k in list(core.available_field_keys())]
+        except (TypeError, ValueError, RuntimeError, AttributeError):
+            field_keys = []
+
+        fields: dict[str, Any] = {}
+        for field_key in field_keys:
+            try:
+                snap = core.get_field_overlay_snapshot(field_key)
+            except (TypeError, ValueError, RuntimeError, AttributeError):
+                continue
+            fields[field_key] = {
+                "lon": snap.get("lon", []),
+                "lat": snap.get("lat", []),
+                "values": snap.get("values", []),
+                "step": int(snap.get("step", step)),
+                "rank": int(snap.get("rank", 0)),
+                "nprocs": int(snap.get("nprocs", 1)),
+            }
+
+        if not fields:
+            return None, field_keys
+
+        snapshot = {
+            "step": int(step),
+            "field_keys": field_keys,
+            "fields": fields,
+            "aggregated": True,
+            "source": "single-rank",
+        }
+        return EmulatorRuntime._persist_step_field_snapshot(run_dir, step, snapshot), field_keys
+
+    @staticmethod
+    def _aggregate_step_rank_field_snapshots(
+        run_dir: pathlib.Path,
+        mpi_np: int,
+        step: int,
+    ) -> tuple[pathlib.Path | None, list[str]]:
+        aggregated_fields: dict[str, dict[str, Any]] = {}
+        field_keys_set: set[str] = set()
+
+        for r in range(mpi_np):
+            rank_file = run_dir / f"rank_{r}_step_{step}_fields.json"
+            try:
+                payload = json.loads(rank_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+
+            fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else {}
+            for key, data in fields.items():
+                field_key = str(key)
+                field_keys_set.add(field_key)
+                target = aggregated_fields.setdefault(field_key, {
+                    "lon": [],
+                    "lat": [],
+                    "values": [],
+                    "step": int(step),
+                    "rank": -1,
+                    "nprocs": int(mpi_np),
+                })
+                target["lon"].extend(data.get("lon", []))
+                target["lat"].extend(data.get("lat", []))
+                target["values"].extend(data.get("values", []))
+
+        if not aggregated_fields:
+            return None, sorted(field_keys_set)
+
+        field_keys = sorted(field_keys_set)
+        snapshot = {
+            "step": int(step),
+            "field_keys": field_keys,
+            "fields": aggregated_fields,
+            "aggregated": True,
+            "source": "multi-rank",
+        }
+        return EmulatorRuntime._persist_step_field_snapshot(run_dir, step, snapshot), field_keys
+
     def _start_step_session_multirank_python(
         self,
         setup_state: dict[str, Any],
@@ -1148,6 +1307,13 @@ class EmulatorRuntime:
         total_steps = self._infer_total_steps(setup_state, run_workspace)
 
         current_step = 1 if has_step else 0
+        step_field_files: dict[str, str] = {}
+        field_keys: list[str] = []
+        if has_step:
+            snapshot_path, field_keys = self._aggregate_step_rank_field_snapshots(run_dir, mpi_np, step=1)
+            if snapshot_path is not None:
+                step_field_files[str(current_step)] = str(snapshot_path)
+
         session: dict[str, Any] = {
             "session_id": self.session_id,
             "run_id": run_workspace["run_id"],
@@ -1171,6 +1337,8 @@ class EmulatorRuntime:
             "worker_stderr_offset": 0,
             "finalize_stdout": "",
             "finalize_stderr": "",
+            "field_keys": field_keys,
+            "step_field_files": step_field_files,
         }
 
         has_next = has_step and self._step_has_next(session)
@@ -1263,6 +1431,15 @@ class EmulatorRuntime:
 
         if has_step:
             session["current_step"] = next_step
+            snapshot_path, field_keys = self._aggregate_step_rank_field_snapshots(run_dir, mpi_np, step=next_step)
+            if field_keys:
+                session["field_keys"] = field_keys
+            if snapshot_path is not None:
+                step_field_files = session.get("step_field_files")
+                if not isinstance(step_field_files, dict):
+                    step_field_files = {}
+                step_field_files[str(next_step)] = str(snapshot_path)
+                session["step_field_files"] = step_field_files
 
         has_next = has_step and self._step_has_next(session)
         if not has_next:
@@ -1346,6 +1523,22 @@ class EmulatorRuntime:
             "--- stderr ---",
             captured_stderr or "",
         ])
+
+        # Full mode now persists per-step field snapshots so map browsing can
+        # reuse the same /api/run/map/step/{n} path as step mode.
+        field_keys = self._capture_single_rank_full_run_field_snapshots(
+            run_workspace["run_dir"],
+            run_options,
+            mod,
+            dev_enabled,
+        )
+        if field_keys:
+            run_log_text += "\n\n"
+            run_log_text += f"Field snapshots written for keys: {', '.join(field_keys)}"
+
+        # Archive full-resolution field data for post-run analysis
+        self._archive_full_resolution_fields(run_workspace["run_dir"])
+
         run_workspace["run_log_path"].write_text(run_log_text, encoding="utf-8")
 
         return {
@@ -1359,6 +1552,7 @@ class EmulatorRuntime:
             "run_log": str(run_workspace["run_log_path"]),
             "plume_run": result.plume_run,
             "last_step_run": result.last_step_run,
+            "mpi_np": 1,
         }
 
     def _run_multirank_from_setup_state_python(
@@ -1445,6 +1639,17 @@ class EmulatorRuntime:
             run_dir, mpi_np, completed.stdout, completed.stderr
         )
 
+        # Build aggregated per-step map snapshots from rank-local step files.
+        try:
+            final_step = int(aggregated.get("last_step_run") or 0)
+        except (TypeError, ValueError):
+            final_step = 0
+        for step in range(1, max(0, final_step) + 1):
+            self._aggregate_step_rank_field_snapshots(run_dir, mpi_np, step)
+
+        # Archive full-resolution field data for post-run analysis
+        self._archive_full_resolution_fields(run_dir)
+
         return {
             "command": worker_cmd,
             "dev": bool(dev_enabled),
@@ -1456,7 +1661,66 @@ class EmulatorRuntime:
             "run_log": str(run_workspace["run_log_path"]),
             "plume_run": aggregated.get("plume_run", ""),
             "last_step_run": aggregated.get("last_step_run", ""),
+            "mpi_np": int(mpi_np),
         }
+
+    def _capture_single_rank_full_run_field_snapshots(
+        self,
+        run_dir: pathlib.Path,
+        run_options: Any,
+        mod: Any,
+        dev_enabled: bool,
+    ) -> list[str]:
+        """Generate full-run step snapshots for single-rank executions.
+
+        The normal full-mode path uses mod.execute() which may not persist
+        step-wise overlay snapshots. This helper replays the run with
+        NWPEmulatorCore and writes map_fields/step_{n}.json for UI browsing.
+        """
+        core_ctor = getattr(mod, "NWPEmulatorCore", None)
+        if core_ctor is None:
+            return []
+
+        # If snapshots already exist, preserve them and avoid duplicate replay.
+        field_dir = run_dir / "map_fields"
+        if field_dir.exists() and any(field_dir.glob("step_*.json")):
+            return []
+
+        # Build a dry replay options object (no plume side-effects) for map data.
+        replay_opts = mod.RunOptions()
+        replay_opts.data_source_type = run_options.data_source_type
+        replay_opts.data_source_path = run_options.data_source_path
+        replay_opts.plume_config_path = ""
+
+        core = core_ctor()
+        latest_field_keys: list[str] = []
+
+        def _replay_and_capture() -> None:
+            if not bool(core.validate_run_options(replay_opts)):
+                return
+            if not bool(core.setup_data_provider(replay_opts)):
+                return
+
+            while True:
+                has_step = bool(core.run_step())
+                if not has_step:
+                    break
+                step = int(core.current_step())
+                _, keys = self._capture_single_rank_step_field_snapshot(run_dir, core, step)
+                if keys:
+                    latest_field_keys[:] = keys
+
+            if hasattr(core, "finalize_run"):
+                core.finalize_run()
+            elif hasattr(core, "finalize_plume"):
+                core.finalize_plume()
+
+        try:
+            self._with_plugin_dev_capture(_replay_and_capture, bool(dev_enabled))
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return []
+
+        return latest_field_keys
 
     def _aggregate_multirank_results(
         self,
@@ -1471,15 +1735,18 @@ class EmulatorRuntime:
             dict with keys: return_code, stdout, stderr, plume_run, last_step_run
         """
         rank_results: dict[int, dict[str, Any]] = {}
-        rank_files = sorted(run_dir.glob("rank_*.json"))
+        rank_files = sorted(
+            path for path in run_dir.glob("rank_*.json")
+            if re.fullmatch(r"rank_\d+\.json", path.name)
+        )
 
         for rank_file in rank_files:
             try:
                 with rank_file.open("r", encoding="utf-8") as f:
                     rank_data = json.load(f)
-                    rank = rank_data.get("rank", -1)
+                    rank = int(rank_data.get("rank", -1))
                     rank_results[rank] = rank_data
-            except (OSError, json.JSONDecodeError, KeyError, ValueError) as e:
+            except (OSError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
                 # Log failure but continue aggregation.
                 print(f"Failed to load rank result from {rank_file}: {e}", file=sys.stderr)
 

@@ -1,8 +1,11 @@
 import { dom } from "./dom.js";
 import { resetStepProgress, updateRunAvailability } from "./run-controls.js";
+import { renderStepMapOverlay } from "./map/map-renderer-plotly.js";
+import { getComputedWindSpeedFieldNames } from "./derived-fields.js";
 
-let plumeUploadedReference = null;
-let emulatorUploadedReference = null;
+// Start with undefined; only set these when user explicitly uploads in THIS session
+let plumeUploadedReference = undefined;
+let emulatorUploadedReference = undefined;
 let latestGribPathDisplay = "";
 let latestGribSelectedPaths = [];
 let latestGribMetadata = {};
@@ -194,7 +197,7 @@ function updatePlumeEditorHighlights() {
   const plumeCheckFailed = latestChecksResults.plume_plugins_template === "failed";
   const edited =
     !dryRun &&
-    plumeUploadedReference !== null &&
+    plumeUploadedReference !== undefined &&
     dom.plumeEditor.value !== plumeUploadedReference;
 
   dom.plumeEditor.classList.remove("modified", "invalid");
@@ -218,7 +221,7 @@ function updatePlumeEditorHighlights() {
 function updateEmulatorEditorHighlights() {
   const emulatorCheckFailed = latestChecksResults.emulator_yaml_basic === "failed";
   const edited =
-    emulatorUploadedReference !== null &&
+    emulatorUploadedReference !== undefined &&
     dom.emulatorEditor.value !== emulatorUploadedReference;
 
   dom.emulatorEditor.classList.remove("modified", "invalid");
@@ -241,11 +244,21 @@ function updateEmulatorEditorHighlights() {
 
 export function setPlumeUploadReference(text) {
   plumeUploadedReference = text;
+  if (text === null) {
+    sessionStorage.removeItem("plumeUploadedRef");
+  } else {
+    sessionStorage.setItem("plumeUploadedRef", text);
+  }
   updatePlumeEditorHighlights();
 }
 
 export function setEmulatorUploadReference(text) {
   emulatorUploadedReference = text;
+  if (text === null) {
+    sessionStorage.removeItem("emulatorUploadedRef");
+  } else {
+    sessionStorage.setItem("emulatorUploadedRef", text);
+  }
   updateEmulatorEditorHighlights();
 }
 
@@ -353,6 +366,13 @@ function renderToggleNames(fieldNames, pluginOutputNames) {
     return;
   }
 
+  const nativeFieldNames = Array.isArray(fieldNames)
+    ? fieldNames.map((name) => String(name || "").trim()).filter(Boolean)
+    : [];
+  const computedFieldNames = getComputedWindSpeedFieldNames(nativeFieldNames);
+  const specialNames = new Set(computedFieldNames);
+  const allFieldNames = [...nativeFieldNames, ...computedFieldNames];
+
   const escapeHtml = (value) => String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -367,11 +387,12 @@ function renderToggleNames(fieldNames, pluginOutputNames) {
     dom.pluginToggleLockHint.style.display = "none";
   }
 
-  dom.fieldToggleList.innerHTML = fieldNames.length
-    ? ["None", ...fieldNames]
+  dom.fieldToggleList.innerHTML = allFieldNames.length
+    ? ["None", ...allFieldNames]
         .map((name, i) => {
           const value = i === 0 ? "" : name;
-          return `<li><label><input type="radio" name="field-toggle" value="${escapeHtml(value)}"${i === 0 ? " checked" : ""}> ${escapeHtml(name)}</label></li>`;
+          const liClass = i !== 0 && specialNames.has(name) ? ' class="special-field-toggle"' : "";
+          return `<li${liClass}><label><input type="radio" name="field-toggle" value="${escapeHtml(value)}"${i === 0 ? " checked" : ""}> ${escapeHtml(name)}</label></li>`;
         })
         .join("")
     : '<li class="options-placeholder">No fields available yet.</li>';
@@ -382,7 +403,7 @@ function renderToggleNames(fieldNames, pluginOutputNames) {
         .join("")
     : '<li class="options-placeholder">No plugin outputs available yet.</li>';
 
-  dom.fieldToggleList.closest(".option-group")?.classList.toggle("empty", fieldNames.length === 0);
+  dom.fieldToggleList.closest(".option-group")?.classList.toggle("empty", allFieldNames.length === 0);
   dom.pluginToggleList.closest(".option-group")?.classList.toggle("empty", pluginOutputNames.length === 0);
   requestAnimationFrame(updateAllToggleScrollbars);
 }
@@ -397,6 +418,7 @@ export function setChecksStatus(state, label) {
     dom.setupTabDot.classList.add("pending");
     if (dom.output) {
       dom.output.textContent = "No run yet.";
+      renderStepMapOverlay(null);
     }
   }
   if (state === "passed") {
@@ -411,6 +433,7 @@ export function setChecksStatus(state, label) {
     resetStepProgress();
     if (dom.output) {
       dom.output.textContent = "No run yet.";
+      renderStepMapOverlay(null);
     }
   }
   if (state === "idle" || state === "running") {
@@ -418,6 +441,7 @@ export function setChecksStatus(state, label) {
     resetStepProgress();
     if (dom.output) {
       dom.output.textContent = "No run yet.";
+      renderStepMapOverlay(null);
     }
   }
 
@@ -489,6 +513,7 @@ export function applySetupStateToDom(state) {
   updateEmulatorEditorHighlights();
   updateGribInfoBox();
   updateSetupAvailability();
+  requestAnimationFrame(() => requestAnimationFrame(updateAllToggleScrollbars));
 }
 
 export async function fetchSetupState() {
