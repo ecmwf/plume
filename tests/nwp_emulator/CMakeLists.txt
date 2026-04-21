@@ -75,5 +75,19 @@ foreach(prec sp dp)
             ARGS --config-src=${CMAKE_CURRENT_SOURCE_DIR}/data/valid_config.yml
                 --plume-cfg=${CMAKE_CURRENT_SOURCE_DIR}/data/plume_config_${prec}.yml
         )
+    
+        if (HAVE_NWP_EMULATOR_UI)
+            ecbuild_add_test(
+                TARGET plume_test_nwp_binding_${prec}
+                COMMAND ${Python_EXECUTABLE}
+                ARGS ${CMAKE_CURRENT_SOURCE_DIR}/test_nwp_bindings.py
+                ENVIRONMENT
+                    TEST_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/data/
+                    NWP_BINDING_MODULE=nwp_emulator_core_${prec}
+                    NWP_BINDING_MODULE_DIR=${PROJECT_BINARY_DIR}/bin
+                    NWP_GRIB_DATA_DIR=${test_nwp_emulator_files_dir}
+                    OMP_NUM_THREADS=1
+            )
+        endif()
     endif()
 endforeach()

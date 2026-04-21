@@ -66,9 +66,9 @@ if (HAVE_NWP_EMULATOR)
 
   ecbuild_add_option( FEATURE NWP_EMULATOR_UI
                       DESCRIPTION
-                      "Build minimal web UI launcher for nwp emulator"
+                      "Build minimal web UI launcher for nwp emulator & pybind11 bindings for the reusable core"
                       DEFAULT OFF
-                      REQUIRED_PACKAGES "Python3 COMPONENTS Interpreter" )
+                      REQUIRED_PACKAGES "Python3 COMPONENTS Interpreter Development.Module" pybind11 )
 
   set( HAVE_NWP_EMULATOR_sp 0)
   set( HAVE_NWP_EMULATOR_dp 0)

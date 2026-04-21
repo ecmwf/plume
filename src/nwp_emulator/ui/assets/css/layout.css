@@ -106,6 +106,18 @@
   opacity: 0.6;
 }
 
+.left-inner.locked .transport,
+.left-inner.locked .save-grid,
+.left-inner.locked .execution-mode-row,
+.left-inner.locked .execution-switch,
+.left-inner.locked .step-card {
+  filter: grayscale(0.3);
+}
+
+.left-inner.locked .run-panel-lock-hint {
+  display: block;
+}
+
 .right-inner {
   padding: 0.75rem;
   display: grid;

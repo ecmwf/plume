@@ -126,6 +126,40 @@
   font-size: 0.84rem;
 }
 
+#status.status-not-ready,
+#status.status-ready {
+  color: #60707d;
+}
+
+#status.status-running {
+  color: #2f6eb0;
+}
+
+#status.status-complete {
+  color: var(--ok);
+}
+
+#status.status-failed {
+  color: var(--err);
+}
+
+.tab-dot.status-not-ready,
+.tab-dot.status-ready {
+  background: #60707d;
+}
+
+.tab-dot.status-running {
+  background: #2f6eb0;
+}
+
+.tab-dot.status-complete {
+  background: var(--ok);
+}
+
+.tab-dot.status-failed {
+  background: var(--err);
+}
+
 .box {
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -159,6 +193,51 @@
 .step-btn {
   background: linear-gradient(130deg, #4c8598, #3a6a7e);
   font-size: 0.89rem;
+}
+
+.execution-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.execution-mode-title {
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 0.69rem;
+  font-weight: 700;
+  margin-bottom: 0;
+}
+
+.execution-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.execution-mode-side {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #365583;
+}
+
+.execution-switch {
+  min-width: auto;
+  justify-content: center;
+}
+
+.run-panel-lock-hint {
+  display: none;
+  border: 1px dashed #c8d5de;
+  border-radius: 8px;
+  background: #f4f8fb;
+  color: #476173;
+  font-size: 0.79rem;
+  font-weight: 700;
+  padding: 0.5rem 0.56rem;
 }
 
 .save-grid {
@@ -213,6 +292,13 @@
   cursor: pointer;
 }
 
+.left-inner button:disabled,
+.left-inner input:disabled,
+.left-inner textarea:disabled,
+.left-inner select:disabled {
+  cursor: not-allowed;
+}
+
 .step-card {
   border: 1px solid var(--border);
   border-radius: 9px;
@@ -251,6 +337,17 @@
   align-items: center;
   gap: 0.45rem;
   cursor: default;
+}
+
+.options-lock-hint {
+  display: none;
+  border: 1px dashed #c8d5de;
+  border-radius: 8px;
+  background: #f4f8fb;
+  color: #476173;
+  font-size: 0.79rem;
+  font-weight: 700;
+  padding: 0.5rem 0.56rem;
 }
 
 .option-group {

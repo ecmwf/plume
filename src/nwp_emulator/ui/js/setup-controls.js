@@ -297,7 +297,11 @@ export function setChecksStatus(state, label) {
     dom.setupTabDot.classList.add("err");
   }
 
-  updateRunAvailability(state);
+  updateRunAvailability(state, {
+    runMode: dom.modeGrib.checked ? "grib" : "config",
+    gribFileCount: Number(latestGribMetadata?.grib_file_count ?? NaN),
+    emulatorConfigText: dom.emulatorEditor?.value || "",
+  });
 }
 
 export function applySetupStateToDom(state) {
@@ -366,6 +370,16 @@ export function applySetupStateToDom(state) {
 export async function fetchSetupState() {
   const state = await fetchJson("/api/setup/state", undefined);
   applySetupStateToDom(state);
+}
+
+export async function runSetupChecks() {
+  const state = await fetchJson("/api/setup/checks/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  applySetupStateToDom(state);
+  return state;
 }
 
 async function postOptions() {
@@ -458,12 +472,7 @@ export function initSetupControls() {
     setChecksStatus("running", "Running");
 
     try {
-      const state = await fetchJson("/api/setup/checks/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      applySetupStateToDom(state);
+      await runSetupChecks();
     } catch (error) {
       setChecksStatus("failed", "Failed");
       dom.output.textContent = String(error);
