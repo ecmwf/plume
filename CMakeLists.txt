@@ -49,7 +49,7 @@ ecbuild_info("FCKIT_INCLUDE_DIRS ${FCKIT_INCLUDE_DIRS}")
 
 ############## NWP EMULATOR PRECISION & ENABLING
 ecbuild_add_option( FEATURE NWP_EMULATOR
-                    DEFAULT ON
+                    DEFAULT OFF
                     DESCRIPTION "Compile the NWP emulator"
                     REQUIRED_PACKAGES eccodes )
 
