@@ -22,7 +22,9 @@ foreach(prec sp dp)
                 config_reader.h
                 nwp_definitions.h
                 nwp_data_provider.h
+                nwp_emulator_core.h
                 nwp_data_provider.cc
+                nwp_emulator_core.cc
                 grib_file_reader.cc
                 config_reader.cc
                 config_reader_funcs.cc

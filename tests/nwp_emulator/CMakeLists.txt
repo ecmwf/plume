@@ -28,6 +28,17 @@ ecbuild_get_test_multidata(
 foreach(prec sp dp)
     if (HAVE_NWP_EMULATOR_${prec})
         ecbuild_add_test(
+            TARGET      plume_test_nwp_core_parity_${prec}
+            SOURCES     test_core_parity.cc
+            LIBS        plume_nwp_emulator_${prec}
+            DEFINITIONS ${NWP_EMULATOR_DEFINITIONS_${prec}}
+            ENVIRONMENT
+                TEST_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/data/
+                NWP_EMULATOR_RUN_BIN=$<TARGET_FILE:nwp_emulator_run_${prec}.x>
+                OMP_NUM_THREADS=1
+        )
+
+        ecbuild_add_test(
             TARGET      plume_test_nwp_grib_${prec}
             SOURCES     test_grib_reader.cc
             LIBS        plume_nwp_emulator_${prec}
