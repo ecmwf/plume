@@ -6,5 +6,9 @@ dependencies: |
   ecmwf/eccodes
 dependency_cmake_options: |
   ecmwf/atlas: "-DENABLE_FORTRAN=ON"
+cmake_options: |
+  -DPLUME_ENABLE_NWP_EMULATOR=ON
+  -DPLUME_ENABLE_NWP_EMULATOR_SINGLE_PRECISION=ON
+  -DPLUME_ENABLE_NWP_EMULATOR_DOUBLE_PRECISION=ON
 dependency_branch: develop
 parallelism_factor: 8
