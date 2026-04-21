@@ -26,6 +26,7 @@
 #include "plume/PluginConfig.h"
 #include "plume/PluginCore.h"
 #include "plume/PluginHandler.h"
+#include "plume/PlumeState.h"
 #include "plume/Protocol.h"
 #include "plume/data/DataChecker.h"
 #include "plume/data/ParameterCatalogue.h"
@@ -106,6 +107,8 @@ bool Manager::isConfigured_{false};
 
 
 void Manager::configure(const eckit::Configuration& config) {
+    PlumeState::instance().updateState(PlumeTag::CONFIGURE);
+
     if (!Manager::isConfigured_) {
         managerConfig_         = ManagerConfig(config);
         Manager::isConfigured_ = true;
@@ -131,6 +134,8 @@ Plugin& Manager::loadPlugin(const std::string& lib, const std::string& name) {
 
 // Negotiate with all candidate plugins
 void Manager::negotiate(const Protocol& offers) {
+
+    PlumeState::instance().updateState(PlumeTag::NEGOTIATE);
 
     // before negotiation, make sure the manager has been configured
     ASSERT_MSG(isConfigured_, "Plume manager needs to be configured first!");
@@ -181,6 +186,7 @@ void Manager::negotiate(const Protocol& offers) {
 
 // Let each plugin take its own share of data (pointers)
 void Manager::feedPlugins(data::ModelData& data) {
+    PlumeState::instance().updateState(PlumeTag::FEED_PLUGINS);
 
     // check data
     Manager::checkData(data);
@@ -209,7 +215,8 @@ void Manager::feedPlugins(data::ModelData& data) {
 
 
 // Run all active plugincores
-void Manager::run() {
+void Manager::run(PlumeTag tag, std::optional<PlumeTag> parent) {
+    PlumeState::instance().updateState(tag, parent);
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
         pluginHandler.run();
     }
@@ -218,11 +225,16 @@ void Manager::run() {
 
 // Teardown all active plugins
 void Manager::teardown() {
+    PlumeState::instance().updateState(PlumeTag::TEARDOWN);
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
         // teardown the plugincore first
         pluginHandler.teardown();
     }
 };
+
+const PlumeState& Manager::state() {
+    return PlumeState::instance();
+}
 
 bool Manager::isPluginActivated(const std::string& name) {
     auto& pluginHandlers = PluginRegistry::instance().getActivePlugins();
@@ -260,6 +272,22 @@ bool Manager::isConfigured() {
     return Manager::isConfigured_;
 }
 
+std::string Manager::currentStateName() {
+    return PlumeState::instance().currentName();
+}
+
+std::string Manager::currentStateParent() {
+    return PlumeState::instance().currentParent();
+}
+
+std::size_t Manager::currentStateIteration() {
+    return PlumeState::instance().currentIteration();
+}
+
+std::size_t Manager::currentStateIterationRel() {
+    return PlumeState::instance().currentRelativeIteration();
+}
+
 
 void Manager::checkData(const data::ModelData& data) {
 
@@ -279,6 +307,7 @@ void Manager::checkData(const data::ModelData& data) {
 
 void Manager::reset() {
     PluginRegistry::instance().reset();
+    PlumeState::instance().reset();
     isConfigured_ = false;
     managerConfig_.reset();
 }

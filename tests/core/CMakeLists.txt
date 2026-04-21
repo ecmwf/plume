@@ -50,6 +50,8 @@ ecbuild_add_library( TARGET simple_plugins
   SOURCES 
     simple_plugin.h
     simple_plugin.cc
+    simple_config_plugin.h
+    simple_config_plugin.cc
     simple_atlas_plugin.h
     simple_atlas_plugin.cc
   PRIVATE_LIBS

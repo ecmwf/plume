@@ -58,7 +58,7 @@ int main(int argc, char** argv){
 
     // Run all plugins for several iterations
     for(int i=0; i<10; i++) {
-      plume_manager_run(mgr_handle);
+      plume_manager_run(mgr_handle, PLUME_TAG_ID_RUN, false, PLUME_TAG_ID_RUN);
 
       // e.g. update parameters..
       param_i++;

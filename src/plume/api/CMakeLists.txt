@@ -18,6 +18,7 @@ ecbuild_add_library(
         ${INSTALL_INCLUDE_DIR}/plume
 
     SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/../TagDefinitions.def
         plume.h
         plume.cc
 
@@ -36,6 +37,25 @@ ecbuild_add_library(
 )
 
 
+set(PLUME_TAG_DEFINITIONS ${CMAKE_CURRENT_SOURCE_DIR}/../TagDefinitions.def)
+set(PLUME_FORTRAN_TAGS_MODULE ${CMAKE_CURRENT_BINARY_DIR}/plume_tags.F90)
+
+add_custom_command(
+    OUTPUT ${PLUME_FORTRAN_TAGS_MODULE}
+    COMMAND ${CMAKE_COMMAND}
+        -DINPUT=${PLUME_TAG_DEFINITIONS}
+        -DOUTPUT=${PLUME_FORTRAN_TAGS_MODULE}
+        -P ${PROJECT_SOURCE_DIR}/cmake/generate_plume_tags_fortran.cmake
+    DEPENDS
+        ${PLUME_TAG_DEFINITIONS}
+        ${PROJECT_SOURCE_DIR}/cmake/generate_plume_tags_fortran.cmake
+    COMMENT "Generating Fortran plume tag constants module"
+    VERBATIM
+)
+
+add_custom_target(plume_generate_fortran_tags DEPENDS ${PLUME_FORTRAN_TAGS_MODULE})
+
+
 # plume Fortran-API
 ecbuild_add_library(
 
@@ -47,8 +67,10 @@ ecbuild_add_library(
         ${INSTALL_INCLUDE_DIR}/plume
 
     SOURCES
+        ${PLUME_FORTRAN_TAGS_MODULE}
         plume.F90
         plume_lib.F90
+        plume_state.F90
         plume_utils.F90
         plume_data.F90
         plume_manager.F90
@@ -68,6 +90,8 @@ ecbuild_add_library(
         atlas_f
         plume
 )
+
+    add_dependencies(plume_f plume_generate_fortran_tags)
 
 install( DIRECTORY ${CMAKE_Fortran_MODULE_DIRECTORY}/${CMAKE_CFG_INTDIR}
          DESTINATION module/plume

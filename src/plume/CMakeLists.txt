@@ -15,10 +15,30 @@ ecbuild_configure_file( plume_version.cc.in  plume_version.cc )
 install(FILES
 			${CMAKE_CURRENT_BINARY_DIR}/plume_config.h
 			${CMAKE_CURRENT_BINARY_DIR}/plume_version.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/TagDefinitions.def
 		DESTINATION
 			${INSTALL_INCLUDE_DIR}/plume )
 
 
+
+# #################### Plume state ######################
+ecbuild_add_library(
+    TARGET plume_state
+    INSTALL_HEADERS LISTED
+    HEADER_DESTINATION
+        ${INSTALL_INCLUDE_DIR}/plume
+    SOURCES
+        TagDefinitions.def
+        PlumeTag.h
+        PlumeTag.cc
+        PlumeState.h
+        PlumeState.cc
+    PUBLIC_INCLUDES
+       $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/src>
+       $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
+    PUBLIC_LIBS
+        eckit
+)
 
 # #################### Plume plugin ######################
 set(PLUGIN_FILES_H    
@@ -69,6 +89,7 @@ ecbuild_add_library(
     PUBLIC_LIBS
         atlas
         eckit
+        plume_state
 )
 
 # #################### PLUME plugin manager ######################
@@ -111,6 +132,7 @@ ecbuild_add_library(
     PUBLIC_LIBS        
         atlas
         eckit
+        plume_state
     PRIVATE_LIBS        
         plume_plugin
 )

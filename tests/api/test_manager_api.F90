@@ -13,8 +13,10 @@
 TESTSUITE( test_manager_fapi_suite )
 
 TEST( test_manager_fapi )
+use iso_c_binding, only : c_int64_t
 use atlas_module
 use plume_module
+use plume_tags_module, only : PLUME_TAG_RUN
 use fckit_module
 implicit none
 
@@ -43,6 +45,9 @@ real(c_double) :: param_dd1_fort = 888.8
 logical(c_bool) :: is_plugin_activated
 
 integer :: iter
+integer(c_int64_t) :: state_iter
+integer(c_int64_t) :: state_iter_rel
+character(:), allocatable :: state_name
 
 
 call atlas_library%initialise()
@@ -112,7 +117,22 @@ mgr_conf_str = '{' // &
 
 call plume_check(manager%initialise())
 call plume_check(manager%configure_from_string(trim(mgr_conf_str)))
+
+
+state_name = manager%current_state_name()
+call plume_check(manager%current_state_iteration(state_iter))
+call plume_check(manager%current_state_iteration_rel(state_iter_rel))
+FCTEST_CHECK(trim(state_name) == "configure")
+FCTEST_CHECK(state_iter == 1)
+FCTEST_CHECK(state_iter_rel == 1)
+
 call plume_check(manager%negotiate(offers))
+state_name = manager%current_state_name()
+call plume_check(manager%current_state_iteration(state_iter))
+call plume_check(manager%current_state_iteration_rel(state_iter_rel))
+FCTEST_CHECK(trim(state_name) == "negotiate")
+FCTEST_CHECK(state_iter == 1)
+FCTEST_CHECK(state_iter_rel == 1)
 
 ! check that the plugins are activated
 is_plugin_activated = .false.
@@ -146,9 +166,22 @@ call plume_check(data%provide_double("FORT_DD1", param_dd1) )
 ! feed plugins
 call plume_check(manager%feed_plugins(data))
 
+state_name = manager%current_state_name()
+call plume_check(manager%current_state_iteration(state_iter))
+call plume_check(manager%current_state_iteration_rel(state_iter_rel))
+FCTEST_CHECK(trim(state_name) == "feed_plugins")
+FCTEST_CHECK(state_iter == 1)
+FCTEST_CHECK(state_iter_rel == 1)
+
 ! run the model for 2 iterations
 do iter=1,2
-  call plume_check(manager%run())
+  call plume_check(manager%run(PLUME_TAG_RUN))
+  state_name = manager%current_state_name()
+  call plume_check(manager%current_state_iteration(state_iter))
+  call plume_check(manager%current_state_iteration_rel(state_iter_rel))
+  FCTEST_CHECK(trim(state_name) == "run")
+  FCTEST_CHECK(state_iter == iter)
+  FCTEST_CHECK(state_iter_rel == iter)
 enddo
 
 ! finalise

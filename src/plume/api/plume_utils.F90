@@ -14,6 +14,7 @@ implicit none
 private
 
 public :: fortranise_cstr
+public :: plume_delete_string
 
 
 interface
@@ -25,6 +26,13 @@ interface
     end function
 end interface
 
+interface
+    function plume_delete_string_interf(str) bind(C, name="plume_delete_string") result(err)
+        use iso_c_binding
+        type(c_ptr), value :: str
+        integer(c_int) :: err
+    end function
+end interface
 
 contains
 
@@ -40,5 +48,20 @@ function fortranise_cstr(cstr) result(fstr)
     call c_f_pointer(cstr, tmp, [length])
     fstr = transfer(tmp(1:length), fstr)
 end function
+
+! use plume_delete_string to free C-strings (e.g. allocated by Plume API functions)
+function plume_delete_string(str) result(err)
+    use iso_c_binding
+    type(c_ptr), intent(inout) :: str
+    integer(c_int) :: err
+
+    if (c_associated(str)) then
+        err = plume_delete_string_interf(str)
+        str = c_null_ptr
+    else
+        err = 0
+    end if
+end function
+
 
 end module

@@ -24,6 +24,8 @@
 #include "plume/ManagerConfig.h"
 #include "plume/Plugin.h"
 #include "plume/PluginDecision.h"
+#include "plume/PlumeTag.h"
+#include "plume/PlumeState.h"
 #include "plume/data/ParameterCatalogue.h"
 #include "plume/data/ModelData.h"
 
@@ -68,13 +70,18 @@ public:
      * @brief run all active plugins
      * 
      */
-    static void run();
+    static void run(PlumeTag tag = PlumeTag::RUN, std::optional<PlumeTag> parent = std::nullopt);
 
     /**
      * @brief teardown all active plugins
      * 
      */
     static void teardown();
+
+    /**
+     * @brief state of Plume execution
+     */
+    static const PlumeState& state();
 
     /**
      * @brief check if a plugin is activated
@@ -109,6 +116,35 @@ public:
     static bool isParamRequested(const std::string& name);
 
     static bool isConfigured();
+
+    // --- Direct accessors to state from manager for convenience
+
+    /**
+     * @brief get the current state name, 
+     * e.g. "configure", "negotiate", "run", etc..
+     */
+    static std::string currentStateName();
+
+    /**
+     * @brief get state parent name
+     * 
+     * @return std::string 
+     */
+    static std::string currentStateParent();
+
+    /**
+     * @brief get the current state iteration
+     * 
+     * @return std::size_t 
+     */
+    static std::size_t currentStateIteration();
+
+    /**
+     * @brief get the current state iteration relative to the parent state
+     * 
+     * @return std::size_t 
+     */
+    static std::size_t currentStateIterationRel();
 
 private:
 

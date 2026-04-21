@@ -17,9 +17,14 @@
 #include "eckit/utils/StringTools.h"
 #include "eckit/exception/Exceptions.h"
 
+#include "eckit/config/Configuration.h"
+
 
 namespace plume {
 
+/** @brief A simple class to represent a library version, and to compare versions.
+ *
+ */
 class LibVersion {
     public:
         LibVersion(std::string versionString) : versionString_{versionString} {
@@ -80,6 +85,67 @@ class LibVersion {
         std::string major_;
         std::string minor_;
         std::string patch_;
+};
+
+inline void indent(std::ostream& os, int n) {
+    for (int i = 0; i < n; i++) os << "  ";
+}
+
+/**
+ * @brief Recursively serialize an eckit configuration into a JSON-like string.
+ */
+inline void configToJson(const eckit::Configuration& cfg, std::ostream& os, int userIndent) {
+
+    os << "{\n";
+
+    auto keys = cfg.keys();
+
+    // Emit each key/value pair in order.
+    for (size_t i = 0; i < keys.size(); ++i) {
+
+        const auto& key = keys[i];
+
+        // Indent one level inside current object.
+        indent(os, userIndent + 1);
+        os << "\"" << key << "\": ";
+
+        // Branch by value kind: single sub-config, list of sub-configs, or scalar.
+        if (cfg.isSubConfiguration(key)) {
+
+            // Recurse into nested object.
+            auto child = cfg.getSubConfiguration(key);
+            configToJson(child, os, userIndent + 1);
+
+        } else if (cfg.isSubConfigurationList(key)) {
+
+            // Recurse into an array of nested objects.
+            auto childList = cfg.getSubConfigurations(key);
+
+            os << "[\n";
+            for (size_t j = 0; j < childList.size(); ++j) {
+                indent(os, userIndent + 2);
+                configToJson(childList[j], os, userIndent + 2);
+                if (j + 1 < childList.size()) os << ",";
+                os << "\n";
+            }
+
+            // Indent closing array bracket.
+            indent(os, userIndent + 1);
+            os << "]";
+
+        } else {
+
+            // Scalar fallback: represent scalar as a quoted string.
+            std::string value = cfg.getString(key);
+            os << "\"" << value << "\"";
+        }
+
+        if (i + 1 < keys.size()) os << ",";
+        os << "\n";
+    }
+
+    indent(os, userIndent);
+    os << "}";
 };
 
 } // namespace plume
