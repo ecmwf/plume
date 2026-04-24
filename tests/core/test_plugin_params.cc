@@ -294,8 +294,8 @@ CASE("test_cannot_derive_parameter") {
     // negotiate
     EXPECT_NO_THROW(plume::Manager::negotiate(data_cfg));
 
-    // plugin loaded but without parameter group
-    std::set<std::string> expected = {"I", "J", "K"};
+    // plugin did not load because the derived parameter could not be satisfied, so no active params
+    std::set<std::string> expected = {};
     std::set<std::string> activeParams(plume::Manager::getActiveParams().begin(),
                                        plume::Manager::getActiveParams().end());
     EXPECT_EQUAL(activeParams, expected);
