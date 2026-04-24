@@ -84,7 +84,7 @@ PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& req
     }
 
     // 2) Check requested parameters (from the configuration)
-    // Here we check "groups" of requested parameters. A plugin can run if AT LEAST ONE of the "groups" are satisfied
+    // Here we check "groups" of requested parameters. A plugin can run if AT LEAST ONE of the "groups" is satisfied
     if (!config_params.empty()) {
 
         bool any_group_accepted = false;
