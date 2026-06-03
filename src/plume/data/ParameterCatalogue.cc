@@ -28,6 +28,7 @@ ParameterDefinition::ParameterDefinition(const eckit::Configuration& config) :
     dataType_  = typeFromString(config.getString("type").c_str());
     available_ = config.getString("available", "on-request");
     comment_   = config.getString("comment", "");
+    writable_  = config.getBool("writable", false);
 
     // determine strategy, dependencies & derived param name based on the config, if applicable
     bool hasOptions = false;
@@ -43,6 +44,13 @@ ParameterDefinition::ParameterDefinition(const eckit::Configuration& config) :
 
         if (strategy.empty()) {
             throw eckit::BadParameter("No strategy matches the options passed for param '" + name_ + "'!", Here());
+        }
+
+        if (writable_) {
+            throw eckit::BadParameter(
+                "Derived parameter '" + name_ + "' cannot be declared writable. "
+                "Only base (non-derived) parameters support write-back.",
+                Here());
         }
 
         sourceParam_  = name_;
@@ -61,12 +69,12 @@ ParameterDefinition::ParameterDefinition(const eckit::Configuration& config) :
 
 // construct from params
 ParameterDefinition::ParameterDefinition(const std::string& name, const std::string& type, const std::string& available,
-                                         const std::string& comment) :
-    ParameterDefinition{params2config(name, type, available, comment)} {}
+                                         const std::string& comment, bool writable) :
+    ParameterDefinition{params2config(name, type, available, comment, writable)} {}
 
 ParameterDefinition::ParameterDefinition(const std::string& name, const ParameterType& type,
-                                         const std::string& available, const std::string& comment) :
-    ParameterDefinition{params2config(name, typeToString(type), available, comment)} {}
+                                         const std::string& available, const std::string& comment, bool writable) :
+    ParameterDefinition{params2config(name, typeToString(type), available, comment, writable)} {}
 
 ParameterDefinition::ParameterDefinition(const std::string& name, const ParameterType& type,
                                          const std::unordered_map<std::string, std::string>& options) :
@@ -114,14 +122,20 @@ const std::vector<std::string>& ParameterDefinition::dependencies() const {
     return dependencies_;
 }
 
+bool ParameterDefinition::writable() const {
+    return writable_;
+}
+
 // helper constructing function
 eckit::LocalConfiguration ParameterDefinition::params2config(const std::string& name, const std::string& type,
-                                                             const std::string& available, const std::string& comment) {
+                                                             const std::string& available, const std::string& comment,
+                                                             bool writable) {
     eckit::LocalConfiguration config;
     config.set("name", name);
     config.set("type", type);
     config.set("available", available);
     config.set("comment", comment);
+    config.set("writable", writable);
     return config;
 }
 

@@ -12,8 +12,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
-#include <map>
 #include <memory>
+#include <vector>
 
 #include "eckit/config/LocalConfiguration.h"
 #include "eckit/exception/Exceptions.h"
@@ -104,6 +104,8 @@ std::optional<ManagerConfig> Manager::managerConfig_;
 
 bool Manager::isConfigured_{false};
 
+WriteAuthorisation Manager::writeAuthorisation_;
+
 
 void Manager::configure(const eckit::Configuration& config) {
     if (!Manager::isConfigured_) {
@@ -139,10 +141,11 @@ void Manager::negotiate(const Protocol& offers) {
     std::vector<std::string> names(pnames.begin(), pnames.end());
     eckit::Log::info() << "Plume config: " << *managerConfig_ << ", offers: " << names << std::endl;
 
-    // Negotiate with each plugin
-    Negotiator negotiator;
+    const WriteBackPolicy policy = managerConfig_.value().writeBackPolicy();
+    eckit::Log::info() << "Plume Write-back policy: " << policy << std::endl;
 
-    // Load all selected plugins as per configuration
+    Negotiator negotiator(policy);
+
     for (const auto& pconfig : managerConfig_.value().plugins()) {
 
         auto name = pconfig.name();
@@ -150,13 +153,9 @@ void Manager::negotiate(const Protocol& offers) {
 
         eckit::Log::info() << std::endl << " <== Evaluating Plugin: " << name << " from Library: " << lib << std::endl;
 
-        // Load the plugin
-        Plugin& plugin = loadPlugin(lib, name);
-
-        // check what each plugin requires
+        Plugin& plugin    = loadPlugin(lib, name);
         Protocol requires = plugin.negotiate();
 
-        // Check plugin parameters requested through configuration (if any)
         auto config_params = pconfig.parameters();
         if (config_params.size() > 0) {
             eckit::Log::info() << "Parameters from Config: " << config_params << std::endl;
@@ -165,15 +164,17 @@ void Manager::negotiate(const Protocol& offers) {
             eckit::Log::info() << "No additional parameters found in Config." << std::endl;
         }
 
-        // negotiator handles the negotiation
-        PluginDecision decision = negotiator.negotiate(offers, requires, config_params);
+        PluginDecision decision = negotiator.negotiate(name, offers, requires, config_params);
         eckit::Log::info() << decision << std::endl;
 
-        // If the plugin is accepted, set it as active
         if (decision.accepted()) {
             PluginRegistry::instance().setActive(plugin, pconfig, decision);
         }
     }
+
+    negotiator.logSummary();
+
+    writeAuthorisation_ = negotiator.writeAuthorisation();
 
     PluginRegistry::instance().setDataCatalogue(offers.offers());
 };
@@ -240,6 +241,15 @@ std::unordered_set<std::string> Manager::getActiveParams() {
 }
 
 
+std::vector<std::string> Manager::getActivePluginNames() {
+    std::vector<std::string> names;
+    for (const auto& handler : PluginRegistry::instance().getActivePlugins()) {
+        names.push_back(handler.pluginName());
+    }
+    return names;
+}
+
+
 data::ParameterCatalogue Manager::getActiveDataCatalogue() {
     return PluginRegistry::instance().getActiveDataCatalogue();
 }
@@ -258,6 +268,10 @@ bool Manager::isParamRequested(const std::string& name) {
 
 bool Manager::isConfigured() {
     return Manager::isConfigured_;
+}
+
+const WriteAuthorisation& Manager::writeAuthorisation() {
+    return writeAuthorisation_;
 }
 
 
@@ -281,6 +295,7 @@ void Manager::reset() {
     PluginRegistry::instance().reset();
     isConfigured_ = false;
     managerConfig_.reset();
+    writeAuthorisation_ = WriteAuthorisation{};
 }
 
 

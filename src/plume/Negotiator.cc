@@ -10,6 +10,7 @@
  */
 
 #include <iostream>
+#include <map>
 #include <set>
 
 #include "plume/Negotiator.h"
@@ -17,6 +18,8 @@
 #include "plume/utils.h"
 
 namespace plume {
+
+Negotiator::Negotiator(WriteBackPolicy policy) : policy_{policy} {}
 
 bool Negotiator::isParamOffered(const Protocol& offers, const data::ParameterDefinition& param) {
     eckit::Log::info() << " - Considering Parameter: " << param.name() << std::endl;
@@ -36,11 +39,155 @@ bool Negotiator::isParamOffered(const Protocol& offers, const data::ParameterDef
             return false;
         }
     }
+
+    // If the plugin requests write access:
+    //   1. The write-back policy must permit it (not disabled).
+    //   2. The model must have explicitly offered the parameter as writable.
+    // Derived parameters cannot be writable (enforced at ParameterDefinition construction), so param.name()
+    // is always the name the model offered directly.
+    if (param.writable()) {
+        if (policy_ == WriteBackPolicy::disabled) {
+            eckit::Log::warning() << "Parameter \"" << param.name()
+                                  << "\" requested as writable but write-back is disabled "
+                                     "(set \"write-back-policy\" in manager config)."
+                                  << std::endl;
+            return false;
+        }
+        if (!offers.offers().getParam(param.name()).writable()) {
+            eckit::Log::warning() << "Parameter \"" << param.name()
+                                  << "\" requested as writable but not offered as writable!" << std::endl;
+            return false;
+        }
+    }
+
     return true;
 }
 
 
-PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& requires,
+bool Negotiator::checkConflicts(const std::string& pluginName, const PluginDecision& decision) {
+    for (const auto& param : decision.offeredParams()) {
+        const std::string& pname  = param.name();
+        const std::string& source = param.sourceParam();  // non-empty only for derived params
+        const bool isDerived      = !source.empty();
+
+        if (param.writable()) {
+            // Write-Write conflict
+            if (writableClaimants_.count(pname) && !isMultiWriter(policy_)) {
+                eckit::Log::error()
+                    << "Plume negotiation: plugin \"" << pluginName
+                    << "\" rejected — write-write conflict: param \"" << pname
+                    << "\" already written by \"" << writableClaimants_[pname].front() << "\"." << std::endl;
+                return false;
+            }
+
+            if (isStrictPolicy(policy_)) {
+                // Write-Read conflict: existing readers
+                if (readonlyClaimants_.count(pname)) {
+                    eckit::Log::error()
+                        << "Plume negotiation: plugin \"" << pluginName
+                        << "\" rejected under strict policy — write-read conflict: "
+                        << "param \"" << pname << "\" is already read (read-only) by one or more plugins." << std::endl;
+                    return false;
+                }
+                // Write-DerivedRead conflict: existing derived readers
+                if (derivedClaimants_.count(pname)) {
+                    eckit::Log::error()
+                        << "Plume negotiation: plugin \"" << pluginName
+                        << "\" rejected under strict policy — write-derived-read conflict: "
+                        << "a derived version of param \"" << pname
+                        << "\" is already consumed by one or more plugins." << std::endl;
+                    return false;
+                }
+            }
+        }
+        else if (!isDerived) {
+            // Read-Write conflict: existing writer
+            if (writableClaimants_.count(pname) && isStrictPolicy(policy_)) {
+                eckit::Log::error()
+                    << "Plume negotiation: plugin \"" << pluginName
+                    << "\" rejected under strict policy — read-write conflict: "
+                    << "param \"" << pname << "\" is already written by \""
+                    << writableClaimants_[pname].front() << "\"." << std::endl;
+                return false;
+            }
+        }
+        else {
+            // DerivedRead-Write conflict: existing writer on source
+            if (writableClaimants_.count(source) && isStrictPolicy(policy_)) {
+                eckit::Log::error()
+                    << "Plume negotiation: plugin \"" << pluginName
+                    << "\" rejected under strict policy — derived-read-write conflict: "
+                    << "source param \"" << source << "\" of derived param \"" << pname
+                    << "\" is already written by \"" << writableClaimants_[source].front() << "\"." << std::endl;
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+
+void Negotiator::recordClaims(const std::string& pluginName, const PluginDecision& decision) {
+    executionOrder_.push_back({pluginName, {}});
+    auto& entry = executionOrder_.back();
+
+    for (const auto& param : decision.offeredParams()) {
+        const std::string& pname  = param.name();
+        const std::string& source = param.sourceParam();
+        if (param.writable()) {
+            writableClaimants_[pname].push_back(pluginName);
+        }
+        else if (source.empty()) {
+            readonlyClaimants_[pname].push_back(pluginName);
+        }
+        else {
+            derivedClaimants_[source].push_back(pluginName);
+        }
+        entry.params.push_back(param);
+    }
+}
+
+
+void Negotiator::logSummary() const {
+    if (executionOrder_.empty()) {
+        eckit::Log::info() << "Plume negotiation summary: no plugins accepted." << std::endl;
+        return;
+    }
+
+    eckit::Log::info() << "Plume negotiation summary — accepted plugin execution order:" << std::endl;
+    for (size_t i = 0; i < executionOrder_.size(); ++i) {
+        const auto& plugin = executionOrder_[i];
+        eckit::Log::info() << "  [" << (i + 1) << "] " << plugin.name << std::endl;
+        for (const auto& param : plugin.params) {
+            std::string mode;
+            if (param.writable()) {
+                mode = "write-back";
+            }
+            else if (!param.sourceParam().empty()) {
+                mode = "derived  (source: " + param.sourceParam() + ")";
+            }
+            else {
+                mode = "read-only";
+            }
+            eckit::Log::info() << "       - " << param.name() << "  (" << mode << ")" << std::endl;
+        }
+    }
+}
+
+
+WriteAuthorisation Negotiator::writeAuthorisation() const {
+    WriteAuthorisation auth;
+    for (const auto& [paramName, plugins] : writableClaimants_) {
+        for (const auto& pluginName : plugins) {
+            auth.grant(pluginName, paramName);
+        }
+    }
+    return auth;
+}
+
+
+PluginDecision Negotiator::negotiate(const std::string& pluginName, const Protocol& offers,
+                                     const Protocol& requires,
                                      const std::vector<eckit::LocalConfiguration>& config_params) {
 
     eckit::Log::info() << "Requesting Plume Version: " << LibVersion(requires.requiredPlumeVersion()).asString()
@@ -59,7 +206,23 @@ PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& req
         return PluginDecision{false};
     }
 
-    std::set<data::ParameterDefinition> allRequestedParams;
+    // Accumulate requested params in a map keyed by name.
+    // "Writable wins": if the same param is requested read-only from code and writable from a
+    // config group (or vice versa), the writable version takes precedence so that write-back
+    // intent is never silently lost.  Using std::set<ParameterDefinition> directly would drop
+    // the second insert because operator< compares by name only, causing the writable flag to be
+    // determined solely by whichever version was inserted first.
+    std::map<std::string, data::ParameterDefinition> paramMap;
+    auto insertOrUpgrade = [&paramMap](const data::ParameterDefinition& p) {
+        auto it = paramMap.find(p.name());
+        if (it == paramMap.end()) {
+            paramMap.emplace(p.name(), p);
+        }
+        else if (p.writable() && !it->second.writable()) {
+            it->second = p;  // upgrade to writable
+        }
+    };
+
     std::set<std::string> requested_param_names = requires.requiredParamNames();
     std::vector<data::ParameterDefinition> requested_params = requires.requires().getParams();
 
@@ -80,7 +243,7 @@ PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& req
     }
 
     if (!requested_params.empty()) {
-        allRequestedParams.insert(requested_params.begin(), requested_params.end());
+        for (const auto& p : requested_params) { insertOrUpgrade(p); }
     }
 
     // 2) Check requested parameters (from the configuration)
@@ -111,8 +274,8 @@ PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& req
                 eckit::Log::info() << " ---> Parameter Group Accepted!" << std::endl;
                 any_group_accepted = true;
 
-                // add all parameters in the group to the set "allRequestedParams"
-                allRequestedParams.insert(requested_params.begin(), requested_params.end());
+                // add all parameters in the group to paramMap with writable-wins semantics
+                for (const auto& p : requested_params) { insertOrUpgrade(p); }
             }
             else {
                 eckit::Log::warning() << "---> Group rejected!" << std::endl;
@@ -124,8 +287,19 @@ PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& req
         }
     }
 
-    return PluginDecision(true, allRequestedParams);
-};
+    // Convert paramMap to the set expected by PluginDecision (unique by name, writable-wins applied).
+    std::set<data::ParameterDefinition> allRequestedParams;
+    for (const auto& [name, param] : paramMap) { allRequestedParams.insert(param); }
+
+    // 3) Cross-plugin conflict detection (stateful: checks against previously accepted plugins)
+    PluginDecision decision(true, allRequestedParams);
+    if (!checkConflicts(pluginName, decision)) {
+        return PluginDecision{false};
+    }
+
+    recordClaims(pluginName, decision);
+    return decision;
+}
 
 
 }  // namespace plume

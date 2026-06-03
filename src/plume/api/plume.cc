@@ -208,6 +208,42 @@ int plume_protocol_offer_atlas_field(plume_protocol_handle_t* h, const char* nam
     });
 }
 
+int plume_protocol_offer_int_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
+    return wrapApiFunction([h, name, avail, comment] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        h->impl_->offer<int>(name, avail, comment, /*writable=*/true);
+    });
+}
+int plume_protocol_offer_bool_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
+    return wrapApiFunction([h, name, avail, comment] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        h->impl_->offer<bool>(name, avail, comment, /*writable=*/true);
+    });
+}
+int plume_protocol_offer_float_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
+    return wrapApiFunction([h, name, avail, comment] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        h->impl_->offer<float>(name, avail, comment, /*writable=*/true);
+    });
+}
+int plume_protocol_offer_double_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
+    return wrapApiFunction([h, name, avail, comment] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        h->impl_->offer<double>(name, avail, comment, /*writable=*/true);
+    });
+}
+int plume_protocol_offer_atlas_field_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
+    return wrapApiFunction([h, name, avail, comment] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        h->impl_->offer<atlas::Field>(name, avail, comment, /*writable=*/true);
+    });
+}
+
 int plume_protocol_delete_handle(plume_protocol_handle_t* h) {
     return wrapApiFunction([&h] {
         if (h) {

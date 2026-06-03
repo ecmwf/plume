@@ -12,6 +12,7 @@
 #pragma once
 
 #include "Configurable.h"
+#include "coupling/WriteBackPolicy.h"
 
 #include "eckit/config/LocalConfiguration.h"
 #include "eckit/config/YAMLConfiguration.h"
@@ -26,10 +27,16 @@ class ManagerConfig final : public CheckedConfigurable {
 public:
 
 ManagerConfig() : 
-    CheckedConfigurable{eckit::YAMLConfiguration(std::string("{\"plugins\":[]}")), {"plugins"}, {"verbose"}} {}
+    CheckedConfigurable{eckit::YAMLConfiguration(std::string("{\"plugins\":[]}")),
+                        {"plugins"}, {"verbose", "write-back-policy"}} {}
 
 ManagerConfig(const eckit::Configuration& config) : 
-    CheckedConfigurable{config, {"plugins"}, {"verbose"}} {
+    CheckedConfigurable{config, {"plugins"}, {"verbose", "write-back-policy"}} {
+
+    // Validate write-back-policy string early so errors are caught at configure() time.
+    if (this->config().isString("write-back-policy")) {
+        writeBackPolicyFromString(this->config().getString("write-back-policy"));
+    }
 
     // plugins must be a list
     if (!this->config().isSubConfigurationList("plugins")) {
@@ -64,6 +71,19 @@ std::vector<PluginConfig> plugins() const {
     }
 
     return pluginConfigs;
+}
+
+/**
+ * @brief Write-back policy for this manager instance.
+ *
+ * Returns WriteBackPolicy::disabled when the "write-back-policy" key is absent,
+ * ensuring existing model configurations that do not use write-back are unaffected.
+ * Throws eckit::BadValue if an unrecognised policy string is supplied.
+ *
+ * @return WriteBackPolicy
+ */
+WriteBackPolicy writeBackPolicy() const {
+    return writeBackPolicyFromString(config().getString("write-back-policy", "disabled"));
 }
 
 };
