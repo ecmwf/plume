@@ -103,6 +103,31 @@ CASE("test protocol - offered params") {
 }
 
 
+
+CASE("test protocol - writable offered params") {
+
+    plume::Protocol protocol;
+    protocol.offer<int>("W1", "always", "writable param", /*writable=*/true);
+    protocol.offer<int>("W2", "always", "read-only param");
+
+    EXPECT_EQUAL(protocol.offeredParamNames().size(), 2);
+    EXPECT_EQUAL(protocol.offers().getParam("W1").writable(), true);
+    EXPECT_EQUAL(protocol.offers().getParam("W2").writable(), false);
+}
+
+
+CASE("test protocol - writable required params") {
+
+    plume::Protocol protocol;
+    protocol.require<int>("R1");
+    protocol.requireWritable<int>("R2");
+
+    EXPECT_EQUAL(protocol.requiredParamNames().size(), 2);
+    EXPECT_EQUAL(protocol.requires().getParam("R1").writable(), false);
+    EXPECT_EQUAL(protocol.requires().getParam("R2").writable(), true);
+}
+
+
 //----------------------------------------------------------------------------------------------------------------------
 
 }  // namespace plume::test
