@@ -29,6 +29,12 @@ module plume_protocol_module
         procedure :: offer_double       => plume_protocol_offer_double
         procedure :: offer_atlas_field  => plume_protocol_offer_atlas_field
 
+        procedure :: offer_int_writable         => plume_protocol_offer_int_writable
+        procedure :: offer_bool_writable        => plume_protocol_offer_bool_writable
+        procedure :: offer_float_writable       => plume_protocol_offer_float_writable
+        procedure :: offer_double_writable      => plume_protocol_offer_double_writable
+        procedure :: offer_atlas_field_writable => plume_protocol_offer_atlas_field_writable
+
         procedure :: finalise           => plume_protocol_delete_handle
     end type
     
@@ -100,6 +106,56 @@ module plume_protocol_module
         integer(c_int) :: err
     end function    
 
+    function plume_protocol_offer_int_writable_interf( handle_impl, name, avail, comment ) result(err) &
+        & bind(C,name="plume_protocol_offer_int_writable")
+        use iso_c_binding, only: c_ptr, c_char, c_int
+        type(c_ptr), intent(in), value :: handle_impl
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
+        integer(c_int) :: err
+    end function
+
+    function plume_protocol_offer_bool_writable_interf( handle_impl, name, avail, comment ) result(err) &
+        & bind(C,name="plume_protocol_offer_bool_writable")
+        use iso_c_binding, only: c_ptr, c_char, c_int
+        type(c_ptr), intent(in), value :: handle_impl
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
+        integer(c_int) :: err
+    end function
+
+    function plume_protocol_offer_float_writable_interf( handle_impl, name, avail, comment ) result(err) &
+        & bind(C,name="plume_protocol_offer_float_writable")
+        use iso_c_binding, only: c_ptr, c_char, c_int
+        type(c_ptr), intent(in), value :: handle_impl
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
+        integer(c_int) :: err
+    end function
+
+    function plume_protocol_offer_double_writable_interf( handle_impl, name, avail, comment ) result(err) &
+        & bind(C,name="plume_protocol_offer_double_writable")
+        use iso_c_binding, only: c_ptr, c_char, c_int
+        type(c_ptr), intent(in), value :: handle_impl
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
+        integer(c_int) :: err
+    end function
+
+    function plume_protocol_offer_atlas_field_writable_interf( handle_impl, name, avail, comment ) result(err) &
+        & bind(C,name="plume_protocol_offer_atlas_field_writable")
+        use iso_c_binding, only: c_ptr, c_char, c_int
+        type(c_ptr), intent(in), value :: handle_impl
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
+        integer(c_int) :: err
+    end function
+
     end interface
 
 
@@ -161,6 +217,56 @@ module plume_protocol_module
         integer(c_int) :: err
         err = plume_protocol_offer_atlas_field_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
     end function    
+
+    function plume_protocol_offer_int_writable( handle, name, avail, comment ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int
+        class(plume_protocol), intent(inout) :: handle
+        character(kind=c_char,len=*), intent(in) :: name
+        character(kind=c_char,len=*), intent(in) :: avail
+        character(kind=c_char,len=*), intent(in) :: comment
+        integer(c_int) :: err
+        err = plume_protocol_offer_int_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+    end function
+
+    function plume_protocol_offer_bool_writable( handle, name, avail, comment ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int
+        class(plume_protocol), intent(inout) :: handle
+        character(kind=c_char,len=*), intent(in) :: name
+        character(kind=c_char,len=*), intent(in) :: avail
+        character(kind=c_char,len=*), intent(in) :: comment
+        integer(c_int) :: err
+        err = plume_protocol_offer_bool_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+    end function
+
+    function plume_protocol_offer_float_writable( handle, name, avail, comment ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int
+        class(plume_protocol), intent(inout) :: handle
+        character(kind=c_char,len=*), intent(in) :: name
+        character(kind=c_char,len=*), intent(in) :: avail
+        character(kind=c_char,len=*), intent(in) :: comment
+        integer(c_int) :: err
+        err = plume_protocol_offer_float_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+    end function
+
+    function plume_protocol_offer_double_writable( handle, name, avail, comment ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int
+        class(plume_protocol), intent(inout) :: handle
+        character(kind=c_char,len=*), intent(in) :: name
+        character(kind=c_char,len=*), intent(in) :: avail
+        character(kind=c_char,len=*), intent(in) :: comment
+        integer(c_int) :: err
+        err = plume_protocol_offer_double_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+    end function
+
+    function plume_protocol_offer_atlas_field_writable( handle, name, avail, comment ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int
+        class(plume_protocol), intent(inout) :: handle
+        character(kind=c_char,len=*), intent(in) :: name
+        character(kind=c_char,len=*), intent(in) :: avail
+        character(kind=c_char,len=*), intent(in) :: comment
+        integer(c_int) :: err
+        err = plume_protocol_offer_atlas_field_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+    end function
 
     function plume_protocol_delete_handle( handle ) result(err)
       class(plume_protocol), intent(inout) :: handle
