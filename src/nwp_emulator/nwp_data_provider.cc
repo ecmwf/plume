@@ -9,6 +9,9 @@
  * does it submit to any jurisdiction.
  */
 #include <sstream>
+#include <stdexcept>
+
+#include "atlas/array.h"
 
 #include "nwp_data_provider.h"
 
@@ -161,18 +164,122 @@ bool NWPDataProvider::LocalStepData() {
     return true;
 }
 
-int NWPDataProvider::findLevelIndex(atlas::Field& field, std::string levtype, std::string level) {
-    int level_idx =
-        std::distance(params_[field.name()][levtype].begin(),
-                      std::find(params_[field.name()][levtype].begin(), params_[field.name()][levtype].end(), level));
+int NWPDataProvider::findLevelIndex(atlas::Field& field, const std::string& levtype, const std::string& level) const {
+    auto shortIt = params_.find(field.name());
+    if (shortIt == params_.end()) {
+        throw std::out_of_range("field not available in provider");
+    }
+    auto levtypeIt = shortIt->second.find(levtype);
+    if (levtypeIt == shortIt->second.end()) {
+        throw std::out_of_range("levtype not available for field");
+    }
+
+    const auto levelIt = std::find(levtypeIt->second.begin(), levtypeIt->second.end(), level);
+    if (levelIt == levtypeIt->second.end()) {
+        throw std::out_of_range("level not available for field/levtype");
+    }
+
+    int level_idx = static_cast<int>(std::distance(levtypeIt->second.begin(), levelIt));
     // level_idx + size of previous levtypes in levelOrder
     std::vector<std::string> levelOrder = field.metadata().getStringVector("levelOrder");
-    for (int type_idx = 0; type_idx < levelOrder.size(); type_idx++) {
+    for (int type_idx = 0; type_idx < static_cast<int>(levelOrder.size()); type_idx++) {
         if (levelOrder[type_idx] == levtype) {
             break;
         }
-        level_idx += params_[field.name()][levelOrder[type_idx]].size();
+        const auto priorLevtypeIt = shortIt->second.find(levelOrder[type_idx]);
+        if (priorLevtypeIt == shortIt->second.end()) {
+            throw std::out_of_range("levelOrder references unknown levtype for field");
+        }
+        level_idx += static_cast<int>(priorLevtypeIt->second.size());
     }
     return level_idx;
+}
+
+std::vector<std::string> NWPDataProvider::getFieldKeys() const {
+    std::vector<std::string> keys;
+    for (const auto& shortNamePair: params_) {
+        const std::string& shortName = shortNamePair.first;
+        for (const auto& levtypePair: shortNamePair.second) {
+            const std::string& levtype = levtypePair.first;
+            for (const auto& level: levtypePair.second) {
+                keys.push_back(shortName + "," + levtype + "," + level);
+            }
+        }
+    }
+    std::sort(keys.begin(), keys.end());
+    return keys;
+}
+
+bool NWPDataProvider::extractFieldOverlay(const std::string& fieldKey,
+                                          std::vector<double>& lon,
+                                          std::vector<double>& lat,
+                                          std::vector<double>& values,
+                                          std::string& error) const {
+    lon.clear();
+    lat.clear();
+    values.clear();
+    error.clear();
+
+    std::stringstream ss(fieldKey);
+    std::string shortName;
+    std::string levtype;
+    std::string level;
+    std::getline(ss, shortName, ',');
+    std::getline(ss, levtype, ',');
+    std::getline(ss, level, ',');
+
+    if (shortName.empty() || levtype.empty() || level.empty()) {
+        error = "invalid field key format";
+        return false;
+    }
+
+    auto shortIt = params_.find(shortName);
+    if (shortIt == params_.end()) {
+        error = "field key not available in current provider";
+        return false;
+    }
+    auto levtypeIt = shortIt->second.find(levtype);
+    if (levtypeIt == shortIt->second.end()) {
+        error = "field key not available in current provider";
+        return false;
+    }
+
+    atlas::Field field;
+    try {
+        field = modelFieldSet_.field(shortName);
+    } catch (const std::exception&) {
+        error = "field not found in model fieldset";
+        return false;
+    }
+
+    int levelIndex = 0;
+    try {
+        levelIndex = findLevelIndex(field, levtype, level);
+    } catch (const std::exception& exc) {
+        error = std::string("requested field key not mapped to a backend level index: ") + exc.what();
+        return false;
+    }
+
+    if (levelIndex >= static_cast<int>(field.shape(1))) {
+        error = "requested field level index out of range";
+        return false;
+    }
+
+    const atlas::Field lonlatField = fs_.lonlat();
+    auto lonlatView = atlas::array::make_view<double, 2>(lonlatField);
+    auto valueView = atlas::array::make_view<FIELD_TYPE_REAL, 2>(field);
+
+    const atlas::idx_t nPoints = field.shape(0);
+    lon.reserve(nPoints);
+    lat.reserve(nPoints);
+    values.reserve(nPoints);
+
+    for (atlas::idx_t i = 0; i < nPoints; ++i) {
+        lon.push_back(lonlatView(i, atlas::LON));
+        lat.push_back(lonlatView(i, atlas::LAT));
+        values.push_back(static_cast<double>(valueView(i, levelIndex)));
+    }
+
+    return true;
 }
 }  // namespace nwp_emulator
