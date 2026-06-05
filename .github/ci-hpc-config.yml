@@ -18,6 +18,10 @@ mpi_on:
       - ecmwf/eccodes@develop
     dependency_cmake_options:
       - ecmwf/atlas:-DENABLE_FORTRAN=ON
+    cmake_options:
+      - -DPLUME_ENABLE_NWP_EMULATOR=ON
+      - -DPLUME_ENABLE_NWP_EMULATOR_SINGLE_PRECISION=ON
+      - -DPLUME_ENABLE_NWP_EMULATOR_DOUBLE_PRECISION=ON
     parallel: 64
     ntasks: 16
     env:
@@ -38,4 +42,11 @@ mpi_off:
       - ecmwf/eccodes@develop
     dependency_cmake_options:
       - ecmwf/atlas:-DENABLE_FORTRAN=ON
+    cmake_options:
+      - -DPLUME_ENABLE_NWP_EMULATOR=ON
+      - -DPLUME_ENABLE_NWP_EMULATOR_SINGLE_PRECISION=ON
+      - -DPLUME_ENABLE_NWP_EMULATOR_DOUBLE_PRECISION=ON
     parallel: 64
+    env:
+      - ECCODES_SAMPLES_PATH=$ECCODES_DIR/share/eccodes/samples
+      - ECCODES_DEFINITION_PATH=$ECCODES_DIR/share/eccodes/definitions

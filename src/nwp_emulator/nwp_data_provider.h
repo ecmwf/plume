@@ -9,7 +9,10 @@
  * does it submit to any jurisdiction.
  */
 #pragma once
+#include <algorithm>
+#include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include "eckit/config/LocalConfiguration.h"
 #include "eckit/config/YAMLConfiguration.h"
@@ -101,7 +104,7 @@ private:
      *
      * @return int The index of the second shape of the Atlas field where the data should go.
      */
-    int findLevelIndex(atlas::Field& field, std::string levtype, std::string level);
+    int findLevelIndex(atlas::Field& field, const std::string& levtype, const std::string& level) const;
 
 public:
     /**
@@ -133,5 +136,26 @@ public:
     atlas::FieldSet& getModelFieldSet() { return modelFieldSet_; }
     int getStep() const { return dataReader->getStep(); }
     size_t getLevels() const { return nLevels_; }
+
+    /**
+     * @brief Return all field keys exposed to the UI in `shortName,levtype,level` format.
+     */
+    std::vector<std::string> getFieldKeys() const;
+
+    /**
+     * @brief Extract one local rank overlay for a field key at the current step.
+     *
+     * The returned lon/lat/value arrays are rank-local and can be concatenated across ranks
+     * to build one global scatter overlay, which could be used by potential apps built on top of the emulator.
+     */
+    bool extractFieldOverlay(const std::string& fieldKey,
+                             std::vector<double>& lon,
+                             std::vector<double>& lat,
+                             std::vector<double>& values,
+                             std::string& error) const;
+
+    size_t rank() const { return rank_; }
+    size_t root() const { return root_; }
+    size_t nprocs() const { return nprocs_; }
 };
 }  // namespace nwp_emulator
