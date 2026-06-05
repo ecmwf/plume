@@ -24,6 +24,14 @@ Architecture
 
 plume offers API to this mechanism, available in multiple languages (currently C, C++ and Fortran)
 
+Python Interface
+-----------------------------
+
+.. toctree::
+   :maxdepth: 2
+
+   nwp_emulator/index
+
 License
 -------
 **plume** is available under the open source `Apache License Version 2`__. In applying this licence, ECMWF does not waive
@@ -33,5 +41,5 @@ does it submit to any jurisdiction.
 __ http://www.apache.org/licenses/LICENSE-2.0.html
 
 :Authors:
-    Antonino Bonanni, James Hawkes, Tiago Quintino
+    Antonino Bonanni, James Hawkes, Tiago Quintino, Clara Ducher, Domokos Sarmany
 :Version: 0.2.0

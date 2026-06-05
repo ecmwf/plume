@@ -48,6 +48,16 @@ struct NWPEmulatorRunResult {
     int lastStepRun = -1;
 };
 
+/**
+ * @struct NWPFieldOverlaySnapshot
+ * @brief Local slice of a field overlay captured after a model step.
+ *
+ * Holds the longitudes, latitudes and field values for the portion of the global
+ * grid assigned to this MPI rank. The MPI context fields (rank, root, nprocs)
+ * allow callers to distinguish per-rank slices and to aggregate results across
+ * a distributed run. This struct is intended for use by higher-level adapters, 
+ * e.g., applications that want to visualise or analyse the emulator output.
+ */
 struct NWPFieldOverlaySnapshot {
     std::string fieldKey;
     std::vector<double> lon;
@@ -71,21 +81,79 @@ struct NWPFieldOverlaySnapshot {
 class NWPEmulatorCore final {
 public:
     /**
-     * @brief Execute one emulator run from normalized options.
+     * @brief Tear down the core, finalising Plume before members are destroyed.
+     */
+    ~NWPEmulatorCore();
+
+    /**
+     * @brief Execute one full emulator run from normalized options.
+     *
+     * Runs the complete lifecycle: data-provider setup, optional Plume
+     * negotiation, the step loop, and teardown.
      *
      * @param options Fully normalized execution options.
      *
-     * @return NWPEmulatorRunResult Summary of the completed run.
+     * @return Summary of the completed run.
      */
     NWPEmulatorRunResult execute(const NWPEmulatorRunOptions& options);
+
+    /**
+     * @brief Check that run options are complete and internally consistent.
+     */
     bool validateRunOptions(const NWPEmulatorRunOptions& options) const;
+
+    /**
+     * @brief Initialise the data provider from the given options.
+     *
+     * @note May only be called once per instance; a second call is rejected.
+     */
     bool setupDataProvider(const NWPEmulatorRunOptions& options);
+
+    /**
+     * @brief Configure Plume and negotiate field registration.
+     *
+     * @return true when Plume setup completed or was skipped.
+     */
     bool setupPlumeProvider();
+
+    /**
+     * @brief Advance the emulator by one model step.
+     *
+     * @return true while more steps remain, false once the source is exhausted.
+     */
     bool runStep();
+
+    /**
+     * @brief Tear down Plume, releasing all plugin resources.
+     *
+     * @note Safe to call when Plume was never initialised.
+     */
     void finalizePlume();
+
+    /**
+     * @brief Finalise the run, tearing down Plume and synchronising all ranks.
+     */
     void finalizeRun();
+
+    /**
+     * @brief Return the index of the last completed model step.
+     *
+     * @return The current step, or -1 before the first step.
+     */
     int currentStep() const;
+
+    /**
+     * @brief List all field keys exposed by the data provider.
+     *
+     * @return Field keys in "shortName,levtype,level" format.
+     */
     std::vector<std::string> availableFieldKeys() const;
+
+    /**
+     * @brief Capture the rank-local overlay for a field at the current step, intendended for visualisation or analysis.
+     *
+     * @return The rank-local field slice and MPI topology metadata.
+     */
     NWPFieldOverlaySnapshot getFieldOverlaySnapshot(const std::string& fieldKey) const;
 
 private:
@@ -107,12 +175,16 @@ private:
 
     /// Empty means dry-run mode with emulator data generation only.
     std::string plumeConfigPath_;
+    bool plumeInitialised_{false};
+
+    // dataProvider_ is declared before plumeData_ so it is destroyed after plumeData_.
+    // plumeData_ holds non-owning raw pointers into the atlas FieldSet owned by
+    // dataProvider_; those pointers must remain valid for the full lifetime of plumeData_.
+    std::unique_ptr<NWPDataProvider> dataProvider_;
 
     /// Shared param store passed to Plume across all steps of a single run.
     plume::data::ModelData plumeData_;
     std::vector<std::string> plumeUpdatingParams_;
-    bool plumeInitialised_{false};
-    std::unique_ptr<NWPDataProvider> dataProvider_;
 };
 
 }  // namespace nwp_emulator

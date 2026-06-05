@@ -1,0 +1,252 @@
+name: Build and Test pynwp_emulator
+
+on:
+  # Trigger the workflow on push to master or develop, except tag creation
+  push:
+    branches:
+      - 'master'
+      - 'develop'
+    tags-ignore:
+      - '**'
+    paths:
+      - 'src/nwp_emulator/**'
+      - 'src/bindings/**'
+      - 'src/pynwp_emulator/**'
+      - 'tests/nwp_emulator/**'
+      - 'tests/pynwp_emulator/**'
+      - 'CMakeLists.txt'
+      - 'src/CMakeLists.txt'
+      - '.github/workflows/pynwp_emulator.yml'
+
+  # Trigger the workflow on pull request
+  pull_request:
+    paths:
+      - 'src/nwp_emulator/**'
+      - 'src/bindings/**'
+      - 'src/pynwp_emulator/**'
+      - 'tests/nwp_emulator/**'
+      - 'tests/pynwp_emulator/**'
+      - 'CMakeLists.txt'
+      - 'src/CMakeLists.txt'
+      - '.github/workflows/pynwp_emulator.yml'
+
+  # Trigger the workflow manually — always runs regardless of paths
+  workflow_dispatch: ~
+
+  # Trigger after public PR approved for CI
+  pull_request_target:
+    types: [labeled]
+    paths:
+      - 'src/nwp_emulator/**'
+      - 'src/bindings/**'
+      - 'src/pynwp_emulator/**'
+      - 'tests/nwp_emulator/**'
+      - 'tests/pynwp_emulator/**'
+      - 'CMakeLists.txt'
+      - 'src/CMakeLists.txt'
+      - '.github/workflows/pynwp_emulator.yml'
+
+jobs:
+  prepare-deps:
+    runs-on: ubuntu-latest
+    if: ${{ (success() || failure()) && (!github.event.pull_request.head.repo.fork && github.event.action != 'labeled' || github.event.label.name == 'approved-for-ci') }}
+    steps:
+      # MPI system packages are fast to install and are not cached because they
+      # live in /usr rather than dependencies/.
+      - name: Install MPI
+        run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev openmpi-bin
+
+      # Fetch the current HEAD SHA of each dependency without a full clone.
+      # The cache key changes only when a dependency actually changes.
+      - name: Compute dependency cache key
+        id: deps-key
+        run: |
+          ECKIT_SHA=$(git ls-remote https://github.com/ecmwf/eckit.git refs/heads/develop | cut -f1 | cut -c1-12)
+          ATLAS_SHA=$(git ls-remote https://github.com/ecmwf/atlas.git refs/heads/develop | cut -f1 | cut -c1-12)
+          FCKIT_SHA=$(git ls-remote https://github.com/ecmwf/fckit.git refs/heads/develop | cut -f1 | cut -c1-12)
+          ECCODES_SHA=$(git ls-remote https://github.com/ecmwf/eccodes.git refs/heads/develop | cut -f1 | cut -c1-12)
+          echo "key=deps-${{ runner.os }}-${ECKIT_SHA}-${ATLAS_SHA}-${FCKIT_SHA}-${ECCODES_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Restore dependency cache
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            dependencies/
+            ecbuild/
+          key: ${{ steps.deps-key.outputs.key }}
+
+      - name: Get ecbuild
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: ecmwf/ecbuild
+          ref: develop
+          path: ecbuild
+      - name: Get stack-dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: ecmwf/stack-dependencies
+          ref: master
+          path: stack-dependencies-src
+          token: ${{ secrets.GH_REPO_READ_TOKEN }}
+          submodules: recursive
+      - name: Install libaec and pybind11
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          mkdir stack-dependencies-build
+          stack-dependencies-src/build.sh \
+            --build-path stack-dependencies-build \
+            --install-path dependencies \
+            --with-deps libaec,pybind11
+
+      - name: Get eccodes
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: ecmwf/eccodes
+          ref: develop
+          path: eccodes-src
+      - name: Install eccodes
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          cmake \
+            -B eccodes-build \
+            -S eccodes-src \
+            -GNinja \
+            -DCMAKE_INSTALL_PREFIX=dependencies \
+            -DCMAKE_PREFIX_PATH=dependencies \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DENABLE_MEMFS=ON \
+            -DENABLE_AEC=ON
+          cmake --build eccodes-build -j -t install
+
+      - name: Get eckit
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: ecmwf/eckit
+          ref: develop
+          path: eckit-src
+      - name: Install eckit
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          cmake \
+            -B eckit-build \
+            -S eckit-src \
+            -GNinja \
+            -DCMAKE_INSTALL_PREFIX=dependencies \
+            -DCMAKE_PREFIX_PATH=dependencies \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build eckit-build -j -t install
+
+      - name: Get fckit
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: ecmwf/fckit
+          ref: develop
+          path: fckit-src
+      - name: Install fckit
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          export PATH=$(pwd)/ecbuild/bin:$PATH
+          cmake \
+            -B fckit-build \
+            -S fckit-src \
+            -GNinja \
+            -DCMAKE_INSTALL_PREFIX=dependencies \
+            -DCMAKE_PREFIX_PATH=dependencies \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build fckit-build -j -t install
+
+      - name: Get atlas
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: ecmwf/atlas
+          ref: develop
+          path: atlas-src
+      - name: Install atlas
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          export PATH=$(pwd)/ecbuild/bin:$PATH
+          cmake \
+            -B atlas-build \
+            -S atlas-src \
+            -GNinja \
+            -DCMAKE_INSTALL_PREFIX=dependencies \
+            -DCMAKE_PREFIX_PATH=dependencies \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DENABLE_FORTRAN=ON \
+            -DENABLE_OMP=OFF
+          cmake --build atlas-build -j -t install
+
+      - name: Archive with permissions preserved
+        run: tar --zstd -cpf files.tar.zst dependencies/ ecbuild/
+      - name: Upload dependencies
+        uses: actions/upload-artifact@v4
+        with:
+          name: deps
+          path: files.tar.zst
+          retention-days: 1
+
+  build-and-test:
+    needs: prepare-deps
+    runs-on: ubuntu-latest
+    if: ${{ (success() || failure()) && (!github.event.pull_request.head.repo.fork && github.event.action != 'labeled' || github.event.label.name == 'approved-for-ci') }}
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+        mpi: ['off', 'on']
+      fail-fast: false
+    steps:
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # libopenmpi-dev is always needed: atlas was built with MPI and its CMake
+      # config references the OpenMPI include path regardless of the mpi matrix.
+      # openmpi-bin is only needed to actually launch mpirun for the MPI tests.
+      - name: Install MPI
+        run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev
+      - name: Install MPI runtime
+        if: matrix.mpi == 'on'
+        run: sudo apt-get install -y openmpi-bin
+      - name: Download dependencies
+        uses: actions/download-artifact@v4
+        with:
+          name: deps
+      - name: Extract with zstd
+        run: tar --zstd -xpf files.tar.zst
+      - name: Checkout plume
+        uses: actions/checkout@v5
+        with:
+          path: plume-src
+      - name: Install Python packages
+        run: pip install findlibs pyyaml pytest
+      - name: Build plume with Python bindings
+        run: |
+          export PATH=$(pwd)/dependencies/bin:$PATH
+          export ECCODES_HOME=$(pwd)/dependencies
+          export FINDLIBS_DISABLE_PACKAGE=yes
+          export FINDLIBS_DISABLE_PYTHON=yes
+          export OMPI_MCA_rmaps_base_oversubscribe=1
+          cmake \
+            -B plume-build \
+            -S plume-src \
+            -GNinja \
+            -DCMAKE_INSTALL_PREFIX=dependencies \
+            -DCMAKE_PREFIX_PATH=dependencies \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DPLUME_ENABLE_NWP_EMULATOR=ON \
+            -DPLUME_ENABLE_NWP_EMULATOR_DOUBLE_PRECISION=ON \
+            -DPLUME_ENABLE_PYTHON_NWP_EMULATOR_INTERFACE=ON
+          cmake --build plume-build -j
+          cd plume-build
+          if [ "${{ matrix.mpi }}" = "on" ]; then
+            ctest -L pynwp_emulator -j $(nproc) --output-on-failure
+          else
+            ctest -L pynwp_emulator -LE pynwp_emulator_mpi -j $(nproc) --output-on-failure
+          fi

@@ -35,7 +35,22 @@ version = "0.2.0"
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    "sphinx_rtd_theme"
+    "sphinx_rtd_theme",
+    "autoapi.extension",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.viewcode",
+]
+
+# autoapi scans pure-Python source so the docs build does not require
+# compiling the C++ extension.
+autoapi_type = "python"
+autoapi_dirs = ["../src/pynwp_emulator"]
+autoapi_options = [
+    "members",
+    "undoc-members",
+    "show-inheritance",
+    "show-module-summary",
 ]
 
 # Add any paths that contain templates here, relative to this directory.

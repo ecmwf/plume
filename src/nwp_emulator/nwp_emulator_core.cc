@@ -25,6 +25,13 @@
 
 namespace nwp_emulator {
 
+NWPEmulatorCore::~NWPEmulatorCore() {
+    // Tear down plugins before members are destroyed. Plugins hold non-owning references to the atlas fields
+    // in plumeData_ (fed via feedPlugins); if they were still live when plumeData_ or dataProvider_ destructs,
+    // those references would dangle. finalizePlume() is guarded by plumeInitialised_.
+    finalizePlume();
+}
+
 NWPEmulatorRunResult NWPEmulatorCore::execute(const NWPEmulatorRunOptions& options) {
     NWPEmulatorRunResult result;
     if (!validateRunOptions(options)) {
@@ -63,12 +70,17 @@ bool NWPEmulatorCore::validateRunOptions(const NWPEmulatorRunOptions& options) c
 }
 
 bool NWPEmulatorCore::setupDataProvider(const NWPEmulatorRunOptions& options) {
+    if (dataProvider_) {
+        eckit::Log::error() << "NWPEmulatorCore: setupDataProvider() called more than once. "
+                               "Each NWPEmulatorCore instance supports a single run." << std::endl;
+        return false;
+    }
+
     if (!validateRunOptions(options)) {
         return false;
     }
 
     plumeConfigPath_ = options.plumeConfigPath;
-    plumeInitialised_ = false;
 
     const size_t root   = 0;
     const size_t nprocs = eckit::mpi::comm().size();
@@ -91,6 +103,13 @@ bool NWPEmulatorCore::setupPlumeProvider() {
 
     if (plumeConfigPath_.empty()) {
         return true;
+    }
+
+    if (plume::Manager::isConfigured()) {
+        eckit::Log::error() << "NWPEmulatorCore: setupPlumeProvider() called more than once. "
+                               "Only one Plume run is supported per process: the Plume Manager "
+                               "is a process-level singleton and cannot be reconfigured." << std::endl;
+        return false;
     }
 
     eckit::Log::info() << "The emulator will run Plume with configuration '" << plumeConfigPath_ << "'"

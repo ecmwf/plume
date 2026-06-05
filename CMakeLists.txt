@@ -76,6 +76,20 @@ if (HAVE_NWP_EMULATOR)
     set( NWP_EMULATOR_DEFINITIONS_dp WITH_NWP_EMULATOR_DOUBLE_PRECISION )
     set( HAVE_NWP_EMULATOR_dp 1)
   endif()
+
+  ############## PYTHON BINDINGS FOR NWP EMULATOR
+  ecbuild_add_option( FEATURE PYTHON_NWP_EMULATOR_INTERFACE
+                      DEFAULT OFF
+                      DESCRIPTION "Build Python (pybind11) bindings for the NWP emulator"
+                      REQUIRED_PACKAGES "NAME pybind11 VERSION 3.0.1" )
+
+  if (HAVE_PYTHON_NWP_EMULATOR_INTERFACE)
+      find_package( Python 3.11 COMPONENTS Interpreter Development REQUIRED )
+      set( PYNWP_EMULATOR_STAGING
+           ${CMAKE_BINARY_DIR}/pynwp_emulator-staging
+           CACHE PATH "Staging directory for the pynwp_emulator Python package" )
+      file( MAKE_DIRECTORY ${PYNWP_EMULATOR_STAGING}/nwp_emulator_bindings )
+  endif()
 endif()
 ############################################################################################
 

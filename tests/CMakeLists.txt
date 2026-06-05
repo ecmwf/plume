@@ -16,4 +16,7 @@ add_subdirectory(api)
 
 if (HAVE_NWP_EMULATOR)
   add_subdirectory(nwp_emulator)
+  if (HAVE_PYTHON_NWP_EMULATOR_INTERFACE)
+    add_subdirectory(pynwp_emulator)
+  endif()
 endif()

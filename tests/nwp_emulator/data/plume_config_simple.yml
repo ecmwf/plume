@@ -1,0 +1,4 @@
+plugins:
+  - name: "SimplePlugin"
+    lib: "simple_plugins"
+    core-config: {}
