@@ -48,10 +48,13 @@ ecbuild_add_test( TARGET   plume_test_manager_json
 # simple plugins (used for testing)
 ecbuild_add_library( TARGET simple_plugins
   SOURCES 
-    simple_plugin.h
-    simple_plugin.cc
-    simple_atlas_plugin.h
-    simple_atlas_plugin.cc
+    plugins/simple_plugin.h
+    plugins/simple_plugin.cc
+    plugins/simple_atlas_plugin.h
+    plugins/simple_atlas_plugin.cc
+    plugins/writeback_plugin.h
+    plugins/writeback_plugin.cc
+    plugins/skipwrite_plugin.cc
   PRIVATE_LIBS
     plume_plugin
 )
@@ -111,6 +114,27 @@ ecbuild_add_test( TARGET   plume_test_configs
                   SOURCES  test_configs.cc
                   LIBS                    
                     plume_plugin_manager
+)
+
+
+ecbuild_add_test( TARGET   plume_test_writeback_ledger
+                  SOURCES
+                    ManagerTestAccess.h
+                    test_writeback_ledger.cc
+                  LIBS
+                    plume_plugin_manager
+                    eckit
+)
+
+ecbuild_add_test( TARGET   plume_test_plugin_writeback
+                  SOURCES
+                    ManagerTestAccess.h
+                    test_plugin_writeback.cc
+                  ENVIRONMENT
+                    DYLD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/lib
+                  LIBS
+                    plume_plugin_manager
+                    eckit
 )
 
 

@@ -309,6 +309,8 @@ int plume_manager_feed_plugins(plume_manager_handle_t* h, plume_data_handle_t* f
     return wrapApiFunction([h, fdata] {
         ASSERT(h);
         ASSERT((h)->impl_);
+        ASSERT(fdata);
+        ASSERT((fdata)->impl_);
 
         h->impl_->feedPlugins(*(fdata->impl_));
     });
@@ -326,7 +328,10 @@ int plume_manager_active_fields(plume_manager_handle_t* h, char** str_in) {
         // concatenate param names into a CS-string
         std::string tmp;
         for (const auto& p : req_params) {
-            tmp = tmp + "," + p;
+            if (!tmp.empty()) {
+                tmp += ',';
+            }
+            tmp += p;
         }
 
         // allocate and return
@@ -556,6 +561,78 @@ int plume_data_set_updated(plume_data_handle_t* h, const int count, const char**
         params.push_back(names[i]);
     }
     return wrapApiFunction([h, params] {h->impl_->setUpdated(params); });
+}
+
+
+// ----------------- Write-back API -----------------
+
+int plume_data_write_int(plume_data_handle_t* h, const char* name, int val) {
+    return wrapApiFunction([h, name, val] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        h->impl_->writeParam<int>(name, val);
+    });
+}
+
+int plume_data_write_bool(plume_data_handle_t* h, const char* name, bool val) {
+    return wrapApiFunction([h, name, val] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        h->impl_->writeParam<bool>(name, val);
+    });
+}
+
+int plume_data_write_float(plume_data_handle_t* h, const char* name, float val) {
+    return wrapApiFunction([h, name, val] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        h->impl_->writeParam<float>(name, val);
+    });
+}
+
+int plume_data_write_double(plume_data_handle_t* h, const char* name, double val) {
+    return wrapApiFunction([h, name, val] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        h->impl_->writeParam<double>(name, val);
+    });
+}
+
+int plume_data_write_atlas_field(plume_data_handle_t* h, const char* name, void* ptr) {
+    return wrapApiFunction([h, name, ptr] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        auto field_ptr = static_cast<atlas::Field::Implementation*>(ptr);
+        h->impl_->writeParam<atlas::Field>(name, atlas::Field(field_ptr));
+    });
+}
+
+int plume_data_pending_writebacks(plume_data_handle_t* h, char** names) {
+    return wrapApiFunction([h, &names] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        auto pending = h->impl_->pendingWritebacks();
+        std::string tmp;
+        for (const auto& p : pending) {
+            if (!tmp.empty()) {
+                tmp += ',';
+            }
+            tmp += p;
+        }
+        *names = strcpy(new char[tmp.length() + 1], tmp.c_str());
+    });
+}
+
+int plume_data_acknowledge_writeback(plume_data_handle_t* h, const char* name) {
+    return wrapApiFunction([h, name] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        h->impl_->acknowledgeWriteback(name);
+    });
+}
+
+void plume_free_string(char* s) {
+    delete[] s;
 }
 
 // --------------------------------------------------------------------------------------

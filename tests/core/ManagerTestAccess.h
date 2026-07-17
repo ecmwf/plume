@@ -11,9 +11,24 @@
 #pragma once
 
 #include "plume/Manager.h"
+#include "plume/coupling/WriteBackLedger.h"
 
 namespace plume::test {
+
+/**
+ * @brief Test-only super-accessor for Plume internals.
+ *
+ * Declared as a friend in Manager and WriteBackLedger to expose private
+ * test-only methods (forceReset, clearError) without making them public.
+ * Must never be used in production code.
+ */
 struct ManagerTestAccess {
     static void reset() { plume::Manager::reset(); }
+
+    static void forceLedgerReset(coupling::WriteBackLedger& ledger) { ledger.forceReset(); }
+    static void clearLedgerError(coupling::WriteBackLedger& ledger, const std::string& paramName) {
+        ledger.clearError(paramName);
+    }
 };
+
 }  // namespace plume::test
