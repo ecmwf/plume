@@ -27,6 +27,7 @@
 #include "plume/PluginCore.h"
 #include "plume/PluginHandler.h"
 #include "plume/Protocol.h"
+#include "plume/coupling/WriteBackTracker.h"
 #include "plume/data/DataChecker.h"
 #include "plume/data/ParameterCatalogue.h"
 #include "plume/plume.h"
@@ -105,6 +106,8 @@ std::optional<ManagerConfig> Manager::managerConfig_;
 bool Manager::isConfigured_{false};
 
 WriteAuthorisation Manager::writeAuthorisation_;
+
+std::unique_ptr<coupling::WriteBackTracker> Manager::writeBackTracker_;
 
 
 void Manager::configure(const eckit::Configuration& config) {
@@ -186,6 +189,19 @@ void Manager::feedPlugins(data::ModelData& data) {
     // check data
     Manager::checkData(data);
 
+    // Initialise write-back tracker before feeding plugins so it's propagated into each plugin's filtered ModelData view
+    if (!writeAuthorisation_.empty()) {
+        writeBackTracker_ =
+            std::make_unique<coupling::WriteBackTracker>(writeAuthorisation_, managerConfig_.value().writeBackPolicy());
+        data.enrollWritebackParams(*writeBackTracker_, writeAuthorisation_);
+        data.attachWritebackTracker(writeBackTracker_.get());
+    }
+
+    // PLUME-72: if a future refactor introduces plugin deactivation (e.g. setup() failure recovery,
+    // runtime removal), tracker slots opened here for writable params would never be written.
+    // At submit() they silently reset to IDLE, masking the missing write. A cross-check between
+    // writeAuthorisation_ and the active plugin list at this point would catch this.
+
     // Run each PluginCore for every active plugin
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
         // Create derived fields if requested
@@ -198,7 +214,7 @@ void Manager::feedPlugins(data::ModelData& data) {
 
         // get the share of run data needed to run the plugincore
         auto requiredParams          = pluginHandler.getRequiredParamNames();
-        data::ModelData requiredData = data.filter(requiredParams);
+        data::ModelData requiredData = data.filter(requiredParams, pluginHandler.pluginName());
 
         // grab data
         pluginHandler.grabData(requiredData);
@@ -211,8 +227,22 @@ void Manager::feedPlugins(data::ModelData& data) {
 
 // Run all active plugincores
 void Manager::run() {
+    if (writeBackTracker_) {
+        // reset() is safe on the first call (all slots are IDLE); on subsequent calls it transitions
+        // ACKNOWLEDGED → IDLE, clearing acknowledgements from the previous cycle.
+        writeBackTracker_->reset();
+        writeBackTracker_->open();
+    }
+
+    // PLUME-72: getActivePlugins() returns all handlers without filtering by isActive(). If plugin
+    // deactivation is introduced in a future refactor, open slots for inactive plugins would silently
+    // reset at submit(). Filtering by isActive() before open() would be the fix.
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
         pluginHandler.run();
+    }
+
+    if (writeBackTracker_) {
+        writeBackTracker_->submit();  // WRITTEN → PENDING; READY → IDLE; throws on ERROR
     }
 };
 
@@ -220,8 +250,16 @@ void Manager::run() {
 // Teardown all active plugins
 void Manager::teardown() {
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
-        // teardown the plugincore first
         pluginHandler.teardown();
+    }
+
+    if (writeBackTracker_) {
+        if (!writeBackTracker_->allAcknowledged()) {
+            eckit::Log::warning() << "Plume Manager::teardown(): write-back tracker has unacknowledged slots. "
+                                  << "The model did not acknowledge all pending write-backs before teardown."
+                                  << std::endl;
+        }
+        writeBackTracker_.reset();  // destructor fires onDetach_, nulling ModelData::tracker_
     }
 };
 
@@ -292,6 +330,9 @@ void Manager::checkData(const data::ModelData& data) {
 }
 
 void Manager::reset() {
+    if (writeBackTracker_) {
+        writeBackTracker_.reset();  // destructor fires onDetach_, nulling ModelData::tracker_
+    }
     PluginRegistry::instance().reset();
     isConfigured_ = false;
     managerConfig_.reset();

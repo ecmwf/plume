@@ -29,6 +29,26 @@ ecbuild_add_library( TARGET plume_plugin_test_fapi
     plume_f
 )
 
+# C++ write-back plugin for API testing
+ecbuild_add_library( TARGET plume_plugin_writeback_api
+  SOURCES
+    plugin_writeback_api.h
+    plugin_writeback_api.cc
+  PRIVATE_LIBS
+    plume_plugin
+)
+
+# Fortran write-back plugin for API testing
+ecbuild_add_library( TARGET plume_plugin_writeback_fapi
+  SOURCES
+    plugin_writeback_fapi.h
+    plugin_writeback_fapi.cc
+    plugin_writeback_fapi.F90
+  PRIVATE_LIBS
+    plume_plugin
+    plume_f
+)
+
 # C API tests
 ecbuild_add_test( TARGET   plume_test_data_api
                   SOURCES
@@ -62,7 +82,15 @@ ecbuild_add_test( TARGET   plume_test_params_api
                     plume
 )
 
-# Fortran API tests
+ecbuild_add_test( TARGET   plume_test_writeback_api
+                  SOURCES
+                    test_api_utils.h
+                    test_writeback_api.cc
+                  LIBS
+                    plume
+)
+
+# Fortran API tests
 add_fctest( TARGET   plume_test_data_fapi
             SOURCES  test_data_api.F90
             LIBS
@@ -89,6 +117,12 @@ add_fctest( TARGET   plume_test_params_fapi
 
 add_fctest( TARGET   plume_test_atlas_field_lifetime_fapi
             SOURCES  test_atlas_field_lifetime.F90
+            LIBS
+              plume_f
+)
+
+add_fctest( TARGET   plume_test_writeback_fapi
+            SOURCES  test_writeback_fapi.F90
             LIBS
               plume_f
 )

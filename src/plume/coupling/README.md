@@ -189,3 +189,125 @@ meaningless. Plume therefore enforces this constraint at two levels:
    base parameter.
 
 Only base (non-derived) parameters support write-back.
+
+## Runtime: How Write-Back Works
+
+Write-back has two phases: **negotiation** (covered by `WriteAuthorisation`) and
+**run phase** (covered by `WriteBackTracker` and the state machine described here).
+
+### State machine per parameter slot
+
+Each writable parameter has a slot in the `WriteBackTracker` that progresses
+through the following states during each `run()` cycle:
+
+```
+IDLE ──open()──▶ READY ──writeParam()──▶ WRITTEN ──submit()──▶ PENDING ──acknowledgeWriteback()──▶ ACKNOWLEDGED
+ ▲                │                                                                                    │
+ │                │ (plugin chose not to write)                                                        │
+ │                └────── submit() → IDLE (silent skip; param absent from pendingWritebacks())         │
+ └──────────────────────────────────── reset() ────────────────────────────────────────────────────────┘
+```
+
+Any invalid transition (e.g. a second `writeParam` under `single-writer`, or a
+`writeParam` outside a `run()` cycle) throws immediately with a precise message
+identifying the parameter, the current state, and the attempted operation.
+
+**State meanings:**
+
+| State | Meaning |
+|---|---|
+| `IDLE` | Slot is inactive — between cycles, or never written |
+| `READY` | Manager has opened the slot; authorised plugin may write this cycle |
+| `WRITTEN` | A plugin has written a value; the write is applied immediately to model memory |
+| `PENDING` | Write cycle closed; the model is being asked to acknowledge |
+| `ACKNOWLEDGED` | Model has confirmed it has ingested the value (e.g. copy back the Atlas field)|
+| `ERROR` | An unrecoverable write error occurred; slot is poisoned for this cycle |
+
+### Error handling: poisoned slots
+
+When a write fails (e.g. a type or Atlas-shape mismatch), the slot transitions to
+`ERROR` via `reportError()`. Two things happen immediately, before `submit()` runs:
+
+- **Write-back is disabled on the slot** — `reportError()` calls `disableWriteback()`
+  right away, so a model-provided (raw-pointer) parameter cannot be mutated again this
+  cycle.
+- **Further writes are rejected** — `Error::onWrite()` throws. Any subsequent
+  `writeParam()` on a poisoned slot is refused at write time, before the value can
+  reach model memory. This is the guard that also protects Plume-owned parameters,
+  whose storage is otherwise always mutable internally.
+
+Together these enforce the rule that **a poisoned slot never receives further updates**.
+All other triggers on an `ERROR` slot (`onOpen`/`onSubmit`/`onAcknowledge`/`onReset`/`onError`)
+are absorbed silently rather than throwing — they are driven by bulk Manager operations
+that iterate every slot and must not break on a single poisoned one. `submit()` still
+checks `hasErrors()` after transitioning all slots and throws, stopping execution.
+Recovery is only possible via an explicit `clearError()` (`ERROR → IDLE`), which also
+keeps write-back disabled.
+
+
+### Flyweight state objects
+
+State-specific behaviour is encapsulated in six concrete `WritebackState`
+subclasses (`Idle`, `Ready`, `Written`, `Pending`,
+`Acknowledged`, `Error`). The `WriteBackTracker` owns **one instance of each**,
+shared across all parameter slots within that tracker:
+
+- Each `ParamSlot` holds a raw (non-owning) `const WritebackState*` pointer.
+- A transition is a pointer swap: `slot.state = slot.state->onWrite(...)`.
+- **Zero per-slot heap allocation**, zero per-transition allocation.
+- Adding a new state requires only a new subclass; no existing transition logic changes.
+
+### Writes are applied immediately — no buffering
+
+All writes go directly to the parameter's underlying storage when `writeParam()`
+is called. There is no copy of the value inside the tracker. `submit()` performs
+no data movement — it only advances the slot state from `WRITTEN` to `PENDING` to
+trigger the model handshake.
+
+This avoids a potentially expensive deep copy for Atlas fields (gigabytes of
+field data) and has no correctness cost: the model only reads parameters after
+`run()` returns, so there is no window where it could observe an intermediate
+state.
+
+However, Atlas fields are currently copies of the Fortran arrays. Therefore, the distinction between submit and acknowledged is important to ensure the model has ingested the new field values.
+
+### Plugin identity via `consumer_`
+
+Each plugin receives a **filtered view** of `ModelData` (a copy scoped to its
+required parameters). When the Manager creates this view it stamps a `consumer_`
+field on it with the plugin's config name:
+
+```cpp
+// Manager::feedPlugins()
+data.filter(requiredParams, pluginHandler.pluginName())
+```
+
+`writeParam` reads `consumer_` internally to identify the writing plugin for
+authorisation checks and the audit log. Plugin code (C++, C, or Fortran) never
+passes a plugin name explicitly — the identity is carried by the handle.
+
+### Manager lifecycle
+
+```
+feedPlugins()        Creates WriteBackTracker, enrolls writable params, attaches tracker
+                     to ModelData. Creates filtered views with consumer_ set per plugin.
+
+run()                1. tracker.reset()  — ACKNOWLEDGED → IDLE (no-op on first call)
+  [per cycle]        2. tracker.open()   — IDLE → READY for each authorised slot
+                     3. plugins run     — each may call writeParam() → WRITTEN
+                     4. tracker.submit() — WRITTEN → PENDING (state only, no data movement)
+
+                     Model calls pendingWritebacks() → ["PARAM_A", ...]
+                     Model ingests values, then calls acknowledgeWriteback() per param → ACKNOWLEDGED
+
+teardown()           Warns if any slot is still PENDING (unacknowledged). Detaches and destroys tracker.
+```
+
+### Multi-writer sequential composition
+
+Under `multi-writer` policy, multiple plugins may write the same parameter in
+a single cycle. Each write is applied immediately in plugin execution order;
+each subsequent plugin reads the value already modified by its predecessors.
+The tracker records the ordered list of writing plugins per slot for audit.
+
+---

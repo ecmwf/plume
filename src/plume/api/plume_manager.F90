@@ -190,12 +190,14 @@ end function
 ! TODO: this really need to be checked!! not testing for errors, but returns a char*
 function plume_manager_active_fields(handle) result(fields_str)
     use iso_c_binding, only: c_ptr
+    use plume_utils_module, only: plume_free_string
     class(plume_manager), intent(inout) :: handle    
     character(:), allocatable, target :: fields_str
     type(c_ptr) :: fields_ptr
     integer :: err
     err = plume_manager_active_fields_interf(handle%impl, fields_ptr)
     fields_str = fortranise_cstr(fields_ptr)
+    call plume_free_string(fields_ptr)
 end function
 
 ! TODO: this really need to be checked!! not testing for errors, but returns a char*
