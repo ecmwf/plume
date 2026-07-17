@@ -31,14 +31,13 @@ static plume::PluginCoreBuilder<SimplePluginCore> runnable_plugincore_FooBuilder
 SimplePluginCore::SimplePluginCore(const eckit::Configuration& conf) : PluginCore(conf) {}
 
 void SimplePluginCore::run() {
-    eckit::Log::info() << "Consuming parameters: (" 
+    eckit::Log::info() << "Consuming parameters: ("
                        << "I=" << modelData().getParam<int>("I") << ", "
                        << "J=" << modelData().getParam<int>("J") << ", "
-                       << "K=" << modelData().getParam<int>("K") << ") "
-                       << std::endl;
+                       << "K=" << modelData().getParam<int>("K") << ") " << std::endl;
 }
 
 //--------------------------------------------------------------
 
 
-}  // namespace foo_plugin
+}  // namespace plume_example_plugin
