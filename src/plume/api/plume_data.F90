@@ -10,6 +10,7 @@ module plume_data_module
 
 use iso_c_binding
 use fckit_c_interop_module, only : c_str
+use plume_utils_module, only : fortranise_cstr
 
 use atlas_module
 
@@ -45,6 +46,15 @@ contains
     procedure :: get_shared_atlas_field     => plume_data_get_shared_atlas_field
 
     procedure :: set_updated                => plume_data_set_updated
+
+    procedure :: write_int                  => plume_data_write_int
+    procedure :: write_bool                 => plume_data_write_bool
+    procedure :: write_float                => plume_data_write_float
+    procedure :: write_double               => plume_data_write_double
+    procedure :: write_atlas_field          => plume_data_write_atlas_field
+
+    procedure :: pending_writebacks         => plume_data_pending_writebacks
+    procedure :: acknowledge_writeback      => plume_data_acknowledge_writeback
 
     procedure :: print => plume_data_print
     procedure :: finalise => plume_data_delete_handle
@@ -275,6 +285,68 @@ function plume_data_get_double_interf( handle_impl, name, val ) result (err) &
   type(c_ptr), intent(in), value :: handle_impl
   character(c_char), dimension(*) :: name
   real(c_double), intent(inout) :: val
+  integer(c_int) :: err
+end function
+
+! Write-back API interfaces
+function plume_data_write_int_interf( handle_impl, name, val ) result(err) &
+  & bind(C,name="plume_data_write_int")
+  use iso_c_binding, only: c_ptr, c_char, c_int
+  type(c_ptr), intent(in), value :: handle_impl
+  character(c_char), dimension(*) :: name
+  integer(c_int), intent(in), value :: val
+  integer(c_int) :: err
+end function
+
+function plume_data_write_bool_interf( handle_impl, name, val ) result(err) &
+  & bind(C,name="plume_data_write_bool")
+  use iso_c_binding, only: c_ptr, c_char, c_bool, c_int
+  type(c_ptr), intent(in), value :: handle_impl
+  character(c_char), dimension(*) :: name
+  logical(c_bool), intent(in), value :: val
+  integer(c_int) :: err
+end function
+
+function plume_data_write_float_interf( handle_impl, name, val ) result(err) &
+  & bind(C,name="plume_data_write_float")
+  use iso_c_binding, only: c_ptr, c_char, c_float, c_int
+  type(c_ptr), intent(in), value :: handle_impl
+  character(c_char), dimension(*) :: name
+  real(c_float), intent(in), value :: val
+  integer(c_int) :: err
+end function
+
+function plume_data_write_double_interf( handle_impl, name, val ) result(err) &
+  & bind(C,name="plume_data_write_double")
+  use iso_c_binding, only: c_ptr, c_char, c_double, c_int
+  type(c_ptr), intent(in), value :: handle_impl
+  character(c_char), dimension(*) :: name
+  real(c_double), intent(in), value :: val
+  integer(c_int) :: err
+end function
+
+function plume_data_write_atlas_field_interf( handle_impl, name, field_ptr ) result(err) &
+  & bind(C,name="plume_data_write_atlas_field")
+  use iso_c_binding, only: c_ptr, c_char, c_int
+  type(c_ptr), intent(in), value :: handle_impl
+  character(c_char), dimension(*) :: name
+  type(c_ptr), intent(in), value :: field_ptr
+  integer(c_int) :: err
+end function
+
+function plume_data_pending_writebacks_interf( handle_impl, names ) result(err) &
+  & bind(C,name="plume_data_pending_writebacks")
+  use iso_c_binding, only: c_ptr, c_int
+  type(c_ptr), intent(in), value :: handle_impl
+  type(c_ptr), intent(out) :: names
+  integer(c_int) :: err
+end function
+
+function plume_data_acknowledge_writeback_interf( handle_impl, name ) result(err) &
+  & bind(C,name="plume_data_acknowledge_writeback")
+  use iso_c_binding, only: c_ptr, c_char, c_int
+  type(c_ptr), intent(in), value :: handle_impl
+  character(c_char), dimension(*) :: name
   integer(c_int) :: err
 end function
 
@@ -520,6 +592,73 @@ function plume_data_set_updated( handle, names ) result(err)
     c_param_names(i) = c_loc(names(i))
   end do
   err = plume_data_set_updated_interf(handle%impl, count, c_param_names)
+end function
+
+! Write-back API implementations
+
+function plume_data_write_int( handle, name, val ) result(err)
+  use iso_c_binding, only: c_int
+  class(plume_data), intent(inout) :: handle
+  character(kind=c_char,len=*), intent(in) :: name
+  integer(c_int), intent(in) :: val
+  integer(c_int) :: err
+  err = plume_data_write_int_interf(handle%impl, c_str(name), val)
+end function
+
+function plume_data_write_bool( handle, name, val ) result(err)
+  use iso_c_binding, only: c_bool, c_int
+  class(plume_data), intent(inout) :: handle
+  character(kind=c_char,len=*), intent(in) :: name
+  logical(c_bool), intent(in) :: val
+  integer(c_int) :: err
+  err = plume_data_write_bool_interf(handle%impl, c_str(name), val)
+end function
+
+function plume_data_write_float( handle, name, val ) result(err)
+  use iso_c_binding, only: c_float, c_int
+  class(plume_data), intent(inout) :: handle
+  character(kind=c_char,len=*), intent(in) :: name
+  real(c_float), intent(in) :: val
+  integer(c_int) :: err
+  err = plume_data_write_float_interf(handle%impl, c_str(name), val)
+end function
+
+function plume_data_write_double( handle, name, val ) result(err)
+  use iso_c_binding, only: c_double, c_int
+  class(plume_data), intent(inout) :: handle
+  character(kind=c_char,len=*), intent(in) :: name
+  real(c_double), intent(in) :: val
+  integer(c_int) :: err
+  err = plume_data_write_double_interf(handle%impl, c_str(name), val)
+end function
+
+function plume_data_write_atlas_field( handle, name, value ) result(err)
+  use iso_c_binding, only: c_int
+  class(plume_data), intent(inout) :: handle
+  character(kind=c_char,len=*), intent(in) :: name
+  type(atlas_Field), intent(in) :: value
+  integer(c_int) :: err
+  err = plume_data_write_atlas_field_interf(handle%impl, c_str(name), value%c_ptr())
+end function
+
+function plume_data_pending_writebacks( handle ) result(pending_str)
+  use iso_c_binding, only: c_ptr
+  use plume_utils_module, only: plume_free_string
+  class(plume_data), intent(inout) :: handle
+  character(:), allocatable, target :: pending_str
+  type(c_ptr) :: names_ptr
+  integer :: err
+  err = plume_data_pending_writebacks_interf(handle%impl, names_ptr)
+  pending_str = fortranise_cstr(names_ptr)
+  call plume_free_string(names_ptr)
+end function
+
+function plume_data_acknowledge_writeback( handle, name ) result(err)
+  use iso_c_binding, only: c_int
+  class(plume_data), intent(inout) :: handle
+  character(kind=c_char,len=*), intent(in) :: name
+  integer(c_int) :: err
+  err = plume_data_acknowledge_writeback_interf(handle%impl, c_str(name))
 end function
 
 
