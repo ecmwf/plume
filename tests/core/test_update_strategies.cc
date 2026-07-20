@@ -11,6 +11,8 @@
 #include <array>
 #include <memory>
 
+#include "atlas/array/ArrayView.h"
+#include "atlas/array/MakeView.h"
 #include "atlas/field/Field.h"
 
 #include "eckit/testing/Test.h"
@@ -32,7 +34,7 @@ CASE("test update strategies - wind at height") {
     u.set_levels(5);
 
     // mimick how the model data creates the target field
-    atlas::Field u200tmp = u.clone();
+    atlas::Field u200tmp  = u.clone();
     atlas::Field u5000tmp = u.clone();
 
     EXPECT_EQUAL(u200tmp.levels(), 5);

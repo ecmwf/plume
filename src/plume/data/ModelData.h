@@ -23,8 +23,9 @@
 #include "eckit/log/Log.h"
 #include "eckit/value/Value.h"
 
+#include "atlas/array/Array.h"
 #include "atlas/field/Field.h"
-#include "atlas/field/detail/FieldImpl.h"
+#include "atlas/util/Metadata.h"
 
 #include "plume/data/ParameterCatalogue.h"
 #include "plume/data/ParameterType.h"
@@ -83,13 +84,9 @@ public:
      *
      * @note Atlas fields can be created using this method from the C++ API, but there is no support for updating them
      *       directly at the moment. Use the `createParam` method with the subscription pattern instead.
-     * @todo The C API uses an Atlas internal type for field provision and access. Only the `Field` type should be used
-     *       by clients like Plume, so field implementation use should be removed.
      */
     template <typename T>
     void createParam(std::string name, T valInit) {
-        static_assert(!std::is_base_of_v<atlas::Field::Implementation, T>,
-                      "Atlas field implementations are only for observation");
         auto res = valueMap_.try_emplace(name, std::make_shared<ParameterValue<T, IParameterObserver>>(valInit));
         if (!res.second) {
             eckit::Log::warning() << "Parameter '" << name << "' already in Model Data. Not inserted!" << std::endl;
@@ -111,8 +108,6 @@ public:
      */
     template <typename T>
     void createParam(const std::string& strategy, const eckit::Configuration& config, std::string name = "") {
-        static_assert(!std::is_base_of_v<atlas::Field::Implementation, T>,
-                      "Atlas field implementations are only for observation");
         // 1. name the param entry using defaults or user instructions
         std::string paramName = name;
         if (paramName.empty()) {
@@ -148,9 +143,6 @@ public:
      */
     template <typename T>
     void provideParam(std::string name, T* ptr) {
-        if constexpr (std::is_same_v<T, atlas::Field> || std::is_same_v<T, atlas::Field::Implementation>) {
-            ASSERT_MSG(ptr->bytes() >= 0, "Provided Atlas field not readable!");
-        }
         auto res = valueMap_.try_emplace(name, std::make_shared<ParameterValue<T, IParameterObservable>>(ptr));
         if (!res.second) {
             eckit::Log::warning() << "Parameter '" << name << "' already in Model Data. Not inserted!" << std::endl;
@@ -158,9 +150,14 @@ public:
     }
 
     /**
-     * @brief Update the value of a created parameter, i.e., of an owned parameter that is not an Atlas field.
+     * @brief Update the value of a Plume-owned parameter.
      *
-     * @note Method not implemented for Atlas fields, which can only be updated through the observation pattern for now.
+     * Model-facing entry point for mutating data that Plume owns (created via createParam). This is distinct
+     * from the plugin-facing writeParam API. Parameters that are actively observing a source are updated by
+     * their update strategy and cannot be set directly here.
+     *
+     * @note For Atlas fields, only Plume-owned fields can be updated. Model-provided fields (provideParam) are
+     *       not owned by Plume and cannot be mutated through this method.
      */
     template <typename T>
     void updateParam(std::string name, T newVal) {
@@ -174,7 +171,21 @@ public:
             }
         }
         if (auto typedPtr = std::dynamic_pointer_cast<ParameterValueTyped<T>>(valueMap_.at(name))) {
-            typedPtr->set(newVal);
+            if (!typedPtr->owns()) {
+                throw eckit::UserError("Parameter '" + name + "' is not owned by Plume and cannot be updated!", Here());
+            }
+            if constexpr (std::is_same_v<T, atlas::Field>) {
+                atlas::Field& owned = typedPtr->getSettableField();
+                if (owned.shape() != newVal.shape() || owned.datatype() != newVal.datatype()) {
+                    throw eckit::UserError(
+                        "Cannot update Atlas field '" + name + "': shape or datatype mismatch with the source field.",
+                        Here());
+                }
+                owned.array().copy(newVal.array());
+            }
+            else {
+                typedPtr->set(newVal);
+            }
         }
         else {
             throw eckit::BadCast("Plume parameter update type mismatch!", Here());
@@ -186,19 +197,13 @@ public:
      *
      * @note This interface can be used for source & derived params if the full name is known.
      */
-    template <typename T, typename = std::enable_if_t<!std::is_same<T, atlas::Field::Implementation>::value>>
+    template <typename T>
     T getParam(std::string name) const {
         if (!hasParameter(name)) {
             throw eckit::BadParameter("Parameter '" + name + "' not found in model data!", Here());
         }
         if (auto typedPtr = std::dynamic_pointer_cast<ParameterValueTyped<T>>(valueMap_.at(name))) {
             return typedPtr->get();
-        }
-        if constexpr (std::is_same_v<T, atlas::Field>) {
-            if (auto typedPtr =
-                    std::dynamic_pointer_cast<ParameterValueTyped<atlas::Field::Implementation>>(valueMap_.at(name))) {
-                return atlas::Field(&(typedPtr->get()));
-            }
         }
         throw eckit::BadCast("Plume parameter view update type mismatch!", Here());
     }
