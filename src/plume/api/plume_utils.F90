@@ -14,6 +14,7 @@ implicit none
 private
 
 public :: fortranise_cstr
+public :: plume_free_string
 
 
 interface
@@ -23,6 +24,12 @@ interface
         type(c_ptr), intent(in), value :: str
         integer(c_int) :: len
     end function
+
+    subroutine plume_free_string(s) bind(c, name="plume_free_string")
+        use iso_c_binding, only: c_ptr
+        implicit none
+        type(c_ptr), intent(in), value :: s
+    end subroutine
 end interface
 
 

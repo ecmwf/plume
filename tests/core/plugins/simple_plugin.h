@@ -9,8 +9,8 @@
  * does it submit to any jurisdiction.
  */
 #include <string>
-#include "plume/PluginCore.h"
 #include "plume/Plugin.h"
+#include "plume/PluginCore.h"
 
 namespace plume_example_plugin {
 
