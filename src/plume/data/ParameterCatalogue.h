@@ -47,6 +47,7 @@ private:
     std::string strategy_;                   ///< Optional, strategy name, deduced from above options.
     std::string sourceParam_;                ///< Optional, original param that this param derives from.
     std::vector<std::string> dependencies_;  ///< Optional, based on the strategy requirements.
+    bool writable_ = false;                  ///< Whether plugins are permitted to write back to this parameter.
 
     /// All params must have a set of options which can be referred to here to avoid hardcoding in the constructors.
     inline static const std::unordered_set<std::string> essentialKeys_ = {"name", "type"};
@@ -56,7 +57,7 @@ private:
      * All params are allowed a set of options which can be referred to here to avoid hardcoding in the constructors.
      */
     inline static const std::unordered_set<std::string> optionalKeys_ = []() {
-        std::unordered_set<std::string> keys = {"available", "comment", "levtype", "level"};
+        std::unordered_set<std::string> keys = {"available", "comment", "levtype", "level", "writable"};
         for (const auto& key : field_provider::UpdateStrategyTraits<int>::allConfigArgs) {
             keys.insert(std::string(key));
         }
@@ -64,7 +65,8 @@ private:
     }();
 
     eckit::LocalConfiguration params2config(const std::string& name, const std::string& type,
-                                            const std::string& available = "", const std::string& comment = "");
+                                            const std::string& available = "", const std::string& comment = "",
+                                            bool writable = false);
 
 public:
     /** 
@@ -72,9 +74,9 @@ public:
      */
     ParameterDefinition(const eckit::Configuration& config);
     ParameterDefinition(const std::string& name, const std::string& type, const std::string& available = "",
-                        const std::string& comment = "");
+                        const std::string& comment = "", bool writable = false);
     ParameterDefinition(const std::string& name, const ParameterType& type, const std::string& available = "",
-                        const std::string& comment = "");
+                        const std::string& comment = "", bool writable = false);
     ParameterDefinition(const std::string& name, const ParameterType& type,
                         const std::unordered_map<std::string, std::string>& options);
 
@@ -92,6 +94,7 @@ public:
     const std::string& strategy() const;
     const std::string& sourceParam() const;
     const std::vector<std::string>& dependencies() const;
+    bool writable() const;
 };
 
 

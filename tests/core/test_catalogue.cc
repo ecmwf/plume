@@ -73,6 +73,62 @@ CASE("test catalogue") {
 
 }
 
+CASE("test writable parameter definition") {
+
+    // constructors with explicit writable flag
+    plume::data::ParameterDefinition writable_param("p", "INT", "always", "comment", /*writable=*/true);
+    EXPECT_EQUAL(writable_param.writable(), true);
+
+    plume::data::ParameterDefinition readonly_param("p", "INT", "always", "comment");
+    EXPECT_EQUAL(readonly_param.writable(), false);
+
+    // YAML config with writable: true
+    eckit::YAMLConfiguration writable_config(std::string(R"YAML(
+    name: param-w
+    type: INT
+    available: always
+    comment: writable param
+    writable: true
+    )YAML"));
+    plume::data::ParameterDefinition from_yaml_writable{writable_config};
+    EXPECT_EQUAL(from_yaml_writable.writable(), true);
+
+    // YAML config without writable key defaults to false
+    eckit::YAMLConfiguration readonly_config(std::string(R"YAML(
+    name: param-r
+    type: INT
+    available: always
+    comment: read-only param
+    )YAML"));
+    plume::data::ParameterDefinition from_yaml_readonly{readonly_config};
+    EXPECT_EQUAL(from_yaml_readonly.writable(), false);
+}
+
+
+CASE("test derived parameter cannot be writable") {
+
+    // Requesting a derived param (with level options) as writable must throw at construction.
+    eckit::YAMLConfiguration derived_writable_config(std::string(R"YAML(
+    name: u
+    type: ATLAS_FIELD
+    height: 100
+    writable: true
+    )YAML"));
+
+    EXPECT_THROWS(plume::data::ParameterDefinition bad{derived_writable_config});
+
+    // A derived param without writable is fine.
+    eckit::YAMLConfiguration derived_readonly_config(std::string(R"YAML(
+    name: u
+    type: ATLAS_FIELD
+    height: 100
+    )YAML"));
+
+    plume::data::ParameterDefinition derived_readonly{derived_readonly_config};
+    EXPECT_EQUAL(derived_readonly.writable(), false);
+}
+
+
 CASE("test empty catalogue + insert") {
 
     // insert params to empty catalogue

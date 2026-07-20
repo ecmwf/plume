@@ -71,6 +71,18 @@ public:
     }
 
     /**
+     * @brief Lets plugins require write access to a parameter.
+     *
+     * The negotiator will reject the plugin if the model has not offered the parameter as writable.
+     */
+    template <typename T>
+    void requireWritable(const std::string& name) {
+        insertParam(data::ParameterDefinition(name, data::deduceType<T>(), /*avail=*/"", /*comment=*/"",
+                                              /*writable=*/true),
+                    requiredParams_);
+    }
+
+    /**
      * @brief Lets plugins require params derived from model parameters in their negotiate method.
      */
     template <typename T>
@@ -91,8 +103,8 @@ public:
     void offerAtlasVersion(const std::string& version);
 
     template <typename T>
-    void offer(const std::string& name, const std::string& avail, const std::string& comment) {
-        insertParam(data::ParameterDefinition(name, data::deduceType<T>(), avail, comment), offeredParams_);
+    void offer(const std::string& name, const std::string& avail, const std::string& comment, bool writable = false) {
+        insertParam(data::ParameterDefinition(name, data::deduceType<T>(), avail, comment, writable), offeredParams_);
     }
 
     std::set<std::string> offeredParamNames() const;

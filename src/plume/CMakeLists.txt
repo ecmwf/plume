@@ -83,6 +83,10 @@ set(PLUME_PLUGIN_MANAGER_SOURCES
     Configurable.h
     Configurable.cc
     PluginConfig.h
+    coupling/WriteBackPolicy.h
+    coupling/WriteBackPolicy.cc
+    coupling/WriteAuthorisation.h
+    coupling/WriteAuthorisation.cc
     data/ModelData.h
     data/ModelData.cc
     data/ParameterType.h
