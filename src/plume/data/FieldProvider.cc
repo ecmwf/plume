@@ -11,6 +11,7 @@
 #include <sstream>
 
 #include "atlas/array.h"
+#include "atlas/util/Metadata.h"
 
 #include "plume/data/FieldProvider.h"
 #include "plume/data/ParameterValue.h"

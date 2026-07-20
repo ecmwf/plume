@@ -86,3 +86,9 @@ add_fctest( TARGET   plume_test_params_fapi
             LIBS
               plume_f
 )
+
+add_fctest( TARGET   plume_test_atlas_field_lifetime_fapi
+            SOURCES  test_atlas_field_lifetime.F90
+            LIBS
+              plume_f
+)
