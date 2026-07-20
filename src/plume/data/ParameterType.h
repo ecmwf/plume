@@ -17,7 +17,6 @@
 #include "eckit/exception/Exceptions.h"
 
 #include "atlas/field/Field.h"
-#include "atlas/field/detail/FieldImpl.h"
 
 namespace plume {
 namespace data {
@@ -92,10 +91,6 @@ struct DeduceParameterType<atlas::Field> {
     static constexpr ParameterType value = ParameterType::ATLAS_FIELD;
     static constexpr const char* name    = "ATLAS_FIELD";
 };
-
-/** @warning To remove once Plume API does not use field implementations. */
-template <>
-struct DeduceParameterType<atlas::Field::Implementation> : DeduceParameterType<atlas::Field> {};
 
 /**
  * @brief Deduce the ParameterType associated with the given template type parameter.

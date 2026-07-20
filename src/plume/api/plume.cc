@@ -22,7 +22,6 @@
 
 #include "atlas/array.h"
 #include "atlas/field/Field.h"
-#include "atlas/field/detail/FieldImpl.h"
 
 #include "plume.h"
 #include "plume/Manager.h"
@@ -481,8 +480,11 @@ int plume_data_provide_double(plume_data_handle_t* h, const char* name, double* 
 // -------- Atlas objects
 int plume_data_provide_atlas_field_shared(plume_data_handle_t* h, const char* name, void* ptr) {
     return wrapApiFunction([h, name, ptr] {
-        auto field_ptr = static_cast<atlas::Field::Implementation*>(ptr);
-        h->impl_->provideParam(name, field_ptr);
+        // The Fortran/C boundary yields the model field's Implementation pointer; wrap it in an atlas::Field
+        // handle. provideParam copies this handle into the parameter (non-owning: the data stays model-owned),
+        // so this local wrapper may safely be destroyed on return.
+        atlas::Field field(static_cast<atlas::Field::Implementation*>(ptr));
+        h->impl_->provideParam(name, &field);
     });
 }
 

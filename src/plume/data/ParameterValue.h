@@ -19,7 +19,6 @@
 #include "eckit/exception/Exceptions.h"
 
 #include "atlas/field/Field.h"
-#include "atlas/field/detail/FieldImpl.h"
 
 #include "plume/data/FieldProvider.h"
 #include "plume/data/ParameterType.h"
@@ -63,7 +62,7 @@ private:
     bool ownsValue_;
     ParameterType type_;
 
-    std::optional<T> ownedValue_;  ///< Only used when the object owns its value.
+    std::optional<T> ownedValue_;  ///< Backing storage for an owned value, or a shared handle held for lifetime.
     T* valuePtr_;                  ///< Non-owning pointer; the pointee must outlive this object if it is not owned.
 
 public:
@@ -73,22 +72,31 @@ public:
      * @brief Constructs an owning parameter with a copied value.
      *
      * Transfers ownership of the passed `value` to the object.
-     *
-     * @warning While Atlas fields can be owned, it is not the case for field implementations which are currently
-     *          used by the C API. Support for field implementations should be removed in the future, in the meantime,
-     *          this constructor is disabled for `T == atlas::Field::Implementation`.
      */
-    template <typename U = T, typename = std::enable_if_t<!std::is_same<U, atlas::Field::Implementation>::value>>
     ParameterValueTyped(T value) :
         ownsValue_(true), ownedValue_(std::move(value)), valuePtr_(&ownedValue_.value()), type_(deduceType<T>()) {}
 
     /**
-     * @brief Constructs a non-owning parameter from a raw pointer.
+     * @brief Constructs a non-owning parameter from a pointer to data owned elsewhere (typically the model).
+     *
+     * For most types the pointer is stored directly, so the pointee must outlive this object. Atlas fields are the
+     * exception: `atlas::Field` is a reference-counted handle around model-owned data, so a copy of the handle is
+     * kept as backing storage to keep the field accessible for the session. In both cases the parameter stays
+     * non-owning (`ownsValue_ == false`): Plume does not own the underlying data, so `set()`/`getSettableField()`
+     * remain disallowed and `updateParam` cannot mutate it.
      *
      * @question: do we need special cases for char, char* ? There is currently no support in the C API.
      */
-    ParameterValueTyped(T* ptr) : ownsValue_(false), valuePtr_(ptr), type_(deduceType<T>()) {
+    ParameterValueTyped(T* ptr) : ownsValue_(false), type_(deduceType<T>()) {
         ASSERT_MSG(ptr != nullptr, "Non-owning ParameterValue constructed with null pointer");
+        if constexpr (std::is_same_v<T, atlas::Field>) {
+            ASSERT_MSG(ptr->bytes() >= 0, "Provided Atlas field not readable!");
+            ownedValue_ = *ptr;  // copy the handle to keep model-owned data alive; ownsValue_ stays false
+            valuePtr_   = &ownedValue_.value();
+        }
+        else {
+            valuePtr_ = ptr;
+        }
     }
 
     /// Deleted copy constructor & copy assignment operator.
@@ -110,6 +118,9 @@ public:
 
     /**
      * @brief Sets the parameter value.
+     *
+     * For Atlas fields this replaces the stored handle, which lets update strategies reshape or reinitialise an
+     * owned field. Model-facing in-place mutation that preserves the handle identity is done via updateParam.
      *
      * @pre This instance must own its value.
      */
