@@ -29,8 +29,24 @@ end subroutine
 subroutine plugincore_run_writeback_fapi() &
 bind(C, name="plugincore_run_writeback_fapi")
     use iso_c_binding, only: c_double, c_int
+    use atlas_module, only: atlas_Field, atlas_integer
+    type(atlas_Field) :: current, update
+    integer(c_int), pointer :: cdata(:), udata(:)
+    integer :: i, n
     call plume_check(writeback_fapi_data%write_int("FORT_W_INT"//c_null_char, 99_c_int))
     call plume_check(writeback_fapi_data%write_double("FORT_W_DOUBLE"//c_null_char, real(1.23d0, kind=c_double)))
+
+    ! Build a distinct field carrying updated values (sized from the provided field) and write it back. The
+    ! write-back must copy the data into the model's own buffer in place rather than rebind the handle.
+    call plume_check(writeback_fapi_data%get_shared_atlas_field("FORT_W_FIELD", current))
+    call current%data(cdata)
+    n = size(cdata)
+    update = atlas_Field("FORT_W_FIELD", atlas_integer(), (/n/))
+    call update%data(udata)
+    do i = 1, n
+        udata(i) = i * 100_c_int
+    end do
+    call plume_check(writeback_fapi_data%write_atlas_field("FORT_W_FIELD", update))
 end subroutine
 
 subroutine plugincore_teardown_writeback_fapi() &

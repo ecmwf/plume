@@ -18,6 +18,7 @@
 
 #include "eckit/exception/Exceptions.h"
 
+#include "atlas/array/Array.h"
 #include "atlas/field/Field.h"
 
 #include "plume/coupling/WriteBackKey.h"
@@ -129,10 +130,12 @@ public:
     const T& get() const { return *valuePtr_; }
 
     /**
-     * @brief Sets the parameter value.
+     * @brief Replaces the stored value or handle.
      *
-     * For Atlas fields this replaces the stored handle, which lets update strategies reshape or reinitialise an
-     * owned field. Model-facing in-place mutation that preserves the handle identity is done via updateParam.
+     * For Atlas fields this rebinds the stored handle to @p value, which lets update strategies reshape or
+     * reinitialise an owned field (e.g. from 3D to 2D). It does not write into the previously referenced data
+     * buffer. In-place mutation that preserves the handle identity (and hence the shared model buffer for
+     * provided fields) is done via writeFieldInPlace().
      *
      * Allowed when owning the value (normal case) or when write-back is active
      * (non-owning parameter authorised by WritebackLedger via isWritable()).
@@ -143,13 +146,40 @@ public:
     }
 
     /**
-     * @brief Returns a mutable reference to the stored Atlas field.
+     * @brief Copies the data of an Atlas field @p value into the existing field buffer, preserving handle identity.
      *
-     * Allowed when owning the field or when write-back is active.
+     * Unlike set(), this does not rebind the stored handle: it copies element data into the already-referenced
+     * field implementation, so the update is visible through every handle sharing that implementation — in
+     * particular the model's own handle for a provided field. This is the write path used by model-facing updates
+     * (updateParam) and plugin write-back (writeParam); it deliberately does not use getSettableField(), which is
+     * reserved for update strategies.
+     *
+     * Allowed when owning the field (normal case) or when write-back is active
+     * (non-owning parameter authorised by WritebackLedger via isWritable()).
+     *
+     * @throws eckit::UserError if @p value has a shape or datatype that differs from the stored field.
+     */
+    template <typename U = T, typename = std::enable_if_t<std::is_base_of_v<atlas::Field, U>>>
+    void writeFieldInPlace(const T& value) {
+        ASSERT(ownsValue_ || isWritable());
+        if (valuePtr_->shape() != value.shape() || valuePtr_->datatype() != value.datatype()) {
+            throw eckit::UserError("Cannot write Atlas field '" + valuePtr_->name() +
+                                       "': shape or datatype mismatch with the source field.",
+                                   Here());
+        }
+        valuePtr_->array().copy(value.array());
+    }
+
+    /**
+     * @brief Returns a mutable reference to the stored Atlas field for in-place mutation.
+     *
+     * @warning Plume-internal. Intended only for update strategies mutating Plume-owned fields. Plugin write-back
+     *          and model-facing updates must go through writeFieldInPlace(), which keeps the write-back guarantees
+     *          and the model-owned/Plume-owned distinction intact.
      */
     template <typename U = T, typename = std::enable_if_t<std::is_base_of_v<atlas::Field, U>>>
     T& getSettableField() {
-        ASSERT(ownsValue_ || isWritable());
+        ASSERT(ownsValue_);
         return *valuePtr_;
     }
 };

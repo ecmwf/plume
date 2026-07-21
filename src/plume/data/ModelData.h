@@ -223,13 +223,7 @@ public:
                 throw eckit::UserError("Parameter '" + name + "' is not owned by Plume and cannot be updated!", Here());
             }
             if constexpr (std::is_same_v<T, atlas::Field>) {
-                atlas::Field& owned = typedPtr->getSettableField();
-                if (owned.shape() != newVal.shape() || owned.datatype() != newVal.datatype()) {
-                    throw eckit::UserError(
-                        "Cannot update Atlas field '" + name + "': shape or datatype mismatch with the source field.",
-                        Here());
-                }
-                owned.array().copy(newVal.array());
+                typedPtr->writeFieldInPlace(newVal);
             }
             else {
                 typedPtr->set(newVal);
@@ -247,8 +241,9 @@ public:
      * immediately to the underlying storage — there is no intermediate buffer. If the write fails,
      * the error is reported to the ledger and the exception is re-thrown.
      *
-     * For Atlas fields, the plugin provides a new atlas::Field whose handle replaces the stored one.
-     * The model reads the new field data on acknowledgement and copies it back to its Fortran arrays.
+     * For Atlas fields using this method, the plugin provides a new atlas::Field whose underlying array is copied into
+     * the stored field. The model reads the new field data on acknowledgement and copies it back to its Fortran arrays.
+     * @todo This implies a lot of potentially expensive copies. See PLUME-75 for a structural alternative.
      *
      * @note Write-back must have been negotiated and the ledger attached by Manager before calling this.
      *
@@ -276,7 +271,12 @@ public:
 
         try {
             if (auto typedPtr = std::dynamic_pointer_cast<ParameterValueTyped<T>>(valueMap_.at(name))) {
-                typedPtr->set(value);
+                if constexpr (std::is_same_v<T, atlas::Field>) {
+                    typedPtr->writeFieldInPlace(value);
+                }
+                else {
+                    typedPtr->set(value);
+                }
                 return;
             }
             throw eckit::BadCast("ModelData::writeParam: type mismatch for parameter '" + name + "'", Here());
