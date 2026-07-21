@@ -13,6 +13,7 @@ TESTSUITE( test_writeback_fapi_suite )
 
 TEST( test_writeback_fapi )
 use iso_c_binding, only: c_int, c_double, c_null_char
+use atlas_module
 use plume_module
 use plume_data_module
 use plume_manager_module
@@ -27,15 +28,20 @@ type(plume_data)     :: data
 integer(c_int)    :: fort_w_int          = 0
 real(c_double)    :: fort_w_double_check = 0.0d0
 
+type(atlas_Field)       :: fort_w_field
+integer(c_int), pointer :: fort_w_field_data(:)
+
 character(len=500) :: mgr_conf_str
 character(len=:), allocatable :: pending_str
 
+call atlas_library%initialise()
 call plume_check(plume_initialise())
 
 ! Offer writable parameters (model side)
 call plume_check(protocol%initialise())
 call plume_check(protocol%offer_int_writable("FORT_W_INT",    "always", "writable int"))
 call plume_check(protocol%offer_double_writable("FORT_W_DOUBLE", "always", "writable double"))
+call plume_check(protocol%offer_atlas_field_writable("FORT_W_FIELD", "always", "writable atlas field"))
 
 mgr_conf_str = '{' // &
 '"write-back-policy": "single-writer", ' // &
@@ -46,7 +52,8 @@ mgr_conf_str = '{' // &
 '        "parameters": [' // &
 '            [' // &
 '                {"name": "FORT_W_INT",    "type": "INT",    "writable": true},' // &
-'                {"name": "FORT_W_DOUBLE", "type": "DOUBLE", "writable": true}' // &
+'                {"name": "FORT_W_DOUBLE", "type": "DOUBLE", "writable": true},' // &
+'                {"name": "FORT_W_FIELD",  "type": "ATLAS_FIELD", "writable": true}' // &
 '            ]' // &
 '        ],' // &
 '        "core-config": {}' // &
@@ -61,9 +68,18 @@ call plume_check(data%initialise())
 ! Writable params can be either provided (model-owned memory) or created (Plume-owned). Both are tested here.
 call plume_check(data%provide_int("FORT_W_INT",       fort_w_int))         ! model-owned
 call plume_check(data%create_double("FORT_W_DOUBLE",  real(0.0d0, kind=c_double)))  ! Plume-owned
+
+! Provided (model-owned) atlas field seeded with known values; the write-back must land in this buffer in place.
+fort_w_field = atlas_Field("FORT_W_FIELD", atlas_integer(), (/3/))
+call fort_w_field%data(fort_w_field_data)
+fort_w_field_data(1) = 1_c_int
+fort_w_field_data(2) = 2_c_int
+fort_w_field_data(3) = 3_c_int
+call plume_check(data%provide_atlas_field_shared("FORT_W_FIELD", fort_w_field))
+
 call plume_check(manager%feed_plugins(data))
 
-! Run the plugin — it writes FORT_W_INT=99 and FORT_W_DOUBLE=1.23
+! Run the plugin — it writes FORT_W_INT=99, FORT_W_DOUBLE=1.23 and FORT_W_FIELD=(100,200,300)
 call plume_check(manager%run())
 
 ! Verify value written to model-owned memory via raw pointer
@@ -73,24 +89,33 @@ FCTEST_CHECK(fort_w_int == 99_c_int)
 call plume_check(data%get_double("FORT_W_DOUBLE", fort_w_double_check))
 FCTEST_CHECK(abs(fort_w_double_check - real(1.23d0, kind=c_double)) < 1.0d-10)
 
+! Verify the provided atlas field was written in place: the model's own field handle sees the new values.
+FCTEST_CHECK(fort_w_field_data(1) == 100_c_int)
+FCTEST_CHECK(fort_w_field_data(2) == 200_c_int)
+FCTEST_CHECK(fort_w_field_data(3) == 300_c_int)
+
 ! Verify pending write-backs
 pending_str = data%pending_writebacks()
 FCTEST_CHECK(index(pending_str, "FORT_W_INT")    > 0)
 FCTEST_CHECK(index(pending_str, "FORT_W_DOUBLE") > 0)
+FCTEST_CHECK(index(pending_str, "FORT_W_FIELD")  > 0)
 
 ! Acknowledge each write-back
 call plume_check(data%acknowledge_writeback("FORT_W_INT"))
 call plume_check(data%acknowledge_writeback("FORT_W_DOUBLE"))
+call plume_check(data%acknowledge_writeback("FORT_W_FIELD"))
 
 ! Verify no more pending write-backs after acknowledgement
 pending_str = data%pending_writebacks()
 FCTEST_CHECK(index(pending_str, "FORT_W_INT")    == 0)
 FCTEST_CHECK(index(pending_str, "FORT_W_DOUBLE") == 0)
+FCTEST_CHECK(index(pending_str, "FORT_W_FIELD")  == 0)
 
 call plume_check(manager%finalise())
 call plume_check(data%finalise())
 call plume_check(protocol%finalise())
 call plume_check(plume_finalise())
+call atlas_library%finalise()
 
 END_TEST
 
