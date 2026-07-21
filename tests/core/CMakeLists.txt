@@ -137,6 +137,14 @@ ecbuild_add_test( TARGET   plume_test_plugin_writeback
                     eckit
 )
 
+ecbuild_add_test( TARGET   plume_test_writeback_atlas
+                  SOURCES  test_writeback_atlas.cc
+                  LIBS
+                    plume_plugin_manager
+                    plume_plugin
+                    eckit
+)
+
 
 ecbuild_add_test( TARGET   plume_test_plugin_params
                   SOURCES
