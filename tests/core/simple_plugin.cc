@@ -31,6 +31,11 @@ static plume::PluginCoreBuilder<SimplePluginCore> runnable_plugincore_FooBuilder
 SimplePluginCore::SimplePluginCore(const eckit::Configuration& conf) : PluginCore(conf) {}
 
 void SimplePluginCore::run() {
+
+    eckit::Log::info() << "Current State Name: " << currentStateName() << std::endl;
+    eckit::Log::info() << "Current State Iteration: " << currentStateIteration() << std::endl;
+    eckit::Log::info() << "Current State Iteration (Rel): " << currentStateIterationRel() << std::endl;
+
     eckit::Log::info() << "Consuming parameters: (" 
                        << "I=" << modelData().getParam<int>("I") << ", "
                        << "J=" << modelData().getParam<int>("J") << ", "

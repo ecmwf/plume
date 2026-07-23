@@ -32,6 +32,22 @@ data::ModelData& PluginCore::modelData() {
     return modelData_;
 }
 
+std::string PluginCore::currentStateName() const {
+    return PlumeState::instance().currentName();
+}
+
+std::string PluginCore::currentStateParent() const {
+    return PlumeState::instance().currentParent();
+}
+
+std::size_t PluginCore::currentStateIteration() const {
+    return PlumeState::instance().currentIteration();
+}
+
+std::size_t PluginCore::currentStateIterationRel() const {
+    return PlumeState::instance().currentRelativeIteration();
+}
+
 
 // ---------------------------------------------------------
 PluginCoreFactory::PluginCoreFactory() {}

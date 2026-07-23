@@ -10,6 +10,10 @@ module plume_module
 
 use plume_lib_module, only : plume_initialise, &
                              plume_finalise
+use plume_state_module, only : plume_state_current_name, &
+                               plume_state_current_parent, &
+                               plume_state_current_iteration, &
+                               plume_state_current_iteration_rel
 
 use plume_data_module, only : plume_data
 use plume_manager_module, only : plume_manager
@@ -29,9 +33,17 @@ integer, public, parameter :: PLUME_ERROR_UNKNOWN_EXCEPTION = 2
 public :: plume_check
 public :: plume_error_string
 
+! Plume lib API
 public :: plume_initialise
 public :: plume_finalise
 
+! Plume state API
+public :: plume_state_current_name
+public :: plume_state_current_parent
+public :: plume_state_current_iteration
+public :: plume_state_current_iteration_rel
+
+! Plume structures
 public :: plume_data
 public :: plume_manager
 public :: plume_protocol

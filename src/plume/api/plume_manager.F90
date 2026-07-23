@@ -15,6 +15,8 @@ use fckit_c_interop_module, only : c_str
 use plume_utils_module, only : fortranise_cstr
 use plume_data_module, only : plume_data
 use plume_protocol_module, only : plume_protocol
+use plume_tags_module, only : PLUME_TAG_RUN
+use plume_utils_module, only : plume_delete_string
 
 implicit none
 private
@@ -35,6 +37,10 @@ contains
     procedure :: active_fields_catalogue => plume_manager_active_fields_catalogue
     procedure :: is_param_requested => plume_manager_is_param_requested
     procedure :: is_plugin_activated => plume_manager_is_plugin_activated
+    procedure :: current_state_name => plume_manager_current_state_name
+    procedure :: current_state_parent => plume_manager_current_state_parent
+    procedure :: current_state_iteration => plume_manager_current_state_iteration
+    procedure :: current_state_iteration_rel => plume_manager_current_state_iteration_rel
 
     procedure :: feed_plugins => plume_manager_feed_plugins
     procedure :: run => plume_manager_run
@@ -70,7 +76,7 @@ end function
 
 function plume_manager_negotiate_interf(handle_impl, proto_handle_impl) result(err) &
     & bind(C,name="plume_manager_negotiate")
-    use iso_c_binding, only: c_int, c_ptr
+    use iso_c_binding, only: c_int, c_ptr, c_char
     type(c_ptr), intent(in), value :: handle_impl
     type(c_ptr), intent(in), value :: proto_handle_impl
     integer(c_int) :: err
@@ -110,24 +116,59 @@ function plume_manager_is_plugin_activated_interf(handle_impl, name, is_plugin) 
     integer :: err
 end function
 
+function plume_manager_current_state_name_interf(handle_impl, state_name) result(err) &
+    & bind(C, name="plume_manager_current_state_name")
+    use iso_c_binding, only: c_ptr, c_int
+    type(c_ptr), intent(in), value :: handle_impl
+    type(c_ptr), intent(inout) :: state_name
+    integer(c_int) :: err
+end function
+
+function plume_manager_current_state_parent_interf(handle_impl, state_parent) result(err) &
+    & bind(C, name="plume_manager_current_state_parent")
+    use iso_c_binding, only: c_ptr, c_int
+    type(c_ptr), intent(in), value :: handle_impl
+    type(c_ptr), intent(inout) :: state_parent
+    integer(c_int) :: err
+end function
+
+function plume_manager_current_state_iteration_interf(handle_impl, iteration) result(err) &
+    & bind(C, name="plume_manager_current_state_iteration")
+    use iso_c_binding, only: c_ptr, c_int, c_int64_t
+    type(c_ptr), intent(in), value :: handle_impl
+    integer(c_int64_t), intent(inout) :: iteration
+    integer(c_int) :: err
+end function
+
+function plume_manager_current_state_iteration_rel_interf(handle_impl, iteration_rel) result(err) &
+    & bind(C, name="plume_manager_current_state_iteration_rel")
+    use iso_c_binding, only: c_ptr, c_int, c_int64_t
+    type(c_ptr), intent(in), value :: handle_impl
+    integer(c_int64_t), intent(inout) :: iteration_rel
+    integer(c_int) :: err
+end function
+
 function plume_manager_feed_plugins_interf(handle_impl, fdata) result(err) &
   & bind(C,name="plume_manager_feed_plugins")
-  use iso_c_binding, only: c_int, c_ptr
+  use iso_c_binding, only: c_int, c_ptr, c_char
   type(c_ptr), intent(in), value :: handle_impl
   type(c_ptr), intent(in), value :: fdata
   integer(c_int) :: err
 end function
 
-function plume_manager_run_interf(handle_impl) result(err) &
+function plume_manager_run_interf(handle_impl, tag_id, has_parent, parent_id) result(err) &
     & bind(C,name="plume_manager_run")
-    use iso_c_binding, only: c_int, c_ptr
+    use iso_c_binding, only: c_int, c_ptr, c_bool
     type(c_ptr), intent(in), value :: handle_impl
+    integer(c_int), intent(in), value :: tag_id
+    logical(c_bool), intent(in), value :: has_parent
+    integer(c_int), intent(in), value :: parent_id
     integer(c_int) :: err
 end function
 
 function plume_manager_teardown_interf(handle_impl) result(err) &
     & bind(C,name="plume_manager_teardown")
-    use iso_c_binding, only: c_int, c_ptr
+    use iso_c_binding, only: c_int, c_ptr, c_char
     type(c_ptr), intent(in), value :: handle_impl
     integer(c_int) :: err
 end function
@@ -152,7 +193,7 @@ function plume_manager_create_handle(handle) result(err)
 end function
 
 function plume_manager_configure(handle, config_str) result(err)
-    use iso_c_binding, only: c_null_char, c_char
+    use iso_c_binding, only: c_char
     class(plume_manager), intent(inout) :: handle
     character(kind=c_char,len=*), intent(in) :: config_str
     integer :: err
@@ -160,7 +201,7 @@ function plume_manager_configure(handle, config_str) result(err)
 end function
 
 function plume_manager_configure_from_string(handle, config_str) result(err)
-    use iso_c_binding, only: c_null_char, c_char
+    use iso_c_binding, only: c_char
     class(plume_manager), intent(inout) :: handle
     character(kind=c_char,len=*), intent(in) :: config_str
     integer :: err
@@ -168,6 +209,7 @@ function plume_manager_configure_from_string(handle, config_str) result(err)
 end function
 
 function plume_manager_negotiate(handle, protocol_handle) result(err)
+    use iso_c_binding, only: c_char
     class(plume_manager), intent(inout) :: handle
     class(plume_protocol), intent(inout) :: protocol_handle
     integer :: err
@@ -175,19 +217,41 @@ function plume_manager_negotiate(handle, protocol_handle) result(err)
 end function
 
 function plume_manager_feed_plugins(handle, fdata) result(err)
+  use iso_c_binding, only: c_char
   class(plume_manager), intent(inout) :: handle
-  class(plume_data), intent(in) :: fdata    
+  class(plume_data), intent(in) :: fdata
   integer :: err
   err = plume_manager_feed_plugins_interf(handle%impl, fdata%impl)
 end function
 
-function plume_manager_run(handle) result(err)
+function plume_manager_run(handle, tag_id, parent_id) result(err)
+    use iso_c_binding, only: c_int, c_bool
     class(plume_manager), intent(inout) :: handle
+    integer(c_int), intent(in), optional :: tag_id
+    integer(c_int), intent(in), optional :: parent_id
     integer :: err
-    err = plume_manager_run_interf(handle%impl)
+    logical(c_bool) :: has_parent
+    integer(c_int) :: run_tag
+    integer(c_int) :: parent
+
+    if (present(tag_id)) then
+        run_tag = tag_id
+    else
+        run_tag = PLUME_TAG_RUN
+    end if
+
+    if (present(parent_id)) then
+        has_parent = .true.
+        parent = parent_id
+    else
+        has_parent = .false.
+        parent = run_tag
+    end if
+
+    err = plume_manager_run_interf(handle%impl, run_tag, has_parent, parent)
 end function
 
-! TODO: this really need to be checked!! not testing for errors, but returns a char*
+! TODO: this really need to be checked!! not testing for errors, but returns a string
 function plume_manager_active_fields(handle) result(fields_str)
     use iso_c_binding, only: c_ptr
     class(plume_manager), intent(inout) :: handle    
@@ -196,9 +260,10 @@ function plume_manager_active_fields(handle) result(fields_str)
     integer :: err
     err = plume_manager_active_fields_interf(handle%impl, fields_ptr)
     fields_str = fortranise_cstr(fields_ptr)
+    err = plume_delete_string(fields_ptr) ! free C-string
 end function
 
-! TODO: this really need to be checked!! not testing for errors, but returns a char*
+! TODO: this really need to be checked!! not testing for errors, but returns a string
 function plume_manager_active_fields_catalogue(handle) result(active_catalogue)
     use iso_c_binding, only: c_ptr
     class(plume_manager), intent(inout) :: handle
@@ -232,9 +297,51 @@ function plume_manager_is_plugin_activated(handle, name, is_plugin) result(err)
     err = plume_manager_is_plugin_activated_interf(handle%impl, c_str(name), is_plugin)
 end function
 
+! Not testing for errors, returns a string
+function plume_manager_current_state_name(handle) result(state_name)
+    use iso_c_binding, only: c_ptr
+    class(plume_manager), intent(inout) :: handle
+    character(:), allocatable, target :: state_name
+    type(c_ptr) :: state_name_ptr
+    integer :: err
+    err = plume_manager_current_state_name_interf(handle%impl, state_name_ptr)
+    state_name = fortranise_cstr(state_name_ptr)
+    err = plume_delete_string(state_name_ptr) ! free C-string
+end function
+
+! Not testing for errors, returns a string
+function plume_manager_current_state_parent(handle) result(state_parent)
+    use iso_c_binding, only: c_ptr
+    class(plume_manager), intent(inout) :: handle
+    character(:), allocatable, target :: state_parent
+    type(c_ptr) :: state_parent_ptr
+    integer :: err
+    err = plume_manager_current_state_parent_interf(handle%impl, state_parent_ptr)
+    state_parent = fortranise_cstr(state_parent_ptr)
+    err = plume_delete_string(state_parent_ptr) ! free C-string
+end function
+
+function plume_manager_current_state_iteration(handle, iteration) result(err)
+    use iso_c_binding, only: c_int, c_int64_t
+    class(plume_manager), intent(inout) :: handle
+    integer(c_int64_t), intent(inout) :: iteration
+    integer(c_int) :: err
+    err = plume_manager_current_state_iteration_interf(handle%impl, iteration)
+end function
+
+function plume_manager_current_state_iteration_rel(handle, iteration_rel) result(err)
+    use iso_c_binding, only: c_int, c_int64_t
+    class(plume_manager), intent(inout) :: handle
+    integer(c_int64_t), intent(inout) :: iteration_rel
+    integer(c_int) :: err
+    err = plume_manager_current_state_iteration_rel_interf(handle%impl, iteration_rel)
+end function
+
 function plume_manager_finalise(handle) result(err)
     class(plume_manager), intent(inout) :: handle
-    integer :: err        
+    integer :: err
+
+    err = 0
     if (handle%is_finalised .eqv. .false.) then
         ! teardown plugins and delete handle
         err = plume_manager_teardown_interf(handle%impl)

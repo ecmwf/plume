@@ -62,6 +62,14 @@ ecbuild_add_test( TARGET   plume_test_params_api
                     plume
 )
 
+ecbuild_add_test( TARGET   plume_test_state_api
+                  SOURCES
+                    test_api_utils.h
+                    test_state_api.cc
+                  LIBS
+                    plume
+)
+
 # Fortran API tests
 add_fctest( TARGET   plume_test_data_fapi
             SOURCES  test_data_api.F90
@@ -83,6 +91,12 @@ add_fctest( TARGET   plume_test_manager_fapi
 
 add_fctest( TARGET   plume_test_params_fapi
             SOURCES  test_params_api.F90
+            LIBS
+              plume_f
+)
+
+add_fctest( TARGET   plume_test_state_fapi
+            SOURCES  test_state_api.F90
             LIBS
               plume_f
 )

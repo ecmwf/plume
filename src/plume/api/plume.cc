@@ -11,6 +11,8 @@
 #include <functional>
 #include <iostream>
 #include <map>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "eckit/config/YAMLConfiguration.h"
@@ -26,6 +28,8 @@
 
 #include "plume.h"
 #include "plume/Manager.h"
+#include "plume/PlumeTag.h"
+#include "plume/PlumeState.h"
 #include "plume/data/ParameterCatalogue.h"
 #include "plume/data/ModelData.h"
 
@@ -35,6 +39,20 @@ static std::string g_current_error_str;
 static plume_failure_handler_t g_failure_handler = nullptr;
 static void* g_failure_handler_context           = nullptr;
 static bool plume_initialised                    = false;
+
+namespace {
+
+plume::PlumeTag plumeTagFromId(plume_tag_id_t tag_id) {
+    switch (tag_id) {
+#define PLUME_TAG(tag_id, tag_name) case PLUME_TAG_ID_##tag_id: return plume::PlumeTag::tag_id;
+#include "plume/TagDefinitions.def"
+#undef PLUME_TAG
+        default:
+            throw eckit::BadParameter("Invalid plume tag id: " + std::to_string(static_cast<int>(tag_id)), Here());
+    }
+}
+
+}  // namespace
 
 
 /** Returns the error string */
@@ -48,6 +66,16 @@ const char* plume_error_string(int err) {
         default:
             return "<unknown>";
     };
+}
+
+const char* plume_tag_name(plume_tag_id_t tag_id) {
+    switch (tag_id) {
+#define PLUME_TAG(tag_id, tag_name) case PLUME_TAG_ID_##tag_id: return tag_name;
+#include "plume/TagDefinitions.def"
+#undef PLUME_TAG
+        default:
+            return nullptr;
+    }
 }
 
 int innerWrapFn(std::function<int()> f) {
@@ -159,6 +187,35 @@ int plume_finalise() {
         else {
             plume_initialised = false;
         }
+    });
+}
+// --------------------------------------------------------------------------------------
+
+
+// ------------------------------------ PLUME state --------------------------------------
+int plume_state_current_name(char** state_name) {
+    return wrapApiFunction([&state_name] {
+        std::string stateName = plume::PlumeState::instance().currentName();
+        *state_name = strcpy(new char[stateName.length() + 1], stateName.c_str());
+    });
+}
+
+int plume_state_current_parent(char** state_parent) {
+    return wrapApiFunction([&state_parent] {
+        std::string stateParent = plume::PlumeState::instance().currentParent();
+        *state_parent = strcpy(new char[stateParent.length() + 1], stateParent.c_str());
+    });
+}
+
+int plume_state_current_iteration(int64_t* iteration) {
+    return wrapApiFunction([&iteration] {
+        *iteration = static_cast<int64_t>(plume::PlumeState::instance().currentIteration());
+    });
+}
+
+int plume_state_current_iteration_rel(int64_t* iteration_rel) {
+    return wrapApiFunction([&iteration_rel] {
+        *iteration_rel = static_cast<int64_t>(plume::PlumeState::instance().currentRelativeIteration());
     });
 }
 // --------------------------------------------------------------------------------------
@@ -328,12 +385,53 @@ int plume_manager_is_plugin_activated(plume_manager_handle_t* h, const char* nam
     });
 }
 
-int plume_manager_run(plume_manager_handle_t* h) {
-    return wrapApiFunction([h] {
+int plume_manager_current_state_name(plume_manager_handle_t* h, char** state_name) {
+    return wrapApiFunction([h, &state_name] {
         ASSERT(h);
         ASSERT((h)->impl_);
 
-        h->impl_->run();
+        std::string stateName = h->impl_->currentStateName();
+        *state_name = strcpy(new char[stateName.length() + 1], stateName.c_str());
+    });
+}
+
+int plume_manager_current_state_parent(plume_manager_handle_t* h, char** state_parent) {
+    return wrapApiFunction([h, &state_parent] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+
+        std::string stateParent = h->impl_->currentStateParent();
+        *state_parent = strcpy(new char[stateParent.length() + 1], stateParent.c_str());
+    });
+}
+
+int plume_manager_current_state_iteration(plume_manager_handle_t* h, int64_t* iteration) {
+    return wrapApiFunction([h, &iteration] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+
+        *iteration = static_cast<int64_t>(h->impl_->currentStateIteration());
+    });
+}
+
+int plume_manager_current_state_iteration_rel(plume_manager_handle_t* h, int64_t* iteration_rel) {
+    return wrapApiFunction([h, &iteration_rel] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+
+        *iteration_rel = static_cast<int64_t>(h->impl_->currentStateIterationRel());
+    });
+}
+
+int plume_manager_run(plume_manager_handle_t* h, plume_tag_id_t tag_id, bool has_parent, plume_tag_id_t parent_id) {
+    return wrapApiFunction([h, tag_id, has_parent, parent_id] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+
+        const plume::PlumeTag tag_enum = plumeTagFromId(tag_id);
+        const std::optional<plume::PlumeTag> parent_enum = has_parent ? std::optional<plume::PlumeTag>(plumeTagFromId(parent_id))
+                                                                       : std::nullopt;
+        h->impl_->run(tag_enum, parent_enum);
     });
 }
 
@@ -518,6 +616,15 @@ int plume_data_set_updated(plume_data_handle_t* h, const int count, const char**
         params.push_back(names[i]);
     }
     return wrapApiFunction([h, params] {h->impl_->setUpdated(params); });
+}
+
+// delete a C-string allocated by Plume API functions
+int plume_delete_string(char* str) {
+    return wrapApiFunction([str] {
+        if (str) {
+            delete[] str;
+        }
+    });
 }
 
 // --------------------------------------------------------------------------------------

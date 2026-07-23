@@ -1,0 +1,35 @@
+/*
+ * (C) Copyright 2023- ECMWF.
+ *
+ * This software is licensed under the terms of the Apache Licence Version 2.0
+ * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * In applying this licence, ECMWF does not waive the privileges and immunities
+ * granted to it by virtue of its status as an intergovernmental organisation nor
+ * does it submit to any jurisdiction.
+ */
+
+// This list defines the supported Plume tags, used to 
+// decorate the execution of Plume manager methods.
+// It represents the unique source of truth for defining tags
+// It is used for C and Fortran API as well.
+// TODO: still to discuss if/how to have only generic tags
+
+PLUME_TAG(CONFIGURE, "configure")
+PLUME_TAG(NEGOTIATE, "negotiate")
+PLUME_TAG(FEED_PLUGINS, "feed_plugins")
+PLUME_TAG(RUN, "run")
+PLUME_TAG(TEARDOWN, "teardown")
+PLUME_TAG(RUN_LVL1, "run_lvl1")
+PLUME_TAG(RUN_LVL2, "run_lvl2")
+PLUME_TAG(RUN_LVL3, "run_lvl3")
+PLUME_TAG(RUN_LVL4, "run_lvl4")
+PLUME_TAG(RUN_LVL5, "run_lvl5")
+PLUME_TAG(RUN_LVL6, "run_lvl6")
+PLUME_TAG(RUN_LVL7, "run_lvl7")
+PLUME_TAG(RUN_LVL8, "run_lvl8")
+PLUME_TAG(RUN_LVL9, "run_lvl9")
+PLUME_TAG(RUN_LVL10, "run_lvl10")
+PLUME_TAG(RUN_BEFORE_PHYSICS, "run_before_physics")
+PLUME_TAG(RUN_AFTER_PHYSICS, "run_after_physics")
+PLUME_TAG(RUN_WAVE_MODEL, "run_wave_model")

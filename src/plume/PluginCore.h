@@ -18,6 +18,7 @@
 #include "eckit/exception/Exceptions.h"
 
 #include "plume/data/ModelData.h"
+#include "plume/PlumeState.h"
 
 
 namespace plume {
@@ -87,6 +88,26 @@ public:
      * 
      */
     virtual void run() = 0;
+
+    /**
+     * @brief Name of the current manager execution state (e.g. "run", "configure", ...)
+     */
+    std::string currentStateName() const;
+
+    /**
+     * @brief Name of the parent of the current manager execution state
+     */
+    std::string currentStateParent() const;
+
+    /**
+     * @brief Absolute iteration count of the current execution state node
+     */
+    std::size_t currentStateIteration() const;
+
+    /**
+     * @brief Iteration count of the current execution state node relative to its parent's last update
+     */
+    std::size_t currentStateIterationRel() const;
 
 protected:
 

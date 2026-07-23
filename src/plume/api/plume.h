@@ -15,8 +15,25 @@ extern "C" {
 #endif
 
 #include <stdbool.h>
+#include <stdint.h>
 
 /* Plume C-interface */
+
+/* --- Plume tags (shared C/C++/Fortran definitions) --- */
+typedef enum plume_tag_id_t {
+#define PLUME_TAG(tag_id, tag_name) PLUME_TAG_ID_##tag_id,
+#include "plume/TagDefinitions.def"
+#undef PLUME_TAG
+    PLUME_TAG_ID_COUNT
+} plume_tag_id_t;
+
+/**
+ * @brief Get canonical tag name for tag ID
+ *
+ * @param tag_id Tag identifier
+ * @return Canonical tag name (e.g. "run_lvl1") or NULL for invalid IDs
+ */
+const char* plume_tag_name(plume_tag_id_t tag_id);
 
 
 /* Return Codes */
@@ -93,6 +110,41 @@ int plume_initialise(int argc, char** argv);
 int plume_finalise();
 
 
+/* --- Plume State (singleton) --- */
+
+/**
+ * @brief Get current state name from the global Plume state singleton
+ *
+ * @param state_name Current state name (allocated C-string)
+ * @return Error code
+ */
+int plume_state_current_name(char** state_name);
+
+/**
+ * @brief Get current parent state name from the global Plume state singleton
+ *
+ * @param state_parent Current parent state name (allocated C-string)
+ * @return Error code
+ */
+int plume_state_current_parent(char** state_parent);
+
+/**
+ * @brief Get current absolute iteration from the global Plume state singleton
+ *
+ * @param iteration Current absolute iteration
+ * @return Error code
+ */
+int plume_state_current_iteration(int64_t* iteration);
+
+/**
+ * @brief Get current relative iteration from the global Plume state singleton
+ *
+ * @param iteration_rel Current relative iteration
+ * @return Error code
+ */
+int plume_state_current_iteration_rel(int64_t* iteration_rel);
+
+
 /* --- Plume Protocol --- */
 int plume_protocol_create_handle(plume_protocol_handle_t** h);
 int plume_protocol_offer_int(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
@@ -148,8 +200,7 @@ int plume_manager_configure_from_string(plume_manager_handle_t* h, const char* c
  * @brief Load all the plugins
  *
  * @param h Handle
- * @param config_path Path to manager configuration file
- * @param field_catalogue catalogue of available fields
+ * @param p Protocol handle
  * @return Error code
  */
 int plume_manager_negotiate(plume_manager_handle_t* h, plume_protocol_handle_t* p);
@@ -202,17 +253,56 @@ int plume_manager_is_param_requested(plume_manager_handle_t* h, const char* name
 int plume_manager_is_plugin_activated(plume_manager_handle_t* h, const char* name, bool* activated);
 
 /**
- * @brief Run all plugins
+ * @brief Get current manager state name
  *
  * @param h Handle
+ * @param state_name Current state name (allocated C-string)
  * @return Error code
  */
-int plume_manager_run(plume_manager_handle_t* h);
+int plume_manager_current_state_name(plume_manager_handle_t* h, char** state_name);
+
+/**
+ * @brief Get current manager parent state name
+ *
+ * @param h Handle
+ * @param state_parent Current parent state name (allocated C-string)
+ * @return Error code
+ */
+int plume_manager_current_state_parent(plume_manager_handle_t* h, char** state_parent);
+
+/**
+ * @brief Get current manager state absolute iteration
+ *
+ * @param h Handle
+ * @param iteration Current state absolute iteration
+ * @return Error code
+ */
+int plume_manager_current_state_iteration(plume_manager_handle_t* h, int64_t* iteration);
+
+/**
+ * @brief Get current manager state iteration relative to parent
+ *
+ * @param h Handle
+ * @param iteration_rel Current state relative iteration
+ * @return Error code
+ */
+int plume_manager_current_state_iteration_rel(plume_manager_handle_t* h, int64_t* iteration_rel);
+
+/**
+ * @brief Run all plugins using typed tag IDs
+ *
+ * @param h Handle
+ * @param tag_id Tag ID for this run step
+ * @param has_parent Whether parent_id should be used
+ * @param parent_id Parent tag ID for nested runs (ignored when has_parent is false)
+ * @return Error code
+ */
+int plume_manager_run(plume_manager_handle_t* h, plume_tag_id_t tag_id, bool has_parent, plume_tag_id_t parent_id);
 
 /**
  * @brief Teardown plugins
  * 
- * @param h 
+ * @param h Handle
  * @return int 
  */
 int plume_manager_teardown(plume_manager_handle_t* h);
@@ -224,8 +314,6 @@ int plume_manager_teardown(plume_manager_handle_t* h);
  * @return Error code
  */
 int plume_manager_delete_handle(plume_manager_handle_t* h);
-
-
 
 
 /* --- Plume Data --- */
@@ -456,6 +544,17 @@ int plume_data_print(plume_data_handle_t* h);
  * @return Error code
  */
 int plume_data_set_updated(plume_data_handle_t* h, const int count, const char** names);
+
+/**
+ * @brief Delete a C-string allocated by Plume API functions
+ *
+ * @param str Pointer to C-string allocated by functions like plume_manager_current_state_name
+ * @return Error code
+ */
+int plume_delete_string(char* str);
+
+
+
 
 
 #if defined(__cplusplus)

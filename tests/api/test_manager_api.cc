@@ -24,6 +24,9 @@ CASE("test_manager_api") {
     plume_protocol_handle_t* protocol_handle;
     plume_manager_handle_t* mgr_handle;
     plume_data_handle_t* data_handle;
+    char* state_name;
+    int64_t state_iteration = -1;
+    int64_t state_iteration_rel = -1;
 
     int error_code = PlumeErrorValues::PLUME_ERROR_GENERAL_EXCEPTION;
 
@@ -92,7 +95,22 @@ CASE("test_manager_api") {
     // create manager handle
     EXPECT_PLUME_CODE_SUCCESS( plume_manager_create_handle(&mgr_handle));
     EXPECT_PLUME_CODE_SUCCESS( plume_manager_configure_from_string(mgr_handle, mgr_conf_str.c_str()));
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_current_state_name(mgr_handle, &state_name));
+    EXPECT_EQUAL(std::string(state_name), "configure");
+    delete[] state_name;
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_current_state_iteration(mgr_handle, &state_iteration));
+    EXPECT_EQUAL(state_iteration, 1);
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_current_state_iteration_rel(mgr_handle, &state_iteration_rel));
+    EXPECT_EQUAL(state_iteration_rel, 1);
+
     EXPECT_PLUME_CODE_SUCCESS( plume_manager_negotiate(mgr_handle, protocol_handle));
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_current_state_name(mgr_handle, &state_name));
+    EXPECT_EQUAL(std::string(state_name), "negotiate");
+    delete[] state_name;
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_current_state_iteration(mgr_handle, &state_iteration));
+    EXPECT_EQUAL(state_iteration, 1);
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_current_state_iteration_rel(mgr_handle, &state_iteration_rel));
+    EXPECT_EQUAL(state_iteration_rel, 1);
 
     // check that the plugins are activated
     bool plugin_activated = false;
@@ -133,10 +151,24 @@ CASE("test_manager_api") {
 
     // Feed the plugins (i.e. each plugin grabs its own share of data)
     EXPECT_PLUME_CODE_SUCCESS( plume_manager_feed_plugins(mgr_handle, data_handle) );
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_current_state_name(mgr_handle, &state_name));
+    EXPECT_EQUAL(std::string(state_name), "feed_plugins");
+    delete[] state_name;
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_current_state_iteration(mgr_handle, &state_iteration));
+    EXPECT_EQUAL(state_iteration, 1);
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_current_state_iteration_rel(mgr_handle, &state_iteration_rel));
+    EXPECT_EQUAL(state_iteration_rel, 1);
 
     // run the plugin for 2 iterations
     for (int i = 0; i < 2; ++i) {
-        EXPECT_PLUME_CODE_SUCCESS( plume_manager_run(mgr_handle));
+      EXPECT_PLUME_CODE_SUCCESS( plume_manager_run(mgr_handle, PLUME_TAG_ID_RUN, false, PLUME_TAG_ID_RUN));
+      EXPECT_PLUME_CODE_SUCCESS( plume_manager_current_state_name(mgr_handle, &state_name));
+      EXPECT_EQUAL(std::string(state_name), "run");
+      delete[] state_name;
+      EXPECT_PLUME_CODE_SUCCESS( plume_manager_current_state_iteration(mgr_handle, &state_iteration));
+      EXPECT_EQUAL(state_iteration, i + 1);
+      EXPECT_PLUME_CODE_SUCCESS( plume_manager_current_state_iteration_rel(mgr_handle, &state_iteration_rel));
+      EXPECT_EQUAL(state_iteration_rel, i + 1);
     }
 
     // finalise plume
