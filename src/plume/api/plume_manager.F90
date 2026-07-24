@@ -200,7 +200,7 @@ function plume_manager_active_fields(handle) result(fields_str)
     call plume_free_string(fields_ptr)
 end function
 
-! TODO: this really need to be checked!! not testing for errors, but returns a char*
+! TODO: this really need to be checked!! not testing for errors, but returns a fckit_configuration
 function plume_manager_active_fields_catalogue(handle) result(active_catalogue)
     use iso_c_binding, only: c_ptr
     class(plume_manager), intent(inout) :: handle
@@ -208,12 +208,14 @@ function plume_manager_active_fields_catalogue(handle) result(active_catalogue)
     type(c_ptr) :: cat_ptr
     integer :: err
 
-    ! init
-    active_catalogue = fckit_configuration()
-
     ! get only the active part of the catalogue
     err = plume_manager_active_fields_catalogue_interf(handle%impl, cat_ptr)
-    call active_catalogue%reset_c_ptr(cat_ptr)
+
+    ! the C side hands back a newly allocated Configuration (caller-owned), so
+    ! take ownership (own=.true. installs the deleter) via the canonical ctor,
+    ! which also calls return() to balance the reference on output.
+    active_catalogue = fckit_configuration(cat_ptr, own=.true.)
+    call active_catalogue%return()
 end function
 
 function plume_manager_is_param_requested(handle, name, is_param) result(err)
