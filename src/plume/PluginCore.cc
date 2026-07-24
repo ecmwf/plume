@@ -23,13 +23,21 @@ std::string PluginCore::name() const {
 }
 
 // grab the data that it needs
-void PluginCore::grabData(const data::ModelData& data) {
+void PluginCore::grabData(data::ModelDataView data) {
     modelData_ = data;
 };
 
 
-data::ModelData& PluginCore::modelData() {
-    return modelData_;
+data::ModelDataView& PluginCore::modelData() {
+    ASSERT(modelData_.has_value());
+    return *modelData_;
+}
+
+
+// Drop the plugin-facing view during finalise() (while atlas is alive), not at static program exit. See
+// PluginCore.h. (PLUME-82) needed only because views co-own model parameters; observer views would obviate it.
+void PluginCore::releaseData() {
+    modelData_.reset();
 }
 
 

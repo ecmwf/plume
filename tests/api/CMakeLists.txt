@@ -126,3 +126,24 @@ add_fctest( TARGET   plume_test_writeback_fapi
             LIBS
               plume_f
 )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Compile-time enforcement: a Fortran plugin holds a plume_data_view and MUST NOT be able to call a model-only mutator.
+# The target is EXCLUDE_FROM_ALL (so the normal build stays green) and the test below drives its compilation and asserts
+# it FAILS (WILL_FAIL). If enforcement regresses, the target compiles and the test fails.
+# ----------------------------------------------------------------------------------------------------------------------
+ecbuild_add_executable( TARGET       plume_should_not_compile_fapi
+                        SOURCES      should_not_compile_fapi.F90
+                        LIBS         plume_f
+                        NOINSTALL )
+set_target_properties( plume_should_not_compile_fapi
+                       PROPERTIES EXCLUDE_FROM_ALL TRUE EXCLUDE_FROM_DEFAULT_BUILD TRUE )
+
+ecbuild_add_test( TARGET          plume_test_fapi_view_enforcement
+                  COMMAND         ${CMAKE_COMMAND}
+                  ARGS            --build ${CMAKE_BINARY_DIR}
+                                  --target plume_should_not_compile_fapi
+                                  --config $<CONFIG>
+                  LABELS          fortran
+                  TEST_PROPERTIES WILL_FAIL TRUE )

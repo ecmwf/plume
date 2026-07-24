@@ -12,12 +12,13 @@
 
 #include <iostream>
 #include <map>
+#include <optional>
 #include <string>
 
 #include "eckit/config/Configuration.h"
 #include "eckit/exception/Exceptions.h"
 
-#include "plume/data/ModelData.h"
+#include "plume/data/ModelDataView.h"
 
 
 namespace plume {
@@ -61,10 +62,26 @@ public:
 
     /**
      * @brief Grab the necessary data that it needs from available data
-     * 
-     * @param data 
+     *
+     * @param data  the plugin-facing view produced by ModelData::filter()
      */
-    void grabData(const data::ModelData& data);
+    void grabData(data::ModelDataView data);
+
+    /**
+     * @brief Release the grabbed plugin-facing model data view at teardown.
+     *
+     * Called by PluginHandler::teardown(). The core is owned by the process-static PluginRegistry, so the
+     * grabbed view (which shares the model's atlas::Field handles) must be dropped here — during the model's
+     * finalise() while atlas is still alive — rather than at program exit when atlas' thread-local allocation
+     * machinery has already been destroyed (which corrupts the heap).
+     *
+     * @note (PLUME-82) This explicit release is a consequence of the current design in which a ModelDataView
+     *       *co-owns* the model's parameters (shared_ptr copies; see ModelData::filter and the ModelDataView
+     *       class note). If views became non-owning observers of model parameters, plugin-view teardown would
+     *       no longer destroy atlas::Field handles and this method would be unnecessary. PLUME-82 tracks that
+     *       refactor.
+     */
+    void releaseData();
 
     /**
      * @brief Setup
@@ -90,11 +107,17 @@ public:
 
 protected:
 
-    data::ModelData& modelData();
+    data::ModelDataView& modelData();
 
 private:
 
-    data::ModelData modelData_;
+    /** @brief Plugin-facing model data view.
+     * 
+     * Optional because ModelDataView has no default constructor — it only exists once filtered from real ModelData.
+     * PluginCore is constructed before grabData() supplies the view, so the member starts empty and modelData() asserts
+     * it is engaged, turning premature access into a clear error.
+     */
+    std::optional<data::ModelDataView> modelData_;
 };
 
 

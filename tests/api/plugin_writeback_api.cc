@@ -50,7 +50,8 @@ void WriteBackTestAPICore::run() {
 
     // Build a brand-new field (distinct implementation from the model's) carrying the updated values, then write
     // it back. write-back must copy the data into the model's own buffer in place, not rebind the handle.
-    const atlas::Field current = modelData().getParam<atlas::Field>("W_FIELD");
+    // getParam yields a read-only FieldView on the plugin path; we only read its datatype()/shape() metadata here.
+    const auto current = modelData().getParam<atlas::Field>("W_FIELD");
     atlas::Field update("W_FIELD", current.datatype(), current.shape());
     auto view = atlas::array::make_view<int, 1>(update);
     for (int i = 0; i < static_cast<int>(view.shape(0)); ++i) {

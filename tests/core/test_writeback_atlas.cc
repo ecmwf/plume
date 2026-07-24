@@ -9,13 +9,19 @@
  * does it submit to any jurisdiction.
  */
 #include <string>
+#include <type_traits>
 
+#include "eckit/exception/Exceptions.h"
 #include "eckit/testing/Test.h"
 
 #include "plume/coupling/WriteAuthorisation.h"
 #include "plume/coupling/WriteBackLedger.h"
 #include "plume/coupling/WriteBackPolicy.h"
+#include "plume/data/FieldAccess.h"
 #include "plume/data/ModelData.h"
+#include "plume/data/ModelDataView.h"
+
+#include "ManagerTestAccess.h"
 
 #include "atlas/array/ArrayShape.h"
 #include "atlas/array/ArrayView.h"
@@ -76,10 +82,10 @@ CASE("test writeback - provided atlas field is written back in place") {
     atlas::Field pluginField("F", atlas::array::make_datatype<int>(), atlas::array::make_shape(4));
     {
         auto pluginView = atlas::array::make_view<int, 1>(pluginField);
-        pluginView(0) = 10;
-        pluginView(1) = 20;
-        pluginView(2) = 30;
-        pluginView(3) = 40;
+        pluginView(0)   = 10;
+        pluginView(1)   = 20;
+        pluginView(2)   = 30;
+        pluginView(3)   = 40;
     }
     data.writeParam<atlas::Field>("F", pluginField);
 
@@ -99,6 +105,137 @@ CASE("test writeback - provided atlas field is written back in place") {
     // Complete the write-back cycle cleanly before the ledger is destroyed.
     ledger.flush();
     data.acknowledgeWriteback("F");
+    data.detachWritebackLedger();
+}
+
+/**
+ * @brief Verifies the plugin-facing read-modify-write path: getParam yields a read-only FieldView, FieldView::clone()
+ *        gives an independent mutable copy seeded with the current values, and writing that clone back through
+ *        writeParam lands in the model's own buffer in place.
+ *
+ * getParam<atlas::Field> on a ModelDataView must return a plume::data::FieldView (not a mutable atlas::Field),
+ * so the only way for a plugin to obtain a writable field is clone() — which is a disconnected deep copy.
+ * Mutating the clone must NOT touch the model buffer (proving the read-only guarantee is not reopened);
+ * the values reach the model only via writeParam, which copies them in place onto the model's existing FieldImpl.
+ */
+CASE("test writeback - plugin clones a FieldView, read-modify-writes, and lands in place") {
+    plume::data::ModelData data;
+
+    atlas::Field modelField("F", atlas::array::make_datatype<int>(), atlas::array::make_shape(4));
+    {
+        auto initView = atlas::array::make_view<int, 1>(modelField);
+        for (int i = 0; i < 4; ++i) {
+            initView(i) = i + 1;  // 1, 2, 3, 4
+        }
+    }
+    data.provideParam("F", &modelField);
+    const atlas::Field::Implementation* modelImpl = modelField.get();
+
+    // Wire the ledger authorising a named plugin consumer to write "F", then build the plugin-facing view.
+    WriteAuthorisation auth;
+    auth.grant("pluginA", "F");
+    coupling::WriteBackLedger ledger(auth, WriteBackPolicy::single_writer);
+    data.enrollWritebackParams(ledger, auth);
+    data.attachWritebackLedger(&ledger);
+    plume::data::ModelDataView view = data.filter(std::set<std::string>{"F"}, "pluginA");
+    ledger.open();
+
+    // getParam on the plugin-facing view yields a read-only FieldView, never a mutable atlas::Field.
+    auto fieldView = view.getParam<atlas::Field>("F");
+    static_assert(std::is_same_v<decltype(fieldView), plume::data::FieldView>,
+                  "getParam<atlas::Field> on a ModelDataView must return a FieldView");
+
+    // The read-only guarantee comes from the FieldView itself, NOT from the caller writing `const`. Request a view
+    // with a non-const element type (int): because a FieldView only converts to `const atlas::array::Array&`,
+    // make_view resolves to the const-source overload and still yields an ArrayView<const int, ...>. A mutable
+    // ArrayView<int, ...> is unobtainable from a FieldView — that is what makes the read path immutable.
+    {
+        auto ro = atlas::array::make_view<int, 1>(fieldView);  // note: int, NOT const int
+        static_assert(std::is_same_v<decltype(ro), atlas::array::ArrayView<const int, 1>>,
+                      "make_view<int,1> over a FieldView must yield a read-only ArrayView<const int,1>");
+        EXPECT_EQUAL(ro(0), 1);
+        EXPECT_EQUAL(ro(3), 4);
+    }
+
+    // clone() gives an independent, mutable deep copy seeded with the current values.
+    atlas::Field work = fieldView.clone();
+    EXPECT(work.get() != modelImpl);  // distinct implementation — shares nothing with the model
+    {
+        auto wv = atlas::array::make_view<int, 1>(work);
+        for (int i = 0; i < 4; ++i) {
+            wv(i) += 100;  // 101, 102, 103, 104
+        }
+    }
+
+    // Mutating the clone must NOT touch the model buffer before write-back (proves deep-copy independence).
+    {
+        auto stillOriginal = atlas::array::make_view<int, 1>(modelField);
+        EXPECT_EQUAL(stillOriginal(0), 1);
+        EXPECT_EQUAL(stillOriginal(3), 4);
+    }
+
+    // Write the modified clone back through the authorised plugin path.
+    view.writeParam<atlas::Field>("F", work);
+
+    // The write lands in the model's own buffer, in place, without swapping the implementation.
+    EXPECT(modelField.get() == modelImpl);
+    {
+        auto afterView = atlas::array::make_view<int, 1>(modelField);
+        EXPECT_EQUAL(afterView(0), 101);
+        EXPECT_EQUAL(afterView(1), 102);
+        EXPECT_EQUAL(afterView(2), 103);
+        EXPECT_EQUAL(afterView(3), 104);
+    }
+
+    ledger.flush();
+    data.acknowledgeWriteback("F");
+    data.detachWritebackLedger();
+}
+
+/**
+ * @brief The value-based writeParam(name, value) write-back must reject an atlas::Field whose shape or datatype does
+ *        not match the stored field, via the writeFieldInPlace guard (eckit::UserError). The failure must also be
+ *        reported to the ledger (the slot goes to error) rather than silently corrupting the model buffer.
+ */
+CASE("test writeback - value writeParam rejects a shape/datatype-mismatched field and reports the error") {
+    plume::data::ModelData data;
+
+    atlas::Field modelField("F", atlas::array::make_datatype<int>(), atlas::array::make_shape(4));
+    {
+        auto initView = atlas::array::make_view<int, 1>(modelField);
+        for (int i = 0; i < 4; ++i) {
+            initView(i) = i + 1;
+        }
+    }
+    data.provideParam("F", &modelField);
+
+    WriteAuthorisation auth;
+    auth.grant("", "F");
+    coupling::WriteBackLedger ledger(auth, WriteBackPolicy::single_writer);
+    data.enrollWritebackParams(ledger, auth);
+    data.attachWritebackLedger(&ledger);
+    ledger.open();
+
+    // Wrong shape: 2 elements vs the stored 4 → UserError, and the failure is recorded on the ledger.
+    atlas::Field wrongShape("F", atlas::array::make_datatype<int>(), atlas::array::make_shape(2));
+    EXPECT_THROWS_AS(data.writeParam<atlas::Field>("F", wrongShape), eckit::UserError);
+    EXPECT(ledger.hasErrors());
+
+    // The model buffer must be untouched by the rejected write.
+    {
+        auto after = atlas::array::make_view<int, 1>(modelField);
+        EXPECT_EQUAL(after(0), 1);
+        EXPECT_EQUAL(after(3), 4);
+    }
+    ManagerTestAccess::forceLedgerReset(ledger);
+
+    // Wrong datatype: double vs the stored int (same shape) → UserError.
+    ledger.open();
+    atlas::Field wrongType("F", atlas::array::make_datatype<double>(), atlas::array::make_shape(4));
+    EXPECT_THROWS_AS(data.writeParam<atlas::Field>("F", wrongType), eckit::UserError);
+    EXPECT(ledger.hasErrors());
+
+    ManagerTestAccess::forceLedgerReset(ledger);
     data.detachWritebackLedger();
 }
 

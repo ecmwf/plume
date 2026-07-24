@@ -16,6 +16,7 @@
 
 #include "plume/data/FieldProvider.h"
 #include "plume/data/ModelData.h"
+#include "plume/data/ModelDataView.h"
 #include "plume/data/ParameterValue.h"
 
 using namespace eckit::testing;
