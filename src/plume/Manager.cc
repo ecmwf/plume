@@ -213,8 +213,8 @@ void Manager::feedPlugins(data::ModelData& data) {
         }
 
         // get the share of run data needed to run the plugincore
-        auto requiredParams          = pluginHandler.getRequiredParamNames();
-        data::ModelData requiredData = data.filter(requiredParams, pluginHandler.pluginName());
+        auto requiredParams              = pluginHandler.getRequiredParamNames();
+        data::ModelDataView requiredData = data.filter(requiredParams, pluginHandler.pluginName());
 
         // grab data
         pluginHandler.grabData(requiredData);
