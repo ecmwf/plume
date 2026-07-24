@@ -28,6 +28,7 @@
 #include "atlas/util/Metadata.h"
 
 #include "plume/coupling/WriteAuthorisation.h"
+#include "plume/data/FieldAccess.h"
 #include "plume/data/ParameterCatalogue.h"
 #include "plume/data/ParameterType.h"
 #include "plume/data/ParameterValue.h"
@@ -39,6 +40,8 @@ class WriteBackLedger;  // forward declaration — ModelData holds a non-owning 
 }
 
 namespace data {
+
+class ModelDataView;  // forward declaration — filter() returns a plugin-facing view.
 
 
 // Container class for Values and pointers
@@ -62,6 +65,15 @@ private:
     coupling::WriteBackLedger* ledger_ = nullptr;
 
     /**
+     * @brief True on the instance that attached the write-back ledger (the model-facing ModelData).
+     *
+     * Set by attachWritebackLedger() — ownership is recorded exactly where it is acquired. Filtered
+     * plugin-facing views copy the ledger_ pointer (so plugins can call writeParam) but never attach, so
+     * they stay false and their base destructor must NOT detach the model's callback.
+     */
+    bool ownsLedger_ = false;
+
+    /**
      * @brief The name of the plugin this ModelData instance was filtered for.
      *
      * Set by Manager::feedPlugins() on the filtered view passed to each plugin.
@@ -69,15 +81,6 @@ private:
      * for audit logging or verbose diagnostics. Empty on the main model-facing instance.
      */
     std::string consumer_;
-
-    /**
-     * @brief Controls whether model-mutating methods (e.g. updateParam) are callable on this instance.
-     *
-     * Set to false by filter() so that plugin-facing ModelData copies cannot update owned parameters.
-     * This is a runtime guard; the stronger compile-time solution (a dedicated `ModelDataView` type
-     * using composition or private inheritance) will be implemented in PLUME-75.
-     */
-    bool modelFacing_ = true;
 
     /**
      * @brief Returns the names of all parameters in the value map.
@@ -109,16 +112,18 @@ private:
     /// Report a write failure to the ledger.
     void reportWritebackError(const std::string& name, const std::string& reason);
 
-    /// Private tag type (temporary) — used to select the plugin-facing constructor from filter(). See modelFacing_.
-    struct PluginFacingTag {};
-
-    /// Constructs a plugin-facing ModelData with modelFacing_ = false.
-    explicit ModelData(PluginFacingTag) : modelFacing_(false) {}
-
 public:
     ModelData();
 
     ~ModelData();
+
+    // Copyable but not movable. Copy is explicit (silences -Wdeprecated-copy); move is deliberately not
+    // declared because the copies that occur in practice are cheap and this avoids a moved-from ledger
+    // double-detach in the destructor. Note: the only copies in normal flow are filtered plugin-facing
+    // views (shared_ptr refcount bumps, empty strategy maps); a full model-facing copy would also clone the
+    // strategyRegistry_/strategyHelpers_ std::function maps, but that does not happen.
+    ModelData(const ModelData&)            = default;
+    ModelData& operator=(const ModelData&) = default;
 
     /**
      * @brief Creates a new value of type T, and transfer its ownership to a parameter wrapper.
@@ -199,16 +204,9 @@ public:
      *
      * @note For Atlas fields, only Plume-owned fields can be updated. Model-provided fields (provideParam) are
      *       not owned by Plume and cannot be mutated through this method.
-     * @note Not callable on plugin-facing (filtered) ModelData instances — throws at runtime. See modelFacing_.
      */
     template <typename T>
     void updateParam(std::string name, T newVal) {
-        if (!modelFacing_) {
-            throw eckit::BadValue(
-                "ModelData::updateParam is not callable on a plugin-facing ModelData. "
-                "Use writeParam() to write back values during a run cycle.",
-                Here());
-        }
         if (!hasParameter(name)) {
             throw eckit::BadParameter("Parameter '" + name + "' not found in model data!", Here());
         }
@@ -223,13 +221,7 @@ public:
                 throw eckit::UserError("Parameter '" + name + "' is not owned by Plume and cannot be updated!", Here());
             }
             if constexpr (std::is_same_v<T, atlas::Field>) {
-                atlas::Field& owned = typedPtr->getSettableField();
-                if (owned.shape() != newVal.shape() || owned.datatype() != newVal.datatype()) {
-                    throw eckit::UserError(
-                        "Cannot update Atlas field '" + name + "': shape or datatype mismatch with the source field.",
-                        Here());
-                }
-                owned.array().copy(newVal.array());
+                typedPtr->writeFieldInPlace(newVal);
             }
             else {
                 typedPtr->set(newVal);
@@ -247,8 +239,9 @@ public:
      * immediately to the underlying storage — there is no intermediate buffer. If the write fails,
      * the error is reported to the ledger and the exception is re-thrown.
      *
-     * For Atlas fields, the plugin provides a new atlas::Field whose handle replaces the stored one.
-     * The model reads the new field data on acknowledgement and copies it back to its Fortran arrays.
+     * For Atlas fields using this method, the plugin provides a new atlas::Field whose underlying array is copied into
+     * the stored field. The model reads the new field data on acknowledgement and copies it back to its Fortran arrays.
+     * @todo This implies a lot of potentially expensive copies. See PLUME-75 for a structural alternative.
      *
      * @note Write-back must have been negotiated and the ledger attached by Manager before calling this.
      *
@@ -260,8 +253,15 @@ public:
      * @throws eckit::BadValue      (from ledger) if the plugin is not authorised or policy is violated.
      * @throws eckit::BadCast       if the value type does not match the stored parameter type.
      */
-    template <typename T>
+    template <typename T, std::enable_if_t<!std::is_invocable_v<T&, FieldWriter&>, int> = 0>
     void writeParam(const std::string& name, const T& value) {
+        // FieldView is a read-only handle and FieldWriter is a scope-bound in-place handle — neither is a value that
+        // can be written back. Reject them at compile time with a pointer to the right path instead of failing at
+        // runtime with a type-mismatch cast.
+        static_assert(!std::is_same_v<T, FieldView> && !std::is_same_v<T, FieldWriter>,
+                      "writeParam(name, value) cannot take a FieldView/FieldWriter: they are access handles, not "
+                      "values. Call fieldView.clone() to get a mutable atlas::Field to write back, or use the in-place "
+                      "writeParam(name, body) form to modify the model buffer directly.");
         if (!ledger_) {
             throw eckit::BadValue(
                 "ModelData::writeParam: write-back ledger not attached — "
@@ -276,7 +276,12 @@ public:
 
         try {
             if (auto typedPtr = std::dynamic_pointer_cast<ParameterValueTyped<T>>(valueMap_.at(name))) {
-                typedPtr->set(value);
+                if constexpr (std::is_same_v<T, atlas::Field>) {
+                    typedPtr->writeFieldInPlace(value);
+                }
+                else {
+                    typedPtr->set(value);
+                }
                 return;
             }
             throw eckit::BadCast("ModelData::writeParam: type mismatch for parameter '" + name + "'", Here());
@@ -285,6 +290,56 @@ public:
             reportWritebackError(name, e.what());
             throw;
         }
+    }
+
+    /**
+     * @brief Plugin-facing in-place write-back: stage a write and return a move-only WriteScope.
+     *
+     * This arity overload (no value argument) is the copy-free counterpart of writeParam(name, value): instead of
+     * copying a whole field into the model buffer, it stages the write with the ledger and hands back a WriteScope
+     * whose field() aliases the model's own buffer for in-place read-modify-write. commit() finalises; the scope's
+     * destructor aborts+reports if commit() was not called. See FieldAccess.h for the WriteScope/FieldWriter contract.
+     *
+     * @throws eckit::BadValue      if the write-back ledger is not attached.
+     * @throws eckit::BadParameter  if the parameter is not found.
+     * @throws eckit::BadValue      if the parameter is not an atlas::Field (use writeParam(name, value) instead).
+     * @throws eckit::BadValue      (from ledger, during staging) if the plugin is not authorised or policy is violated.
+     */
+    WriteScope writeParam(const std::string& name);
+
+    /**
+     * @brief Plugin-facing in-place write-back, context-manager style: stage, run a body against the model buffer,
+     *        and commit — the everyday plugin-author-facing form of the copy-free path.
+     *
+     * This callable overload owns a WriteScope internally so the author supplies only the field math and never
+     * touches staging or commit(). It runs @p body with a FieldWriter aliasing the model's own buffer, then commits;
+     * if @p body throws, the WriteScope destructor aborts and reports the failure to the ledger (so a partial write
+     * is not silently kept). The body typically builds a mutable atlas view over the FieldWriter and mutates in place:
+     *
+     * @code
+     *   data.writeParam("swh", [](plume::data::FieldWriter& f) {
+     *       auto v = atlas::array::make_view<double, 2>(f);   // mutable view over the model buffer
+     *       for (...) v(i, j) *= 1.05;                        // in-place read-modify-write
+     *   });
+     * @endcode
+     *
+     * The value and callable overloads are mutually exclusive via std::is_invocable_v<F&, FieldWriter&>, so a field or
+     * scalar selects writeParam(name, value) while a callable selects this one. Both `[](FieldWriter&){...}` and, by
+     * the FieldWriter → atlas::array::Array& conversion, `[](atlas::array::Array&){...}` and generic `[](auto& f){...}`
+     * bodies resolve here.
+     *
+     * @note C++-only utility. This form takes a C++ callable and hands it a FieldWriter, so it is available only to
+     *       C++ plugins holding a ModelData(View). Fortran/C plugins drive the copy-free write-back through the
+     *       WriteScope begin→mutate→commit C API instead.
+     *
+     * @throws eckit::BadValue/BadParameter as writeParam(name), plus anything @p body throws (after the abort report).
+     */
+    template <typename F, std::enable_if_t<std::is_invocable_v<F&, FieldWriter&>, int> = 0>
+    void writeParam(const std::string& name, F&& body) {
+        WriteScope scope   = writeParam(name);
+        FieldWriter writer = scope.field();
+        body(writer);
+        scope.commit();
     }
 
     /**
@@ -297,7 +352,7 @@ public:
      *          implement a structural fix to prevent plugins from mutating fields obtained via getParam().
      */
     template <typename T>
-    T getParam(std::string name) const {
+    T getParam(const std::string& name) const {
         if (!hasParameter(name)) {
             throw eckit::BadParameter("Parameter '" + name + "' not found in model data!", Here());
         }
@@ -318,11 +373,11 @@ public:
         return getParam<T>(entryName);
     }
 
-    // Return a subset of the ModelData, optionally tagged with the consumer plugin name.
-    ModelData filter(std::set<std::string> params, const std::string& consumer = "") const;
+    /// Returns a subset of the ModelData as a plugin-facing view, optionally tagged with the consumer plugin name.
+    ModelDataView filter(std::set<std::string> params, const std::string& consumer = "") const;
 
-    // Return a subset of the ModelData, optionally tagged with the consumer plugin name.
-    ModelData filter(ParameterCatalogue params, const std::string& consumer = "") const;
+    /// Returns a subset of the ModelData as a plugin-facing view, optionally tagged with the consumer plugin name.
+    ModelDataView filter(ParameterCatalogue params, const std::string& consumer = "") const;
 
     // check if a parameter is in the data
     bool hasParameter(const std::string& name) const;

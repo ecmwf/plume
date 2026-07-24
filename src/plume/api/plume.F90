@@ -11,7 +11,7 @@ module plume_module
 use plume_lib_module, only : plume_initialise, &
                              plume_finalise
 
-use plume_data_module, only : plume_data
+use plume_data_module, only : plume_data, plume_data_view
 use plume_manager_module, only : plume_manager
 use plume_protocol_module, only : plume_protocol
 use plume_utils_module, only : fortranise_cstr
@@ -33,6 +33,7 @@ public :: plume_initialise
 public :: plume_finalise
 
 public :: plume_data
+public :: plume_data_view
 public :: plume_manager
 public :: plume_protocol
 
