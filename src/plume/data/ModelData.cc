@@ -14,6 +14,7 @@
 #include <plume/data/ModelData.h>
 
 #include "plume/coupling/WriteBackTracker.h"
+#include "plume/data/ModelDataView.h"
 
 
 namespace plume {
@@ -26,9 +27,9 @@ ModelData::ModelData() {
 }
 
 ModelData::~ModelData() {
-    // Only the model-facing ModelData instance owns the detach callback.
+    // Only the tracker-owning instance (the model-facing ModelData that attached it) may detach.
     // Plugin-facing (filtered) views may carry a tracker pointer but must not detach or warn.
-    if (tracker_ && modelFacing_) {
+    if (tracker_ && ownsTracker_) {
         eckit::Log::warning() << "ModelData destroyed with write-back tracker still attached — detaching to avoid a "
                                  "dangling callback. Manager::teardown() may not have been called."
                               << std::endl;
@@ -38,27 +39,37 @@ ModelData::~ModelData() {
 }
 
 
-// Get a subset of the ModelData
-ModelData ModelData::filter(std::set<std::string> params, const std::string& consumer) const {
-    ModelData filteredData{PluginFacingTag{}};
+// Get a subset of the ModelData as a plugin-facing view
+ModelDataView ModelData::filter(std::set<std::string> params, const std::string& consumer) const {
+    ModelData filteredData;
+    // A plugin-facing view carries only parameter values — the strategy registries are model-side machinery
+    // (creating/updating derived params) that plugins must not touch, so drop what the default constructor registered.
+    // Could use a ctor with a tag to fully avoid registering strategies if this becomes heavy or with side effects.
+    filteredData.strategyRegistry_.clear();
+    filteredData.strategyHelpers_.clear();
     filteredData.tracker_                = tracker_;   // propagate tracker so plugins can call writeParam
     filteredData.consumer_               = consumer;  // tag this view with the consuming plugin's name
     std::vector<std::string> availParams = getAvailableValues();
     for (const auto& key : params) {
         if (std::find(availParams.begin(), availParams.end(), key) != availParams.end()) {
             auto entry = valueMap_.at(key);
+            // (PLUME-82) shared_ptr copy → the plugin-facing view co-owns this parameter (and its
+            // atlas::Field) with the model-facing ModelData. See ModelDataView's PLUME-82 note: this shared
+            // ownership is why PluginCore::releaseData() must drop the view at teardown. A non-owning
+            // observer view would remove that coupling.
             filteredData.valueMap_.insert(std::make_pair(key, entry));
         }
         else {
             eckit::Log::info() << "Parameter: " << key << " NOT found in Data! " << std::endl;
         }
     }
-    return filteredData;
+    // Hand the built subset to the plugin-facing view. ModelData is intentionally non-movable so this is a cheap copy.
+    return ModelDataView{filteredData};
 }
 
 
 // Return a subset of the ModelData (from catalogue)
-ModelData ModelData::filter(ParameterCatalogue params, const std::string& consumer) const {
+ModelDataView ModelData::filter(ParameterCatalogue params, const std::string& consumer) const {
     return filter(params.getParamNames(), consumer);
 }
 
@@ -139,14 +150,19 @@ std::vector<std::string> ModelData::listAvailableParameters(std::string type_str
 void ModelData::attachWritebackTracker(coupling::WriteBackTracker* tracker) {
     ASSERT_MSG(tracker != nullptr, "ModelData::attachWritebackTracker: tracker must not be null");
     ASSERT_MSG(tracker_ == nullptr, "ModelData::attachWritebackTracker: a tracker is already attached");
-    tracker_ = tracker;
+    tracker_     = tracker;
+    ownsTracker_ = true;  // record ownership where it is acquired — only this instance may detach
     tracker_->setDetachCallback([this]() { tracker_ = nullptr; });
 }
 
 void ModelData::detachWritebackTracker() {
-    if (tracker_) {
+    // Guard the ownership invariant at the point of action: only the instance that attached the tracker
+    // may clear its callback. A non-owning (filtered) view holds a borrowed tracker_ pointer and must not
+    // touch the shared callback, so detach is a no-op for it.
+    if (tracker_ && ownsTracker_) {
         tracker_->setDetachCallback(nullptr);  // prevent double-null when tracker is later destroyed
-        tracker_ = nullptr;
+        tracker_     = nullptr;
+        ownsTracker_ = false;
     }
 }
 
@@ -165,6 +181,36 @@ void ModelData::acknowledgeWriteback(const std::string& name) {
         throw eckit::BadValue("ModelData::acknowledgeWriteback: write-back tracker not attached", Here());
     }
     tracker_->acknowledgeWriteback(name);
+}
+
+// ---------------------------------------------------------------------------
+// Write-back — Plugin-facing
+
+WriteScope ModelData::writeParam(const std::string& name) {
+    if (!tracker_) {
+        throw eckit::BadValue(
+            "ModelData::writeParam: write-back tracker not attached — "
+            "write-back must be negotiated and enabled before calling this method.",
+            Here());
+    }
+    if (!hasParameter(name)) {
+        throw eckit::BadParameter("Parameter '" + name + "' not found in model data!", Here());
+    }
+    // The in-place write scope only makes sense for atlas fields (it hands out a mutable array view) for now.
+    auto fieldPtr = std::dynamic_pointer_cast<ParameterValueTyped<atlas::Field>>(valueMap_.at(name));
+    if (!fieldPtr) {
+        throw eckit::BadValue(
+            "ModelData::writeParam: in-place write-back is only supported for atlas::Field "
+            "parameters; '" +
+                name + "' is not a field — use writeParam(name, value) instead.",
+            Here());
+    }
+    // Stage first: authorisation + single/multi-writer policy are checked here and throw cleanly on violation,
+    // so no writable buffer is resolved or exposed unless the write is legal.
+    recordWrite(name, consumer_);
+    // getSettableField() asserts the write is authorised (tracker-enabled or Plume-owned). The scope holds the
+    // tracker (for the destructor-time abort report) and the now-staged model buffer.
+    return WriteScope{*tracker_, name, fieldPtr->getSettableField()};
 }
 
 // -------- private

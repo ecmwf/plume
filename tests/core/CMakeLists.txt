@@ -84,6 +84,13 @@ ecbuild_add_test( TARGET   plume_test_model_data
                     plume_plugin       
 )
 
+ecbuild_add_test( TARGET   plume_test_model_data_view_enforcement
+                  SOURCES  test_model_data_view_enforcement.cc
+                  LIBS
+                    plume_plugin_manager
+                    plume_plugin
+)
+
 ecbuild_add_test( TARGET   plume_test_atlas_model_data
                   SOURCES  test_atlas_model_data.cc
                   LIBS                    
@@ -138,7 +145,19 @@ ecbuild_add_test( TARGET   plume_test_plugin_writeback
 )
 
 ecbuild_add_test( TARGET   plume_test_writeback_atlas
-                  SOURCES  test_writeback_atlas.cc
+                  SOURCES
+                    ManagerTestAccess.h
+                    test_writeback_atlas.cc
+                  LIBS
+                    plume_plugin_manager
+                    plume_plugin
+                    eckit
+)
+
+ecbuild_add_test( TARGET   plume_test_writeback_scope
+                  SOURCES
+                    ManagerTestAccess.h
+                    test_writeback_scope.cc
                   LIBS
                     plume_plugin_manager
                     plume_plugin
@@ -154,3 +173,38 @@ ecbuild_add_test( TARGET   plume_test_plugin_params
                     plume_plugin_manager
                     eckit
 )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Compile-time enforcement: the value-based writeParam(name, value) overload must REJECT FieldView and
+# FieldWriter (access handles, not values) via its in-body static_assert. That rejection is a hard error.
+# ----------------------------------------------------------------------------------------------------------------------
+ecbuild_add_executable( TARGET       plume_should_not_compile_writeparam_fieldview
+                        SOURCES      should_not_compile_writeparam.cc
+                        DEFINITIONS  CHECK_FIELDVIEW
+                        LIBS         plume_plugin
+                        NOINSTALL )
+set_target_properties( plume_should_not_compile_writeparam_fieldview
+                       PROPERTIES EXCLUDE_FROM_ALL TRUE EXCLUDE_FROM_DEFAULT_BUILD TRUE )
+
+ecbuild_add_test( TARGET          plume_test_writeparam_rejects_fieldview
+                  COMMAND         ${CMAKE_COMMAND}
+                  ARGS            --build ${CMAKE_BINARY_DIR}
+                                  --target plume_should_not_compile_writeparam_fieldview
+                                  --config $<CONFIG>
+                  TEST_PROPERTIES WILL_FAIL TRUE )
+
+ecbuild_add_executable( TARGET       plume_should_not_compile_writeparam_fieldwriter
+                        SOURCES      should_not_compile_writeparam.cc
+                        DEFINITIONS  CHECK_FIELDWRITER
+                        LIBS         plume_plugin
+                        NOINSTALL )
+set_target_properties( plume_should_not_compile_writeparam_fieldwriter
+                       PROPERTIES EXCLUDE_FROM_ALL TRUE EXCLUDE_FROM_DEFAULT_BUILD TRUE )
+
+ecbuild_add_test( TARGET          plume_test_writeparam_rejects_fieldwriter
+                  COMMAND         ${CMAKE_COMMAND}
+                  ARGS            --build ${CMAKE_BINARY_DIR}
+                                  --target plume_should_not_compile_writeparam_fieldwriter
+                                  --config $<CONFIG>
+                  TEST_PROPERTIES WILL_FAIL TRUE )
