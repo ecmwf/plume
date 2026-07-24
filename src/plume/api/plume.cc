@@ -11,6 +11,7 @@
 #include <functional>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <vector>
 
 #include "eckit/config/YAMLConfiguration.h"
@@ -321,6 +322,9 @@ int plume_manager_active_fields(plume_manager_handle_t* h, char** str_in) {
     return wrapApiFunction([h, &str_in] {
         ASSERT(h);
         ASSERT((h)->impl_);
+        ASSERT(str_in);
+        // Clear output up front so a failure never leaves a stale pointer with the caller.
+        *str_in = nullptr;
 
         // Decide how we want to wrap the data..
         auto req_params = h->impl_->getActiveParams();
@@ -343,7 +347,10 @@ int plume_manager_active_data_catalogue(plume_manager_handle_t* h, void** active
     return wrapApiFunction([h, &active_data_catalogue] {
         ASSERT(h);
         ASSERT((h)->impl_);
- 
+        ASSERT(active_data_catalogue);
+        // Clear output up front so a failure never leaves a stale pointer with the caller.
+        *active_data_catalogue = nullptr;
+
         *active_data_catalogue = new eckit::LocalConfiguration(h->impl_->getActiveDataCatalogue().getConfig());
     });
 }
@@ -531,8 +538,20 @@ int plume_data_provide_atlas_field_shared(plume_data_handle_t* h, const char* na
 
 
 // ----------------- Data view "updaters" (Plugin API) -----------------
+//
+// NOTE (PLUME-75): the read-only field guarantee is C++-ONLY. On the C++ side, a plugin holding a
+// data::ModelDataView gets getParam<atlas::Field> back as a read-only data::FieldView (no mutable handle escapes).
+// This C entry point, however, wraps a full data::ModelData* and hands the raw FieldImpl pointer straight to the
+// Fortran atlas_field below, so a Fortran plugin still receives a fully mutable field that shares the model's buffer
+// and can bypass the write-back ledger. Extending the FieldView-style enforcement to the Fortran/C path is a
+// possible follow-up (needs a read-only Fortran field wrapper or a copy-returning entry point).
 int plume_data_get_shared_atlas_field(plume_data_handle_t* h, const char* name, void** ptr) {
-    return wrapApiFunction([h, name, ptr] { *ptr = h->impl_->getParam<atlas::Field>(name).get(); });
+    return wrapApiFunction([h, name, ptr] {
+        ASSERT(ptr);
+        // Clear output up front so a failure never leaves a stale pointer with the caller.
+        *ptr = nullptr;
+        *ptr = h->impl_->getParam<atlas::Field>(name).get();
+    });
 }
 
 int plume_data_get_int(plume_data_handle_t* h, const char* name, int* val) {
@@ -607,10 +626,40 @@ int plume_data_write_atlas_field(plume_data_handle_t* h, const char* name, void*
     });
 }
 
+// C-side backing for the Fortran plume_write_scope. Buffer fetched as in plume_data_get_shared_atlas_field:
+// h->impl_ is statically a ModelData* and getParam is non-virtual, so it binds to the mutable ModelData::getParam.
+int plume_data_write_scope_begin(plume_data_handle_t* h, const char* name, void** scope_out, void** field_ptr_out) {
+    return wrapApiFunction([h, name, scope_out, field_ptr_out] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        ASSERT(scope_out);
+        ASSERT(field_ptr_out);
+        // Clear outputs up front so a failed staging never leaves stale pointers with the caller.
+        *scope_out     = nullptr;
+        *field_ptr_out = nullptr;
+        // Stage first: throws cleanly (nothing allocated) if unauthorised/policy-violating.
+        auto scope     = std::make_unique<plume::data::WriteScope>(h->impl_->writeParam(name));
+        *field_ptr_out = h->impl_->getParam<atlas::Field>(name).get();
+        *scope_out     = scope.release();
+    });
+}
+
+int plume_data_write_scope_commit(void* scope) {
+    return wrapApiFunction([scope] {
+        ASSERT(scope);
+        // Adopt ownership so the WriteScope is always freed, even if commit() throws.
+        std::unique_ptr<plume::data::WriteScope> s(static_cast<plume::data::WriteScope*>(scope));
+        s->commit();
+    });
+}
+
 int plume_data_pending_writebacks(plume_data_handle_t* h, char** names) {
     return wrapApiFunction([h, &names] {
         ASSERT(h);
         ASSERT(h->impl_);
+        ASSERT(names);
+        // Clear output up front so a failure never leaves a stale pointer with the caller.
+        *names = nullptr;
         auto pending = h->impl_->pendingWritebacks();
         std::string tmp;
         for (const auto& p : pending) {

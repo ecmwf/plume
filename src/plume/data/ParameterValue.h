@@ -96,7 +96,8 @@ public:
      * exception: `atlas::Field` is a reference-counted handle around model-owned data, so a copy of the handle is
      * kept as backing storage to keep the field accessible for the session. In both cases the parameter stays
      * non-owning (`ownsValue_ == false`): Plume does not own the underlying data, so `set()`/`getSettableField()`
-     * remain disallowed and `updateParam` cannot mutate it.
+     * are disallowed unless write-back has been authorised for it by the ledger (`isWritable()`), and `updateParam`
+     * (model-facing, owned-only) can never mutate it.
      *
      * @question: do we need special cases for char, char* ? There is currently no support in the C API.
      */
@@ -151,8 +152,8 @@ public:
      * Unlike set(), this does not rebind the stored handle: it copies element data into the already-referenced
      * field implementation, so the update is visible through every handle sharing that implementation — in
      * particular the model's own handle for a provided field. This is the write path used by model-facing updates
-     * (updateParam) and plugin write-back (writeParam); it deliberately does not use getSettableField(), which is
-     * reserved for update strategies.
+     * (updateParam) and the value-based plugin write-back (writeParam(name, value)); it copies rather than handing
+     * out the buffer, so unlike getSettableField() it also validates shape/datatype against the stored field.
      *
      * Allowed when owning the field (normal case) or when write-back is active
      * (non-owning parameter authorised by WritebackLedger via isWritable()).
@@ -171,15 +172,19 @@ public:
     }
 
     /**
-     * @brief Returns a mutable reference to the stored Atlas field for in-place mutation.
+     * @brief Returns a mutable reference to the stored Atlas field for authorised in-place mutation.
      *
-     * @warning Plume-internal. Intended only for update strategies mutating Plume-owned fields. Plugin write-back
-     *          and model-facing updates must go through writeFieldInPlace(), which keeps the write-back guarantees
-     *          and the model-owned/Plume-owned distinction intact.
+     * Hands back the field buffer itself (handle identity preserved) so the caller can mutate the model's data in
+     * place with no scratch allocation. Two callers use it: update strategies mutating Plume-owned fields, and the
+     * in-place plugin write-back path (WriteScope/FieldWriter) once the write is authorised by the ledger. The guard
+     * mirrors writeFieldInPlace().
+     *
+     * @warning Plume-internal. The reference aliases the model's own buffer; only hand it out behind the write-back
+     *          protocol (an authorised, staged WriteScope) or a strategy on a Plume-owned field.
      */
     template <typename U = T, typename = std::enable_if_t<std::is_base_of_v<atlas::Field, U>>>
     T& getSettableField() {
-        ASSERT(ownsValue_);
+        ASSERT(ownsValue_ || isWritable());
         return *valuePtr_;
     }
 };

@@ -14,6 +14,7 @@
 #include <plume/data/ModelData.h>
 
 #include "plume/coupling/WriteBackLedger.h"
+#include "plume/data/ModelDataView.h"
 
 
 namespace plume {
@@ -26,9 +27,9 @@ ModelData::ModelData() {
 }
 
 ModelData::~ModelData() {
-    // Only the model-facing ModelData instance owns the detach callback.
+    // Only the ledger-owning instance (the model-facing ModelData that attached it) may detach.
     // Plugin-facing (filtered) views may carry a ledger pointer but must not detach or warn.
-    if (ledger_ && modelFacing_) {
+    if (ledger_ && ownsLedger_) {
         eckit::Log::warning() << "ModelData destroyed with write-back ledger still attached — detaching to avoid a "
                                  "dangling callback. Manager::teardown() may not have been called."
                               << std::endl;
@@ -38,27 +39,37 @@ ModelData::~ModelData() {
 }
 
 
-// Get a subset of the ModelData
-ModelData ModelData::filter(std::set<std::string> params, const std::string& consumer) const {
-    ModelData filteredData{PluginFacingTag{}};
+// Get a subset of the ModelData as a plugin-facing view
+ModelDataView ModelData::filter(std::set<std::string> params, const std::string& consumer) const {
+    ModelData filteredData;
+    // A plugin-facing view carries only parameter values — the strategy registries are model-side machinery
+    // (creating/updating derived params) that plugins must not touch, so drop what the default constructor registered.
+    // Could use a ctor with a tag to fully avoid registering strategies if this becomes heavy or with side effects.
+    filteredData.strategyRegistry_.clear();
+    filteredData.strategyHelpers_.clear();
     filteredData.ledger_                 = ledger_;   // propagate ledger so plugins can call writeParam
     filteredData.consumer_               = consumer;  // tag this view with the consuming plugin's name
     std::vector<std::string> availParams = getAvailableValues();
     for (const auto& key : params) {
         if (std::find(availParams.begin(), availParams.end(), key) != availParams.end()) {
             auto entry = valueMap_.at(key);
+            // (PLUME-82) shared_ptr copy → the plugin-facing view co-owns this parameter (and its
+            // atlas::Field) with the model-facing ModelData. See ModelDataView's PLUME-82 note: this shared
+            // ownership is why PluginCore::releaseData() must drop the view at teardown. A non-owning
+            // observer view would remove that coupling.
             filteredData.valueMap_.insert(std::make_pair(key, entry));
         }
         else {
             eckit::Log::info() << "Parameter: " << key << " NOT found in Data! " << std::endl;
         }
     }
-    return filteredData;
+    // Hand the built subset to the plugin-facing view. ModelData is intentionally non-movable so this is a cheap copy.
+    return ModelDataView{filteredData};
 }
 
 
 // Return a subset of the ModelData (from catalogue)
-ModelData ModelData::filter(ParameterCatalogue params, const std::string& consumer) const {
+ModelDataView ModelData::filter(ParameterCatalogue params, const std::string& consumer) const {
     return filter(params.getParamNames(), consumer);
 }
 
@@ -139,14 +150,19 @@ std::vector<std::string> ModelData::listAvailableParameters(std::string type_str
 void ModelData::attachWritebackLedger(coupling::WriteBackLedger* ledger) {
     ASSERT_MSG(ledger != nullptr, "ModelData::attachWritebackLedger: ledger must not be null");
     ASSERT_MSG(ledger_ == nullptr, "ModelData::attachWritebackLedger: a ledger is already attached");
-    ledger_ = ledger;
+    ledger_     = ledger;
+    ownsLedger_ = true;  // record ownership where it is acquired — only this instance may detach
     ledger_->setDetachCallback([this]() { ledger_ = nullptr; });
 }
 
 void ModelData::detachWritebackLedger() {
-    if (ledger_) {
+    // Guard the ownership invariant at the point of action: only the instance that attached the ledger
+    // may clear its callback. A non-owning (filtered) view holds a borrowed ledger_ pointer and must not
+    // touch the shared callback, so detach is a no-op for it.
+    if (ledger_ && ownsLedger_) {
         ledger_->setDetachCallback(nullptr);  // prevent double-null when ledger is later destroyed
-        ledger_ = nullptr;
+        ledger_     = nullptr;
+        ownsLedger_ = false;
     }
 }
 
@@ -165,6 +181,36 @@ void ModelData::acknowledgeWriteback(const std::string& name) {
         throw eckit::BadValue("ModelData::acknowledgeWriteback: write-back ledger not attached", Here());
     }
     ledger_->acknowledgeWriteback(name);
+}
+
+// ---------------------------------------------------------------------------
+// Write-back — Plugin-facing
+
+WriteScope ModelData::writeParam(const std::string& name) {
+    if (!ledger_) {
+        throw eckit::BadValue(
+            "ModelData::writeParam: write-back ledger not attached — "
+            "write-back must be negotiated and enabled before calling this method.",
+            Here());
+    }
+    if (!hasParameter(name)) {
+        throw eckit::BadParameter("Parameter '" + name + "' not found in model data!", Here());
+    }
+    // The in-place write scope only makes sense for atlas fields (it hands out a mutable array view) for now.
+    auto fieldPtr = std::dynamic_pointer_cast<ParameterValueTyped<atlas::Field>>(valueMap_.at(name));
+    if (!fieldPtr) {
+        throw eckit::BadValue(
+            "ModelData::writeParam: in-place write-back is only supported for atlas::Field "
+            "parameters; '" +
+                name + "' is not a field — use writeParam(name, value) instead.",
+            Here());
+    }
+    // Stage first: authorisation + single/multi-writer policy are checked here and throw cleanly on violation,
+    // so no writable buffer is resolved or exposed unless the write is legal.
+    stageWriteback(name, consumer_);
+    // getSettableField() asserts the write is authorised (ledger-enabled or Plume-owned). The scope holds the
+    // ledger (for the destructor-time abort report) and the now-staged model buffer.
+    return WriteScope{*ledger_, name, fieldPtr->getSettableField()};
 }
 
 // -------- private
