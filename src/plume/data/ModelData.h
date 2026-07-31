@@ -27,12 +27,17 @@
 #include "atlas/field/Field.h"
 #include "atlas/util/Metadata.h"
 
+#include "plume/coupling/WriteAuthorisation.h"
 #include "plume/data/ParameterCatalogue.h"
 #include "plume/data/ParameterType.h"
 #include "plume/data/ParameterValue.h"
 
 
 namespace plume {
+namespace coupling {
+class WriteBackLedger;  // forward declaration — ModelData holds a non-owning pointer; Manager manages lifetime
+}
+
 namespace data {
 
 
@@ -49,6 +54,30 @@ private:
                            const eckit::Configuration&, const std::map<std::string, std::shared_ptr<IParameterValue>>&,
                            const std::string&, const std::string&)>>
         strategyHelpers_;
+
+    /**
+     * Non-owning pointer to the active write-back ledger. Set by Manager via attachWritebackLedger().
+     * Null when write-back is inactive.
+     */
+    coupling::WriteBackLedger* ledger_ = nullptr;
+
+    /**
+     * @brief The name of the plugin this ModelData instance was filtered for.
+     *
+     * Set by Manager::feedPlugins() on the filtered view passed to each plugin.
+     * Used internally by writeParam() to identify the writer in the ledger, and available
+     * for audit logging or verbose diagnostics. Empty on the main model-facing instance.
+     */
+    std::string consumer_;
+
+    /**
+     * @brief Controls whether model-mutating methods (e.g. updateParam) are callable on this instance.
+     *
+     * Set to false by filter() so that plugin-facing ModelData copies cannot update owned parameters.
+     * This is a runtime guard; the stronger compile-time solution (a dedicated `ModelDataView` type
+     * using composition or private inheritance) will be implemented in PLUME-75.
+     */
+    bool modelFacing_ = true;
 
     /**
      * @brief Returns the names of all parameters in the value map.
@@ -74,10 +103,22 @@ private:
     void addDependency(const std::string& observer, const std::string& observable, const std::string& strategyName,
                        const eckit::Configuration& config);
 
+    /// Stage a write-back slot — checks authorisation and policy.
+    void stageWriteback(const std::string& name, const std::string& pluginName);
+
+    /// Report a write failure to the ledger.
+    void reportWritebackError(const std::string& name, const std::string& reason);
+
+    /// Private tag type (temporary) — used to select the plugin-facing constructor from filter(). See modelFacing_.
+    struct PluginFacingTag {};
+
+    /// Constructs a plugin-facing ModelData with modelFacing_ = false.
+    explicit ModelData(PluginFacingTag) : modelFacing_(false) {}
+
 public:
     ModelData();
 
-    ~ModelData() = default;  // Nothing to do here (each parameter destructs its data pointer, as appropriate..)
+    ~ModelData();
 
     /**
      * @brief Creates a new value of type T, and transfer its ownership to a parameter wrapper.
@@ -158,9 +199,16 @@ public:
      *
      * @note For Atlas fields, only Plume-owned fields can be updated. Model-provided fields (provideParam) are
      *       not owned by Plume and cannot be mutated through this method.
+     * @note Not callable on plugin-facing (filtered) ModelData instances — throws at runtime. See modelFacing_.
      */
     template <typename T>
     void updateParam(std::string name, T newVal) {
+        if (!modelFacing_) {
+            throw eckit::BadValue(
+                "ModelData::updateParam is not callable on a plugin-facing ModelData. "
+                "Use writeParam() to write back values during a run cycle.",
+                Here());
+        }
         if (!hasParameter(name)) {
             throw eckit::BadParameter("Parameter '" + name + "' not found in model data!", Here());
         }
@@ -193,9 +241,60 @@ public:
     }
 
     /**
+     * @brief Plugin-facing write method for write-back parameters.
+     *
+     * Authorisation and policy are checked via the ledger (stageWriteback). The write is applied
+     * immediately to the underlying storage — there is no intermediate buffer. If the write fails,
+     * the error is reported to the ledger and the exception is re-thrown.
+     *
+     * For Atlas fields, the plugin provides a new atlas::Field whose handle replaces the stored one.
+     * The model reads the new field data on acknowledgement and copies it back to its Fortran arrays.
+     *
+     * @note Write-back must have been negotiated and the ledger attached by Manager before calling this.
+     *
+     * @warning Plugins must use this method and not mutate fields obtained via getParam — doing so bypasses
+     *          the ledger and the write-back lifecycle entirely. PLUME-75 tracks a structural fix to prevent this.
+     *
+     * @throws eckit::BadValue      if the write-back ledger is not attached.
+     * @throws eckit::BadParameter  if the parameter is not found.
+     * @throws eckit::BadValue      (from ledger) if the plugin is not authorised or policy is violated.
+     * @throws eckit::BadCast       if the value type does not match the stored parameter type.
+     */
+    template <typename T>
+    void writeParam(const std::string& name, const T& value) {
+        if (!ledger_) {
+            throw eckit::BadValue(
+                "ModelData::writeParam: write-back ledger not attached — "
+                "write-back must be negotiated and enabled before calling this method.",
+                Here());
+        }
+        if (!hasParameter(name)) {
+            throw eckit::BadParameter("Parameter '" + name + "' not found in model data!", Here());
+        }
+        // Stage: checks authorisation, single/multi-writer policy, and advances slot READY/STAGED → STAGED.
+        stageWriteback(name, consumer_);
+
+        try {
+            if (auto typedPtr = std::dynamic_pointer_cast<ParameterValueTyped<T>>(valueMap_.at(name))) {
+                typedPtr->set(value);
+                return;
+            }
+            throw eckit::BadCast("ModelData::writeParam: type mismatch for parameter '" + name + "'", Here());
+        }
+        catch (const std::exception& e) {
+            reportWritebackError(name, e.what());
+            throw;
+        }
+    }
+
+    /**
      * @brief Accesses a value of a parameter. Intended for data users to "update" their local view of the model data.
      *
      * @note This interface can be used for source & derived params if the full name is known.
+     * @warning For atlas::Field parameters, the returned handle shares the underlying field data with the
+     *          stored parameter. Mutating the field through this handle bypasses the write-back ledger
+     *          entirely. Plugins with write-back authorisation must use writeParam() instead. PLUME-75 will
+     *          implement a structural fix to prevent plugins from mutating fields obtained via getParam().
      */
     template <typename T>
     T getParam(std::string name) const {
@@ -219,11 +318,11 @@ public:
         return getParam<T>(entryName);
     }
 
-    // Return a subset of the ModelData
-    ModelData filter(std::set<std::string> params) const;
+    // Return a subset of the ModelData, optionally tagged with the consumer plugin name.
+    ModelData filter(std::set<std::string> params, const std::string& consumer = "") const;
 
-    // Return a subset of the ModelData
-    ModelData filter(ParameterCatalogue params) const;
+    // Return a subset of the ModelData, optionally tagged with the consumer plugin name.
+    ModelData filter(ParameterCatalogue params, const std::string& consumer = "") const;
 
     // check if a parameter is in the data
     bool hasParameter(const std::string& name) const;
@@ -246,6 +345,52 @@ public:
     }
 
     void print() const;
+
+    // -------------------------------------------------------------------------
+    // Write-back interface — Manager-facing
+    // -------------------------------------------------------------------------
+
+    /**
+     * @brief Attach the write-back ledger for this session. Called by Manager::feedPlugins().
+     *
+     * The ledger is non-owning: Manager owns the lifetime and calls detachWritebackLedger() at teardown.
+     */
+    void attachWritebackLedger(coupling::WriteBackLedger* ledger);
+
+    /// Detach the write-back ledger at end of session. Called by Manager::teardown().
+    void detachWritebackLedger();
+
+    /**
+     * @brief Register all authorised parameters with the ledger. Called by Manager::feedPlugins().
+     *
+     * Iterates all plugin/param pairs in @p auth, deduplicates by param name, and calls
+     * ledger.attachParam() for each. Throws if an authorised param is not present in the value map.
+     */
+    void enrollWritebackParams(coupling::WriteBackLedger& ledger, const WriteAuthorisation& auth);
+
+    /// Returns the name of the plugin this ModelData view was filtered for.
+    const std::string& consumer() const { return consumer_; }
+
+    // -------------------------------------------------------------------------
+    // Write-back interface — Model-facing (called by the model after each run())
+    // -------------------------------------------------------------------------
+
+    /**
+     * @brief Returns the names of all parameters pending model acknowledgement (FLUSHED state).
+     *
+     * Returns an empty vector when no write-back ledger is attached.
+     */
+    std::vector<std::string> pendingWritebacks() const;
+
+    /**
+     * @brief Acknowledge that the model has ingested the written value for @p name.
+     *
+     * Advances the slot from FLUSHED → CONFIRMED. Must be called for every parameter returned by
+     * pendingWritebacks() before the next run() cycle.
+     *
+     * @throws eckit::BadValue if the ledger is not attached.
+     */
+    void acknowledgeWriteback(const std::string& name);
 };
 
 }  // namespace data

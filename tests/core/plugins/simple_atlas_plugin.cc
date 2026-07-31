@@ -16,7 +16,7 @@ namespace plume_example_plugin {
 
 REGISTER_LIBRARY(SimpleDerivedPlugin)
 
-SimpleDerivedPlugin::SimpleDerivedPlugin() : Plugin("SimpleDerivedPlugin") {};
+SimpleDerivedPlugin::SimpleDerivedPlugin() : Plugin("SimpleDerivedPlugin"){};
 
 const SimpleDerivedPlugin& SimpleDerivedPlugin::instance() {
     static SimpleDerivedPlugin instance;

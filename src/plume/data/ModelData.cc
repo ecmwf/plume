@@ -9,9 +9,11 @@
  * does it submit to any jurisdiction.
  */
 #include <algorithm>
-#include <exception>
+#include <set>
 
 #include <plume/data/ModelData.h>
+
+#include "plume/coupling/WriteBackLedger.h"
 
 
 namespace plume {
@@ -23,10 +25,24 @@ ModelData::ModelData() {
     registerStrategy<field_provider::WindAtHeight>();
 }
 
+ModelData::~ModelData() {
+    // Only the model-facing ModelData instance owns the detach callback.
+    // Plugin-facing (filtered) views may carry a ledger pointer but must not detach or warn.
+    if (ledger_ && modelFacing_) {
+        eckit::Log::warning() << "ModelData destroyed with write-back ledger still attached — detaching to avoid a "
+                                 "dangling callback. Manager::teardown() may not have been called."
+                              << std::endl;
+        detachWritebackLedger();
+    }
+    // Nothing more to do here (each parameter destructs its data pointer, as appropriate..)
+}
+
 
 // Get a subset of the ModelData
-ModelData ModelData::filter(std::set<std::string> params) const {
-    ModelData filteredData;
+ModelData ModelData::filter(std::set<std::string> params, const std::string& consumer) const {
+    ModelData filteredData{PluginFacingTag{}};
+    filteredData.ledger_                 = ledger_;   // propagate ledger so plugins can call writeParam
+    filteredData.consumer_               = consumer;  // tag this view with the consuming plugin's name
     std::vector<std::string> availParams = getAvailableValues();
     for (const auto& key : params) {
         if (std::find(availParams.begin(), availParams.end(), key) != availParams.end()) {
@@ -42,8 +58,8 @@ ModelData ModelData::filter(std::set<std::string> params) const {
 
 
 // Return a subset of the ModelData (from catalogue)
-ModelData ModelData::filter(ParameterCatalogue params) const {
-    return filter(params.getParamNames());
+ModelData ModelData::filter(ParameterCatalogue params, const std::string& consumer) const {
+    return filter(params.getParamNames(), consumer);
 }
 
 
@@ -116,6 +132,41 @@ std::vector<std::string> ModelData::listAvailableParameters(std::string type_str
     return keys;
 }
 
+
+// ---------------------------------------------------------------------------
+// Write-back — Manager-facing
+
+void ModelData::attachWritebackLedger(coupling::WriteBackLedger* ledger) {
+    ASSERT_MSG(ledger != nullptr, "ModelData::attachWritebackLedger: ledger must not be null");
+    ASSERT_MSG(ledger_ == nullptr, "ModelData::attachWritebackLedger: a ledger is already attached");
+    ledger_ = ledger;
+    ledger_->setDetachCallback([this]() { ledger_ = nullptr; });
+}
+
+void ModelData::detachWritebackLedger() {
+    if (ledger_) {
+        ledger_->setDetachCallback(nullptr);  // prevent double-null when ledger is later destroyed
+        ledger_ = nullptr;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Write-back — Model-facing
+
+std::vector<std::string> ModelData::pendingWritebacks() const {
+    if (!ledger_) {
+        return {};
+    }
+    return ledger_->pendingWritebacks();
+}
+
+void ModelData::acknowledgeWriteback(const std::string& name) {
+    if (!ledger_) {
+        throw eckit::BadValue("ModelData::acknowledgeWriteback: write-back ledger not attached", Here());
+    }
+    ledger_->acknowledgeWriteback(name);
+}
+
 // -------- private
 
 void ModelData::addDependency(const std::string& observer, const std::string& observable, const std::string& type,
@@ -175,6 +226,34 @@ void ModelData::dispatchCreateParam(const std::string& strategy, const eckit::Co
         default:
             throw eckit::BadValue("Parameter Type invalid or not recognised!", Here());
     }
+}
+
+
+// ---------------------------------------------------------------------------
+// Write-back — private helpers (keep ledger out of the template in ModelData.h)
+
+void ModelData::enrollWritebackParams(coupling::WriteBackLedger& ledger, const WriteAuthorisation& auth) {
+    std::set<std::string> attached;
+    for (const auto& pluginName : auth.authorisedPlugins()) {
+        for (const auto& paramName : auth.authorisedParams(pluginName)) {
+            if (!attached.insert(paramName).second) {
+                continue;  // already attached from a previous plugin's entry for the same param
+            }
+            if (!hasParameter(paramName)) {
+                throw eckit::BadParameter("WriteBack: authorised parameter '" + paramName + "' not found in ModelData",
+                                          Here());
+            }
+            ledger.attachParam(paramName, valueMap_.at(paramName).get());
+        }
+    }
+}
+
+void ModelData::stageWriteback(const std::string& name, const std::string& pluginName) {
+    ledger_->stage(name, pluginName);
+}
+
+void ModelData::reportWritebackError(const std::string& name, const std::string& reason) {
+    ledger_->reportError(name, reason);
 }
 
 

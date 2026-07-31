@@ -20,6 +20,7 @@
 
 #include "atlas/field/Field.h"
 
+#include "plume/coupling/WriteBackKey.h"
 #include "plume/data/FieldProvider.h"
 #include "plume/data/ParameterType.h"
 
@@ -28,11 +29,15 @@ namespace data {
 
 /**
  * @class IParameterValue
- * @brief Interface for parameter values. Non-typed base class managing value update status.
+ * @brief Non-typed base class for parameter values, tracking update and writeback state.
+ *
+ * The writable flag is gated behind WriteBackKey (passkey idiom): only WritebackLedger
+ * can enable or disable write access. This prevents plugins from bypassing the ledger.
  */
 class IParameterValue {
 private:
     bool isUpdated_ = false;
+    bool writable_  = false;
 
 public:
     virtual ~IParameterValue() = default;
@@ -41,23 +46,30 @@ public:
 
     bool isUpdated() const { return isUpdated_; }
     virtual void setUpdated(bool updated) { isUpdated_ = updated; }
+
+    bool isWritable() const { return writable_; }
+
+    /// Only callable by WritebackLedger (passkey idiom). Called during ledger open().
+    void enableWriteback(coupling::WriteBackKey) { writable_ = true; }
+
+    /// Only callable by WritebackLedger (passkey idiom). Called during ledger flush().
+    void disableWriteback(coupling::WriteBackKey) { writable_ = false; }
 };
 
 /**
  * @class ParameterValueTyped
- * @brief Template parameter value with optional ownership.
+ * @brief Typed storage for a parameter value, with optional ownership.
  *
  * Represents a parameter of type `T` that may either own its value or observe an externally owned value.
  * The parameter exposes its runtime type via `ParameterType` and provides read-only or controlled mutable access
- * depending on ownership, with a special case for Atlas fields.
+ * depending on ownership and writability, with a special case for Atlas fields.
  *
- * If constructed in non-owning mode, the referenced value must outlive this object. If constructed in owning mode,
- * the value is stored internally and may be modified through the provided setters.
+ * In non-owning mode the referenced value must outlive this object.
  *
- * @tparam T Underlying parameter value type. Must be supported by `deduceType()`.
+ * @tparam T Underlying parameter value type. Must be supported by deduceType().
  */
 template <typename T>
-class ParameterValueTyped {
+class ParameterValueTyped : public IParameterValue {
 private:
     bool ownsValue_;
     ParameterType type_;
@@ -122,22 +134,22 @@ public:
      * For Atlas fields this replaces the stored handle, which lets update strategies reshape or reinitialise an
      * owned field. Model-facing in-place mutation that preserves the handle identity is done via updateParam.
      *
-     * @pre This instance must own its value.
+     * Allowed when owning the value (normal case) or when write-back is active
+     * (non-owning parameter authorised by WritebackLedger via isWritable()).
      */
     void set(const T& value) {
-        ASSERT(ownsValue_);
-        *ownedValue_ = value;
+        ASSERT(ownsValue_ || isWritable());
+        *valuePtr_ = value;
     }
 
     /**
      * @brief Returns a mutable reference to the stored Atlas field.
      *
-     * @pre This instance must own its value. This method can be used by update strategies to change the values of
-     *      owned Atlas fields, instead of setting the field from a new one entirely.
+     * Allowed when owning the field or when write-back is active.
      */
     template <typename U = T, typename = std::enable_if_t<std::is_base_of_v<atlas::Field, U>>>
     T& getSettableField() {
-        ASSERT(ownsValue_);
+        ASSERT(ownsValue_ || isWritable());
         return *valuePtr_;
     }
 };
@@ -242,7 +254,7 @@ public:
  * @tparam Role The role of this template. This header implements observer and publisher roles.
  */
 template <typename T, typename Role>
-class ParameterValue : public ParameterValueTyped<T>, public Role, public IParameterValue {
+class ParameterValue : public ParameterValueTyped<T>, public Role {
 public:
     ~ParameterValue() = default;
 
@@ -260,7 +272,7 @@ public:
     void setUpdated(bool updated) override {
         IParameterValue::setUpdated(updated);
         if constexpr (std::is_same_v<Role, IParameterObservable>) {
-            if (isUpdated()) {
+            if (this->isUpdated()) {
                 this->Role::notifyObservers();
             }
         }
