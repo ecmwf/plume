@@ -38,15 +38,15 @@ character(len=1000) :: mgr_conf_str
 
 logical(c_bool) :: is_requested
 
-character(len=4) :: param_names_requested(5)
-character(len=4) :: param_names_rejected(4)
+character(len=6) :: param_names_requested(6)
+character(len=6) :: param_names_rejected(5)
 integer :: i_param
 
 
 call atlas_library%initialise()
 call plume_check(plume_initialise())
 
-! make offers
+! make offers (read-only params)
 call plume_check(offers%initialise())
 call plume_check(offers%offer_int("I", "always", "this is param I"))
 call plume_check(offers%offer_int("J", "always", "this is param J"))
@@ -54,9 +54,15 @@ call plume_check(offers%offer_float("FF1", "always", "this is param FF1"))
 call plume_check(offers%offer_double("DD1", "always", "this is param DD1"))
 call plume_check(offers%offer_atlas_field("AA1", "always", "this is param AA1"))
 
+! make offers (writable params)
+! W_INT is offered as writable; W_RO is offered as read-only
+call plume_check(offers%offer_int_writable("W_INT", "always", "writable int param"))
+call plume_check(offers%offer_int("W_RO", "always", "read-only int param"))
+
 
 ! negotiate
 mgr_conf_str = '{' // &
+'"write-back-policy": "single-writer", ' // &
 '"plugins": [ ' // &
 '    { ' // &
 '        "lib": "plume_plugin_test_api", ' // &
@@ -77,6 +83,12 @@ mgr_conf_str = '{' // &
 '            [ ' // &
 '                {"name":"XYZ", "type":"INT"}, ' // &
 '                {"name":"K", "type":"INT"} ' // &
+'            ], ' // &
+'            [ ' // &
+'                {"name":"W_INT", "type":"INT", "writable": true} ' // &
+'            ], ' // &
+'            [ ' // &
+'                {"name":"W_RO", "type":"INT", "writable": true} ' // &
 '            ] ' // &
 '        ], ' // &
 '        "core-config": {} ' // &
@@ -89,16 +101,18 @@ call plume_check(manager%initialise())
 call plume_check(manager%configure_from_string(trim(mgr_conf_str)))
 call plume_check(manager%negotiate(offers))
 
-! check accepted parameters
-param_names_requested = [ character(len=4) :: "I", "J", "FF1", "DD1", "AA1" ]
+! check accepted parameters (existing + writable W_INT)
+param_names_requested = [ character(len=6) :: "I", "J", "FF1", "DD1", "AA1", "W_INT" ]
 do i_param=1,size(param_names_requested)
     is_requested = .false.
     call plume_check(manager%is_param_requested(trim(param_names_requested(i_param)), is_requested))
     FCTEST_CHECK(is_requested)
 end do
 
-! check rejected parameters
-param_names_rejected = [ character(len=4) :: "JJJ", "KKMM", "XYZ", "K" ]
+! check rejected parameters:
+!   - JJJ, KKMM, XYZ, K: not offered
+!   - W_RO: offered read-only but plugin required it as writable -> group rejected
+param_names_rejected = [ character(len=6) :: "JJJ", "KKMM", "XYZ", "K", "W_RO" ]
 do i_param=1,size(param_names_rejected)
     is_requested = .true.
     call plume_check(manager%is_param_requested(trim(param_names_rejected(i_param)), is_requested))
