@@ -74,7 +74,7 @@ public:
      * 
      * @param data 
      */
-    void grabData(const data::ModelData& data);
+    void grabData(data::ModelDataView data);
 
     /**
      * @brief setup the plugincore

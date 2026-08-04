@@ -29,6 +29,8 @@ set(PLUGIN_FILES_H
     PluginCore.h
     Configurable.h
     data/ModelData.h
+    data/ModelDataView.h
+    data/FieldAccess.h
     data/ParameterCatalogue.h
     data/ParameterType.h
     data/ParameterValue.h
@@ -52,6 +54,7 @@ set(PLUGIN_FILES_CC
     data/ParameterValue.cc
     data/DataChecker.cc
     data/FieldProvider.cc
+    data/FieldAccess.cc
     coupling/WriteBackPolicy.cc
     coupling/WriteAuthorisation.cc
     coupling/WriteBackLedger.cc
@@ -101,6 +104,9 @@ set(PLUME_PLUGIN_MANAGER_SOURCES
     coupling/WriteBackLedger.cc
     data/ModelData.h
     data/ModelData.cc
+    data/ModelDataView.h
+    data/FieldAccess.h
+    data/FieldAccess.cc
     data/ParameterType.h
     data/ParameterCatalogue.h
     data/ParameterCatalogue.cc

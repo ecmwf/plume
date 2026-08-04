@@ -11,6 +11,12 @@
 #include "plugin_writeback_api.h"
 #include "plume/Protocol.h"
 
+#include "atlas/array/ArrayShape.h"
+#include "atlas/array/ArrayView.h"
+#include "atlas/array/DataType.h"
+#include "atlas/array/MakeView.h"
+#include "atlas/field/Field.h"
+
 namespace plume_writeback_test_api {
 
 REGISTER_LIBRARY(WriteBackTestAPI)
@@ -28,6 +34,7 @@ plume::Protocol WriteBackTestAPI::negotiate() {
     protocol.requireWritable<bool>("W_BOOL");
     protocol.requireWritable<float>("W_FLOAT");
     protocol.requireWritable<double>("W_DOUBLE");
+    protocol.requireWritable<atlas::Field>("W_FIELD");
     return protocol;
 }
 
@@ -40,6 +47,17 @@ void WriteBackTestAPICore::run() {
     modelData().writeParam<bool>("W_BOOL", true);
     modelData().writeParam<float>("W_FLOAT", 3.14f);
     modelData().writeParam<double>("W_DOUBLE", 2.718);
+
+    // Build a brand-new field (distinct implementation from the model's) carrying the updated values, then write
+    // it back. write-back must copy the data into the model's own buffer in place, not rebind the handle.
+    // getParam yields a read-only FieldView on the plugin path; we only read its datatype()/shape() metadata here.
+    const auto current = modelData().getParam<atlas::Field>("W_FIELD");
+    atlas::Field update("W_FIELD", current.datatype(), current.shape());
+    auto view = atlas::array::make_view<int, 1>(update);
+    for (int i = 0; i < static_cast<int>(view.shape(0)); ++i) {
+        view(i) = (i + 1) * 100;
+    }
+    modelData().writeParam<atlas::Field>("W_FIELD", update);
 }
 
 }  // namespace plume_writeback_test_api

@@ -519,6 +519,38 @@ int plume_data_write_double(plume_data_handle_t* h, const char* name, double val
 int plume_data_write_atlas_field(plume_data_handle_t* h, const char* name, void* ptr);
 
 /**
+ * @brief Begin an in-place write-back scope for an Atlas field (plugin-side API).
+ *
+ * Stages the write with the authorisation ledger (fails if the plugin is not authorised or the single-writer
+ * policy is violated) and returns an opaque scope handle plus the staged field's Implementation pointer. The
+ * returned pointer aliases the model's own buffer, so the caller can mutate it in place (no copy) and then finalise
+ * with plume_data_write_scope_commit. This is the copy-free counterpart of plume_data_write_atlas_field.
+ *
+ * @note This (and plume_data_write_atlas_field) is the authorised write-back path: staging runs the ledger's
+ *       authorisation/policy check, signals the model, and records an audit of writing plugins. Mutating a field
+ *       obtained from plume_data_get_shared_atlas_field bypasses all of that (unauthorised, unsignalled, untraced).
+ *       On the C/Fortran boundary this is convention-enforced only, not structural.
+ *
+ * @param h Handle (filtered plugin view — consumer identity carried internally)
+ * @param name Parameter name
+ * @param scope_out Output: opaque write-scope handle (finalise with plume_data_write_scope_commit)
+ * @param field_ptr_out Output: pointer to the staged atlas::Field::Implementation (the model's own buffer)
+ * @return Error code
+ */
+int plume_data_write_scope_begin(plume_data_handle_t* h, const char* name, void** scope_out, void** field_ptr_out);
+
+/**
+ * @brief Commit and free an in-place write-back scope opened with plume_data_write_scope_begin (plugin-side API).
+ *
+ * Finalises the scope (leaving the ledger slot staged for the model flush) and frees the scope handle. The handle
+ * must not be used afterwards. Always frees the scope, even if committing reports an error.
+ *
+ * @param scope Opaque write-scope handle returned by plume_data_write_scope_begin
+ * @return Error code
+ */
+int plume_data_write_scope_commit(void* scope);
+
+/**
  * @brief Free a C string previously returned by a Plume API function (e.g. plume_data_pending_writebacks,
  * plume_manager_active_fields). Use this instead of delete[] directly — required for Fortran callers.
  *

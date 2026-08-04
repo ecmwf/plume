@@ -13,13 +13,13 @@ use iso_c_binding, only : c_ptr, c_null_char, c_loc
 ! wrapper of model data
 use fckit_configuration_module, only : fckit_configuration
 use plume_module, only : plume_check
-use plume_data_module, only : plume_data
+use plume_data_module, only : plume_data_view
 
 implicit none
 private
 
 ! Model data available for the plugincore
-type(plume_data), public :: fapi_data
+type(plume_data_view), public :: fapi_data
 type(fckit_configuration), public :: fapi_configuration
 
 contains
