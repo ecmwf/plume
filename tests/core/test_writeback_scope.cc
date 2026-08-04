@@ -12,6 +12,7 @@
 #include <string>
 #include <utility>
 
+#include "eckit/config/LocalConfiguration.h"
 #include "eckit/exception/Exceptions.h"
 #include "eckit/testing/Test.h"
 
@@ -19,8 +20,10 @@
 #include "plume/coupling/WriteBackLedger.h"
 #include "plume/coupling/WriteBackPolicy.h"
 #include "plume/data/FieldAccess.h"
+#include "plume/data/FieldProvider.h"
 #include "plume/data/ModelData.h"
 #include "plume/data/ModelDataView.h"
+#include "plume/data/ParameterValue.h"
 
 #include "ManagerTestAccess.h"
 
@@ -32,6 +35,49 @@
 #include "atlas/field/Field.h"
 
 using namespace eckit::testing;
+
+namespace plume::field_provider {
+
+/**
+ * @class DummyFieldStrategy
+ * @brief Test-only strategy setting the target field to the source field's values scaled by 10.
+ */
+class DummyFieldStrategy : public UpdateStrategy {
+private:
+    AtlasFieldObservablePtr source_;
+    AtlasFieldObserverPtr target_;
+
+public:
+    DummyFieldStrategy(AtlasFieldObservablePtr source, AtlasFieldObserverPtr target) :
+        source_(source), target_(target) {}
+
+    void update() override {
+        auto source = source_.lock();
+        auto target = target_.lock();
+        ASSERT(source && target);
+
+        auto srcView = atlas::array::make_view<int, 1>(source->get());
+        auto tgtView = atlas::array::make_view<int, 1>(target->getSettableField());
+        for (atlas::idx_t i = 0; i < srcView.shape(0); ++i) {
+            tgtView(i) = srcView(i) * 10;
+        }
+        target->setUpdated(true);
+    }
+};
+
+/**
+ * @brief Specialisation of UpdateStrategyTraits for DummyFieldStrategy. Test-only, no config/param args.
+ */
+template <>
+struct UpdateStrategyTraits<DummyFieldStrategy> {
+    static constexpr const char* name = "dummy_field";
+    static constexpr std::array<const char*, 0> configArgs{};
+    static constexpr std::array<const char*, 0> paramArgs{};
+    static constexpr std::array<std::array<const char*, 0>, 0> requiredParams{{}};
+    using Args = std::tuple<AtlasFieldObservablePtr, AtlasFieldObserverPtr>;
+};
+
+}  // namespace plume::field_provider
 
 namespace plume::test {
 
@@ -325,6 +371,99 @@ CASE("test writeback scope - destroying a filtered view does not detach the mode
     expectFieldValues(h.modelField, {42, 42, 42, 42});
 
     h.flushAndDetach();
+}
+
+// ---- Observer notification on write-back ----
+
+/// Attaches a "F;dummy;00" derived parameter observing "F" via DummyFieldStrategy.
+void attachDummyObserver(plume::data::ModelData& data) {
+    data.registerStrategy<plume::field_provider::DummyFieldStrategy>();
+    eckit::LocalConfiguration cfg;
+    cfg.set("name", "F");
+    cfg.set("levtype", "dummy");
+    cfg.set("level", "00");
+    data.createParam<atlas::Field>("dummy_field", cfg);
+}
+
+CASE("test writeback scope - value-based writeParam notifies an actively observing derived parameter") {
+    WritebackHarness h({""});
+    attachDummyObserver(h.data);
+    h.ledger.open();
+
+    EXPECT_NOT(h.data.isUpdated("F"));
+    EXPECT_NOT(h.data.isUpdated("F;dummy;00"));
+    // "F;dummy;00" is created as a clone of "F" (seeded 1,2,3,4); the strategy has not run yet.
+    expectFieldValues(h.data.getParam<atlas::Field>("F;dummy;00"), {1, 2, 3, 4});
+
+    atlas::Field replacement("F", atlas::array::make_datatype<int>(), atlas::array::make_shape(4));
+    {
+        auto v = atlas::array::make_view<int, 1>(replacement);
+        for (int i = 0; i < 4; ++i) {
+            v(i) = i + 5;  // 5, 6, 7, 8
+        }
+    }
+
+    EXPECT_NO_THROW(h.data.writeParam<atlas::Field>("F", replacement));
+
+    // The write-back target itself is marked updated...
+    EXPECT(h.data.isUpdated("F"));
+    // ...and its actively observing derived parameter was synchronously notified and recomputed.
+    EXPECT(h.data.isUpdated("F;dummy;00"));
+    expectFieldValues(h.data.getParam<atlas::Field>("F;dummy;00"), {50, 60, 70, 80});
+
+    h.flushAndDetach();
+}
+
+CASE("test writeback scope - WriteScope commit() notifies an actively observing derived parameter") {
+    WritebackHarness h({""});
+    attachDummyObserver(h.data);
+    h.ledger.open();
+
+    EXPECT_NOT(h.data.isUpdated("F"));
+    EXPECT_NOT(h.data.isUpdated("F;dummy;00"));
+
+    {
+        plume::data::WriteScope scope   = h.data.writeParam("F");
+        plume::data::FieldWriter writer = scope.field();
+        auto v = atlas::array::make_view<int, 1>(writer);  // MUTABLE view aliasing the model buffer
+        for (int i = 0; i < 4; ++i) {
+            v(i) *= 10;  // 10, 20, 30, 40 — in place
+        }
+        scope.commit();
+    }
+
+    EXPECT(h.data.isUpdated("F"));
+    EXPECT(h.data.isUpdated("F;dummy;00"));
+    expectFieldValues(h.data.getParam<atlas::Field>("F;dummy;00"), {100, 200, 300, 400});
+
+    h.flushAndDetach();
+}
+
+CASE("test writeback scope - WriteScope destroyed without commit() does not notify observers") {
+    WritebackHarness h({""});
+    attachDummyObserver(h.data);
+    h.ledger.open();
+
+    EXPECT_NOT(h.data.isUpdated("F"));
+    EXPECT_NOT(h.data.isUpdated("F;dummy;00"));
+
+    {
+        plume::data::WriteScope scope   = h.data.writeParam("F");
+        plume::data::FieldWriter writer = scope.field();
+        auto v = atlas::array::make_view<int, 1>(writer);
+        for (int i = 0; i < 4; ++i) {
+            v(i) *= 10;
+        }
+        // scope destroyed here without commit() — abort path, reports to the ledger.
+    }
+
+    EXPECT_NOT(h.data.isUpdated("F"));
+    EXPECT_NOT(h.data.isUpdated("F;dummy;00"));
+    EXPECT(h.ledger.hasErrors());
+    // Strategy never ran; "F;dummy;00" still holds its initial clone of the seeded "F" values.
+    expectFieldValues(h.data.getParam<atlas::Field>("F;dummy;00"), {1, 2, 3, 4});
+
+    h.resetAndDetach();
 }
 
 }  // namespace plume::test

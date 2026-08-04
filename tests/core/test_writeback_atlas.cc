@@ -216,10 +216,13 @@ CASE("test writeback - value writeParam rejects a shape/datatype-mismatched fiel
     data.attachWritebackLedger(&ledger);
     ledger.open();
 
+    EXPECT_NOT(data.isUpdated("F"));
+
     // Wrong shape: 2 elements vs the stored 4 → UserError, and the failure is recorded on the ledger.
     atlas::Field wrongShape("F", atlas::array::make_datatype<int>(), atlas::array::make_shape(2));
     EXPECT_THROWS_AS(data.writeParam<atlas::Field>("F", wrongShape), eckit::UserError);
     EXPECT(ledger.hasErrors());
+    EXPECT_NOT(data.isUpdated("F"));
 
     // The model buffer must be untouched by the rejected write.
     {
@@ -234,6 +237,13 @@ CASE("test writeback - value writeParam rejects a shape/datatype-mismatched fiel
     atlas::Field wrongType("F", atlas::array::make_datatype<double>(), atlas::array::make_shape(4));
     EXPECT_THROWS_AS(data.writeParam<atlas::Field>("F", wrongType), eckit::UserError);
     EXPECT(ledger.hasErrors());
+    
+    EXPECT_NOT(data.isUpdated("F"));
+    ManagerTestAccess::forceLedgerReset(ledger);
+    ledger.open();
+    atlas::Field validReplacement("F", atlas::array::make_datatype<int>(), atlas::array::make_shape(4));
+    EXPECT_NO_THROW(data.writeParam<atlas::Field>("F", validReplacement));
+    EXPECT(data.isUpdated("F"));
 
     ManagerTestAccess::forceLedgerReset(ledger);
     data.detachWritebackLedger();

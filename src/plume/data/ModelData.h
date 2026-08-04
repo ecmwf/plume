@@ -279,6 +279,7 @@ public:
                 else {
                     typedPtr->set(value);
                 }
+                typedPtr->setUpdated(true);
                 return;
             }
             throw eckit::BadCast("ModelData::writeParam: type mismatch for parameter '" + name + "'", Here());
@@ -292,10 +293,10 @@ public:
     /**
      * @brief Plugin-facing in-place write-back: stage a write and return a move-only WriteScope.
      *
-     * This arity overload (no value argument) is the copy-free counterpart of writeParam(name, value): instead of
-     * copying a whole field into the model buffer, it stages the write with the ledger and hands back a WriteScope
-     * whose field() aliases the model's own buffer for in-place read-modify-write. commit() finalises; the scope's
-     * destructor aborts+reports if commit() was not called. See FieldAccess.h for the WriteScope/FieldWriter contract.
+     * Copy-free counterpart of writeParam(name, value): stages the write with the ledger and hands back a
+     * WriteScope whose field() aliases the model's own buffer for in-place read-modify-write. commit() finalises
+     * the scope and marks the parameter updated (notifying any active observers); the destructor aborts+reports
+     * if commit() was not called. See FieldAccess.h for the WriteScope/FieldWriter contract.
      *
      * @throws eckit::BadValue      if the write-back ledger is not attached.
      * @throws eckit::BadParameter  if the parameter is not found.

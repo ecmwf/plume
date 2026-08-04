@@ -208,9 +208,7 @@ WriteScope ModelData::writeParam(const std::string& name) {
     // Stage first: authorisation + single/multi-writer policy are checked here and throw cleanly on violation,
     // so no writable buffer is resolved or exposed unless the write is legal.
     stageWriteback(name, consumer_);
-    // getSettableField() asserts the write is authorised (ledger-enabled or Plume-owned). The scope holds the
-    // ledger (for the destructor-time abort report) and the now-staged model buffer.
-    return WriteScope{*ledger_, name, fieldPtr->getSettableField()};
+    return WriteScope{*ledger_, name, *fieldPtr};
 }
 
 // -------- private

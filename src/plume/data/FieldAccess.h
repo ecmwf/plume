@@ -29,6 +29,10 @@ class WriteBackLedger;  // forward declaration — a WriteScope reports an abort
 
 namespace data {
 
+class IParameterValue;  // forward declaration — a WriteScope signals a committed write back to its parameter.
+template <typename T>
+class ParameterValueTyped;  // forward declaration — a WriteScope resolves its settable field from this.
+
 // Plugin-facing field access wrappers.
 //
 // This header groups the narrow, plugin-facing wrappers over a model field: FieldView is the read-only surface
@@ -154,9 +158,9 @@ private:
  * A WriteScope is obtained from the arity overload writeParam(name) (no value argument) on ModelData / ModelDataView.
  * writeParam stages the write with the authorisation ledger (throwing if the plugin is not authorised or the
  * single-writer policy is violated) before handing back the scope; field() then hands a FieldWriter aliasing
- * the model's own buffer so the author can read-modify-write in place; commit() finalises the scope. If the scope is
- * destroyed without commit() (e.g. the author forgot, or the body threw), the destructor poisons the handle and
- * reports the failure to the ledger so the missing write is not silently lost.
+ * the model's own buffer so the author can read-modify-write in place; commit() finalises the scope and notifies any
+ * active observers. If the scope is destroyed without commit() (e.g. the author forgot, or the body threw), the
+ * destructor poisons the handle and reports the failure to the ledger so the missing write is not silently lost.
  *
  * @code
  *   auto w = data.writeParam("swh");                          // stage → WriteScope
@@ -165,8 +169,7 @@ private:
  *   w.commit();                                               // finalise (dtor aborts+reports if forgotten)
  * @endcode
  *
- * This is the manual-control escape hatch; most plugin authors use the callable writeParam(name, body) overload, which
- * owns a WriteScope internally and guarantees stage → run → commit / abort-on-throw.
+ * This is the manual-control escape hatch; most plugin authors use the callable writeParam(name, body) overload.
  */
 class WriteScope {
 public:
@@ -179,20 +182,25 @@ public:
     /// Hands out a mutable, poison-after-scope handle aliasing the staged model buffer.
     FieldWriter field() { return FieldWriter{*field_, valid_}; }
 
-    /// Finalises the scope: poison any outstanding FieldWriter and leave the ledger slot staged for the model flush.
+    /**
+     * @brief Finalises the scope: poisons any outstanding FieldWriter and marks the parameter updated.
+     *
+     * It leaves the ledger slot staged for the model to flush. A repeat call is a no-op.
+     */
     void commit();
 
 private:
     // Only ModelData::writeParam(name) constructs a WriteScope, and only after it has staged the write with the
-    // ledger — so a scope can never exist for an unauthorised or unstaged write. The scope itself needs no access
-    // to ModelData's internals: it borrows the already-resolved buffer and the ledger (for the abort report).
+    // ledger — so a scope can never exist for an unauthorised or unstaged write. It borrows the ledger and a non-owning
+    // pointer to the parameter, resolving the model buffer from it.
     friend class ModelData;
-    WriteScope(coupling::WriteBackLedger& ledger, std::string name, atlas::Field& field);
+    WriteScope(coupling::WriteBackLedger& ledger, std::string name, ParameterValueTyped<atlas::Field>& paramValue);
 
     coupling::WriteBackLedger* ledger_;  // null after a move; guards the destructor abort path
     std::string name_;
-    atlas::Field* field_;    // the staged model buffer (owned by the model, aliased here)
-    bool valid_     = true;  // referenced by every FieldWriter this scope hands out
+    atlas::Field* field_;          // the staged model buffer (owned by the model, aliased here)
+    IParameterValue* paramValue_;  // the param updates propagate on commit if it is actively observed
+    bool valid_     = true;        // referenced by every FieldWriter this scope hands out
     bool committed_ = false;
 };
 

@@ -12,6 +12,7 @@
 
 #include "plume/coupling/WriteBackLedger.h"
 #include "plume/data/FieldAccess.h"
+#include "plume/data/ParameterValue.h"
 
 namespace plume {
 namespace data {
@@ -19,23 +20,23 @@ namespace data {
 // -----------------------------------------------------------------------------
 // WriteScope — the in-place write-back RAII primitive (declared in FieldAccess.h).
 
-// The scope is deliberately decoupled from ModelData: ModelData::writeParam has already staged the write and resolved
-// the buffer, so the scope only borrows the ledger (to report an aborted write) and the model buffer pointer.
-
-WriteScope::WriteScope(coupling::WriteBackLedger& ledger, std::string name, atlas::Field& field) :
-    ledger_(&ledger), name_(std::move(name)), field_(&field) {}
+WriteScope::WriteScope(coupling::WriteBackLedger& ledger, std::string name,
+                       ParameterValueTyped<atlas::Field>& paramValue) :
+    ledger_(&ledger), name_(std::move(name)), field_(&paramValue.getSettableField()), paramValue_(&paramValue) {}
 
 WriteScope::WriteScope(WriteScope&& other) noexcept :
     ledger_(other.ledger_),
     name_(std::move(other.name_)),
     field_(other.field_),
+    paramValue_(other.paramValue_),
     valid_(other.valid_),
     committed_(other.committed_) {
     // Neutralise the moved-from scope so its destructor neither aborts nor reports.
-    other.ledger_    = nullptr;
-    other.field_     = nullptr;
-    other.valid_     = false;
-    other.committed_ = true;
+    other.ledger_     = nullptr;
+    other.field_      = nullptr;
+    other.paramValue_ = nullptr;
+    other.valid_      = false;
+    other.committed_  = true;
 }
 
 WriteScope::~WriteScope() {
@@ -51,11 +52,16 @@ WriteScope::~WriteScope() {
 }
 
 void WriteScope::commit() {
-    // The in-place mutation has already landed in the model buffer through the FieldWriter; there is no
-    // separate buffer to flush. Committing simply poisons the handle and leaves the ledger slot STAGED for
-    // the model to flush at end of cycle — exactly like the value-based writeParam path.
+    if (committed_) {
+        return;  // idempotent: already finalised
+    }
+    // Moved-from scopes are an empty husk with nothing to commit — misuse, so this stays a loud failure.
+    ASSERT_MSG(paramValue_ != nullptr,
+               "WriteScope::commit() called on a moved-from scope for parameter '" + name_ + "'");
     valid_     = false;
     committed_ = true;
+    // Notifies any active observers if the parameter is an actively-observed IParameterObservable.
+    paramValue_->setUpdated(true);
 }
 
 }  // namespace data
