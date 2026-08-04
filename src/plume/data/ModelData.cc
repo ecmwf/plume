@@ -208,9 +208,7 @@ WriteScope ModelData::writeParam(const std::string& name) {
     // Stage first: authorisation + single/multi-writer policy are checked here and throw cleanly on violation,
     // so no writable buffer is resolved or exposed unless the write is legal.
     recordWrite(name, consumer_);
-    // getSettableField() asserts the write is authorised (tracker-enabled or Plume-owned). The scope holds the
-    // tracker (for the destructor-time abort report) and the now-staged model buffer.
-    return WriteScope{*tracker_, name, fieldPtr->getSettableField()};
+    return WriteScope{*tracker_, name, *fieldPtr};
 }
 
 // -------- private
