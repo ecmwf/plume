@@ -208,6 +208,14 @@ int plume_protocol_offer_atlas_field(plume_protocol_handle_t* h, const char* nam
     });
 }
 
+int plume_protocol_offer_hook(plume_protocol_handle_t* h, const char* name, const char* comment) {
+    return wrapApiFunction([h, name, comment] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        h->impl_->offerHook(name, comment);
+    });
+}
+
 int plume_protocol_delete_handle(plume_protocol_handle_t* h) {
     return wrapApiFunction([&h] {
         if (h) {
@@ -317,6 +325,63 @@ int plume_manager_is_param_requested(plume_manager_handle_t* h, const char* name
     });
 }
 
+int plume_manager_active_fields_at_hook(plume_manager_handle_t* h, const char* hook, bool derived, char** str_in) {
+
+    return wrapApiFunction([h, hook, derived, &str_in] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+
+        auto req_params = h->impl_->getActiveParamsAtHook(hook, derived);
+
+        // concatenate param names into a CS-string
+        std::string tmp;
+        for (const auto& p : req_params) {
+            tmp = tmp + "," + p;
+        }
+
+        // allocate and return
+        *str_in = strcpy(new char[tmp.length() + 1], tmp.c_str());
+    });
+}
+
+int plume_manager_is_param_requested_at_hook(plume_manager_handle_t* h, const char* name, const char* hook,
+                                             bool* requested) {
+    return wrapApiFunction([h, name, hook, &requested] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+
+        *requested = h->impl_->isParamRequestedAtHook(std::string{name}, std::string{hook});
+    });
+}
+
+int plume_manager_is_hook_active(plume_manager_handle_t* h, const char* name, bool* active) {
+    return wrapApiFunction([h, name, &active] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+
+        *active = h->impl_->isHookActive(std::string{name});
+    });
+}
+
+int plume_manager_registered_hooks(plume_manager_handle_t* h, char** str_in) {
+
+    return wrapApiFunction([h, &str_in] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+
+        auto hooks = h->impl_->registeredHooks();
+
+        // concatenate hook point names into a CS-string
+        std::string tmp;
+        for (const auto& hook : hooks) {
+            tmp = tmp + "," + hook;
+        }
+
+        // allocate and return
+        *str_in = strcpy(new char[tmp.length() + 1], tmp.c_str());
+    });
+}
+
 int plume_manager_is_plugin_activated(plume_manager_handle_t* h, const char* name, bool* activated) {
     return wrapApiFunction([h, name, &activated] {
         ASSERT(h);
@@ -333,6 +398,15 @@ int plume_manager_run(plume_manager_handle_t* h) {
         ASSERT((h)->impl_);
 
         h->impl_->run();
+    });
+}
+
+int plume_manager_run_hook(plume_manager_handle_t* h, const char* hook) {
+    return wrapApiFunction([h, hook] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+
+        h->impl_->run(std::string{hook});
     });
 }
 

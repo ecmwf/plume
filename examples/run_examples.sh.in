@@ -2,6 +2,7 @@
 
 exe_dir=@CMAKE_BINARY_DIR@/bin
 plume_config=@CMAKE_CURRENT_SOURCE_DIR@/plume_config.yml
+plume_config_hooks=@CMAKE_CURRENT_SOURCE_DIR@/plume_config_hooks.yml
 
 # ===================== Example 1 =====================
 # example 1: demonstrate how to configure plume data
@@ -33,10 +34,12 @@ $exe_dir/plume_example2_fort.x $plume_config
 
 # ===================== Example 3 =====================
 # example 3: Similar to example 1, but this time some parameters
-# are "created" and then updated by the model during the run
+# are "created" and then updated by the model during the run.
+# It also registers two hook points on top of the implicit "default" one, and uses a
+# configuration that binds one of the plugins to one of them.
 
 # Example C++
-$exe_dir/plume_example3_cpp.x $plume_config
+$exe_dir/plume_example3_cpp.x $plume_config_hooks
 
 # Example Fortran
-$exe_dir/plume_example3_fort.x $plume_config
+$exe_dir/plume_example3_fort.x $plume_config_hooks

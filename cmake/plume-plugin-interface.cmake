@@ -30,6 +30,7 @@ function( plume_plugin_interface )
 
     set(multi_value_args
         PLUGIN_REQUIRED_PARAMS
+        PLUGIN_REQUIRED_HOOKS
     )
 
     cmake_parse_arguments( _PAR "${options}" "${single_value_args}" "${multi_value_args}"  ${_FIRST_ARG} ${ARGN} )
@@ -43,6 +44,7 @@ function( plume_plugin_interface )
     set(PLUGIN_SHA ${_PAR_PLUGIN_SHA})
     set(PLUGINCORE_NAME ${_PAR_PLUGINCORE_NAME})
     set(PLUGIN_REQUIRED_PARAMS ${_PAR_PLUGIN_REQUIRED_PARAMS})
+    set(PLUGIN_REQUIRED_HOOKS ${_PAR_PLUGIN_REQUIRED_HOOKS})
     set(PLUGIN_PRECISION ${_PAR_PLUGIN_PRECISION})
 
     # list of required parameters
@@ -64,6 +66,22 @@ function( plume_plugin_interface )
             set(REQUIRED_PARAM_LIST "${REQUIRED_PARAM_LIST} protocol.require<atlas::Field>(\"${param_name}\");\n")
         endif()
     endforeach()
+
+    # list of required hook points (the plugin runs at the default hook point if none are given)
+    set(REQUIRED_HOOK_LIST "")
+    foreach(hook ${PLUGIN_REQUIRED_HOOKS})
+        message("required hook point ${hook}")
+        set(REQUIRED_HOOK_LIST "${REQUIRED_HOOK_LIST} protocol.requireHook(\"${hook}\");\n")
+    endforeach()
+
+    # A plugin that declares hook points gets the current hook point name forwarded to its "run"
+    # subroutine. A plugin that does not keeps the original 2-argument signature, so existing
+    # Fortran plugins do not need any change.
+    if(PLUGIN_REQUIRED_HOOKS)
+        set(PLUGINCORE_RUN_FORWARD "call plugincore_run__${PLUGIN_NAME}(${PLUGIN_NAME}_configuration, ${PLUGIN_NAME}_data, fortranise_cstr(hook_cptr))")
+    else()
+        set(PLUGINCORE_RUN_FORWARD "call plugincore_run__${PLUGIN_NAME}(${PLUGIN_NAME}_configuration, ${PLUGIN_NAME}_data)")
+    endif()
 
     get_filename_component( PLUGIN_TEMPLATE_FILENAME ${_PAR_PLUGIN_TEMPLATE} NAME)
     get_filename_component( GENERATED_USER_SOURCE_FILE ${_PAR_PLUGIN_TEMPLATE} NAME_WLE)

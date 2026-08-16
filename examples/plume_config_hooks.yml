@@ -1,12 +1,19 @@
-# Neither plugin declares a hook point, so both are bound to the implicit "default" hook point
-# and run wherever the model calls plume::Manager::run().
-# See plume_config_hooks.yml for a configuration that re-targets a plugin onto a named hook point.
+# Configuration used by example 3, which registers two hook points ("pre-compute" and
+# "post-compute") on top of the implicit "default" one.
+#
+# Neither PluginFoo nor PluginBar declares a hook point in its negotiate(). PluginFoo therefore
+# stays on the default hook point, while the "hooks" key below re-targets PluginBar onto
+# "post-compute" - without recompiling the plugin.
+#
+# Note that a "hooks" key *replaces* whatever the plugin declared, and that a hook point the model
+# does not register causes the plugin to be rejected during negotiation.
 verbose: true
 plugins:
   - name: PluginFoo
     lib: plugin_foo
   - name: PluginBar
     lib: plugin_bar
+    hooks: [post-compute]
     parameters:
       -
         - name: config-param-1

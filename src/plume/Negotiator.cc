@@ -40,8 +40,46 @@ bool Negotiator::isParamOffered(const Protocol& offers, const data::ParameterDef
 }
 
 
+std::set<std::string> Negotiator::resolveHooks(const Protocol& requires,
+                                               const std::optional<std::set<std::string>>& config_hooks) {
+
+    // hook points from the configuration replace the ones declared by the plugin
+    std::set<std::string> hooks = config_hooks.has_value() ? config_hooks.value() : requires.requiredHooks();
+
+    // a plugin that asks for no hook point runs at the default one
+    if (hooks.empty()) {
+        hooks.insert(DEFAULT_HOOK);
+    }
+
+    return hooks;
+}
+
+
+bool Negotiator::areHooksOffered(const Protocol& offers, const std::set<std::string>& hooks) {
+
+    eckit::Log::info() << "Requesting Hook Points: [";
+    for (auto it = hooks.begin(); it != hooks.end(); ++it) {
+        if (it != hooks.begin())
+            eckit::Log::info() << ", ";
+        eckit::Log::info() << *it;
+    }
+    eckit::Log::info() << "]" << std::endl;
+
+    // all-or-nothing: one hook point not offered by the model rejects the plugin
+    for (const auto& hook : hooks) {
+        if (!offers.isHookOffered(hook)) {
+            eckit::Log::warning() << "Hook point " << hook << " not offered by the model!" << std::endl;
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
 PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& requires,
-                                     const std::vector<eckit::LocalConfiguration>& config_params) {
+                                     const std::vector<eckit::LocalConfiguration>& config_params,
+                                     const std::optional<std::set<std::string>>& config_hooks) {
 
     eckit::Log::info() << "Requesting Plume Version: " << LibVersion(requires.requiredPlumeVersion()).asString()
                        << " VS Actual Plume version " << plume_VERSION << std::endl;
@@ -56,6 +94,13 @@ PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& req
 
     // Check Atlas version
     if (LibVersion(requires.requiredAtlasVersion()) > LibVersion(offers.offeredAtlasVersion())) {
+        return PluginDecision{false};
+    }
+
+    // Check the requested hook points (before the parameters: this is the cheapest check and it
+    // gives the clearest rejection reason)
+    std::set<std::string> agreedHooks = resolveHooks(requires, config_hooks);
+    if (!areHooksOffered(offers, agreedHooks)) {
         return PluginDecision{false};
     }
 
@@ -124,7 +169,7 @@ PluginDecision Negotiator::negotiate(const Protocol& offers, const Protocol& req
         }
     }
 
-    return PluginDecision(true, allRequestedParams);
+    return PluginDecision(true, allRequestedParams, agreedHooks);
 };
 
 

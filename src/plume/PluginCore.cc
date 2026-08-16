@@ -28,8 +28,18 @@ void PluginCore::grabData(const data::ModelData& data) {
 };
 
 
+void PluginCore::setCurrentHook(const std::string& hook) {
+    currentHook_ = hook;
+}
+
+
 data::ModelData& PluginCore::modelData() {
     return modelData_;
+}
+
+
+const std::string& PluginCore::currentHook() const {
+    return currentHook_;
 }
 
 

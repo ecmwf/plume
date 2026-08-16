@@ -52,8 +52,25 @@ int main(int argc, char** argv) {
     offers.offer<double>("config-param-2", "on-request", "this is param config-param-2");
     offers.offer<atlas::Field>("config-param-3", "on-request", "this is param config-param-3");
 
+    // Register the hook points that this model is able to call Plume from. The "default" hook
+    // point is always registered, and is the one that the argument-less Manager::run() targets.
+    offers.offerHook("pre-compute", "before the step is computed");
+    offers.offerHook("post-compute", "after the step has been computed");
+
     // Negotiate with plugins
     plume::Manager::negotiate(offers);
+
+    // After negotiation Plume knows which params each hook point actually consumes, so the model
+    // can refresh exactly what is needed before invoking it.
+    for (const auto& hook : plume::Manager::registeredHooks()) {
+        std::cout << "Hook point '" << hook << "' is "
+                  << (plume::Manager::isHookActive(hook) ? "active" : "not used by any plugin")
+                  << ", params: [";
+        for (const auto& param : plume::Manager::getActiveParamsAtHook(hook, false)) {
+            std::cout << param << " ";
+        }
+        std::cout << "]" << std::endl;
+    }
 
     // data
     atlas::Field field = createAtlasField();
@@ -79,15 +96,22 @@ int main(int argc, char** argv) {
     plume::Manager::feedPlugins(data);
 
     // Run the model for 10 iterations
-    for (int i=0; i<10; i++){        
+    for (int i=0; i<10; i++){
+
+        // first hook point of the step
+        plume::Manager::run("pre-compute");
 
         // Update the values
         data.updateParam("I", i);
         data.updateParam("J", 10+i);
         data.updateParam("K", 100+i);
 
-        // run
+        // The default hook point: this is where the single Manager::run() call has always been,
+        // and it is where plugins that declare no hook point run.
         plume::Manager::run();
+
+        // second hook point of the step
+        plume::Manager::run("post-compute");
     }
 
     // Teardown as necessary

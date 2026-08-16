@@ -229,6 +229,12 @@ bool NWPEmulatorCore::setupPlume(NWPDataProvider& dataProvider) {
     for (const auto& field: fields) {
         offers.offer<atlas::Field>(field.name(), "on-request", field.name());
     }
+
+    // Hook points the emulator is able to call Plume from, in addition to the implicit default
+    // one that it keeps calling where it always has.
+    offers.offerHook("step-begin", "Beginning of a model step, before the step data is marked as updated");
+    offers.offerHook("step-end", "End of a model step, after all plugins bound to the default hook point");
+
     plume::Manager::negotiate(offers);
 
     // Scalar parameters are initialised once before the first plugin step.
@@ -250,13 +256,20 @@ bool NWPEmulatorCore::setupPlume(NWPDataProvider& dataProvider) {
 }
 
 void NWPEmulatorCore::runPlume(int step) {
+    // Plugins bound to "step-begin" see the previous step's values: the step metadata has not
+    // been updated yet.
+    plume::Manager::run("step-begin");
+
     // Update step metadata and mark backing fields as updated only after the
     // provider has populated this step's data.
     plumeData_.updateParam("NSTEP", step);
     plumeData_.updateParam("WSTEP", std::ceil(step * plumeData_.getParam<double>("TSTEP")));
     plumeData_.setUpdated(plumeUpdatingParams_);
 
+    // The default hook point, kept exactly where the single run call has always been.
     plume::Manager::run();
+
+    plume::Manager::run("step-end");
 }
 
 }  // namespace nwp_emulator
