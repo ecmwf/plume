@@ -18,6 +18,7 @@
 #include "eckit/config/Configuration.h"
 #include "eckit/exception/Exceptions.h"
 
+#include "plume/Hook.h"
 #include "plume/data/ModelDataView.h"
 
 
@@ -84,6 +85,15 @@ public:
     void releaseData();
 
     /**
+     * @brief Tell the plugincore which hook point it is about to be run at.
+     *
+     * Called by the PluginHandler immediately before run(). Not meant to be called by plugins.
+     *
+     * @param hook
+     */
+    void setCurrentHook(const std::string& hook);
+
+    /**
      * @brief Setup
      * 
      */
@@ -109,6 +119,16 @@ protected:
 
     data::ModelDataView& modelData();
 
+    /**
+     * @brief The hook point this plugincore is currently being run at.
+     *
+     * Only meaningful from within run(). A plugincore bound to several hook points can use this
+     * to tell them apart.
+     *
+     * @return const std::string&
+     */
+    const std::string& currentHook() const;
+
 private:
 
     /** @brief Plugin-facing model data view.
@@ -118,6 +138,8 @@ private:
      * it is engaged, turning premature access into a clear error.
      */
     std::optional<data::ModelDataView> modelData_;
+
+    std::string currentHook_{DEFAULT_HOOK};
 };
 
 

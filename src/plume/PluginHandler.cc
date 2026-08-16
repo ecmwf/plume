@@ -51,7 +51,25 @@ void PluginHandler::setup() {
 
 
 void PluginHandler::run() {
+    run(DEFAULT_HOOK);
+}
+
+
+void PluginHandler::run(const std::string& hook) {
+    // let the plugincore know where it is being called from, then run it
+    plugincorePtr_->setCurrentHook(hook);
     plugincorePtr_->run();
+}
+
+
+bool PluginHandler::runsAt(const std::string& hook) const {
+    const auto& hooks = decision_.agreedHooks();
+    return hooks.find(hook) != hooks.end();
+}
+
+
+const std::set<std::string>& PluginHandler::hooks() const {
+    return decision_.agreedHooks();
 }
 
 

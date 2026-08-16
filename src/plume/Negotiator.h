@@ -12,11 +12,14 @@
 #pragma once
 
 #include <map>
+#include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "eckit/config/LocalConfiguration.h"
 
+#include "Hook.h"
 #include "PluginDecision.h"
 #include "Protocol.h"
 #include "coupling/WriteAuthorisation.h"
@@ -51,6 +54,23 @@ private:
     // Record the accepted plugin's parameter claims into the tracking maps.
     void recordClaims(const std::string& pluginName, const PluginDecision& decision);
 
+    /**
+     * @brief Work out the hook points a plugin is asking for.
+     *
+     * Hook points requested through the configuration *replace* the ones the plugin declared, so
+     * that a deployment can re-target a plugin without recompiling it. A plugin that asks for no
+     * hook point at all is bound to plume::DEFAULT_HOOK.
+     */
+    std::set<std::string> resolveHooks(const Protocol& requires,
+                                       const std::optional<std::set<std::string>>& config_hooks);
+
+    /**
+     * @brief Are all the requested hook points offered by the model?
+     *
+     * All-or-nothing, consistently with the parameters declared by the plugin.
+     */
+    bool areHooksOffered(const Protocol& offers, const std::set<std::string>& hooks);
+
 public:
     /**
      * @brief Construct a Negotiator with the given write-back policy.
@@ -71,12 +91,14 @@ public:
      * @param offers       Parameters offered by the model.
      * @param requires     Parameters required by the plugin.
      * @param config_params Optional parameter groups from manager configuration.
+     * @param config_hooks  Hook points from the plugin configuration (nullopt if the key is absent).
      * @return PluginDecision with accepted=true if the plugin passes all checks.
      */
     PluginDecision negotiate(
         const std::string& pluginName,
         const Protocol& offers, const Protocol& requires,
-        const std::vector<eckit::LocalConfiguration>& config_params = std::vector<eckit::LocalConfiguration>{});
+        const std::vector<eckit::LocalConfiguration>& config_params = std::vector<eckit::LocalConfiguration>{},
+        const std::optional<std::set<std::string>>& config_hooks = std::nullopt);
 
     /**
      * @brief Emit a post-negotiation summary of the accepted plugin execution order.

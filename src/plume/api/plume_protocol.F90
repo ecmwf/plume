@@ -28,6 +28,7 @@ module plume_protocol_module
         procedure :: offer_float        => plume_protocol_offer_float
         procedure :: offer_double       => plume_protocol_offer_double
         procedure :: offer_atlas_field  => plume_protocol_offer_atlas_field
+        procedure :: offer_hook         => plume_protocol_offer_hook
 
         procedure :: offer_int_writable         => plume_protocol_offer_int_writable
         procedure :: offer_bool_writable        => plume_protocol_offer_bool_writable
@@ -104,7 +105,16 @@ module plume_protocol_module
         character(c_char), dimension(*) :: avail
         character(c_char), dimension(*) :: comment
         integer(c_int) :: err
-    end function    
+    end function
+
+    function plume_protocol_offer_hook_interf( handle_impl, name, comment ) result(err) &
+        & bind(C,name="plume_protocol_offer_hook")
+        use iso_c_binding, only: c_ptr, c_char, c_int
+        type(c_ptr), intent(in), value :: handle_impl
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: comment
+        integer(c_int) :: err
+    end function
 
     function plume_protocol_offer_int_writable_interf( handle_impl, name, avail, comment ) result(err) &
         & bind(C,name="plume_protocol_offer_int_writable")
@@ -216,7 +226,18 @@ module plume_protocol_module
         character(kind=c_char,len=*), intent(in) :: comment
         integer(c_int) :: err
         err = plume_protocol_offer_atlas_field_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
-    end function    
+    end function
+
+    ! Register a hook point that the model is able to call Plume from.
+    ! The default hook point is always registered, so this is only needed for additional ones.
+    function plume_protocol_offer_hook( handle, name, comment ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int
+        class(plume_protocol), intent(inout) :: handle
+        character(kind=c_char,len=*), intent(in) :: name
+        character(kind=c_char,len=*), intent(in) :: comment
+        integer(c_int) :: err
+        err = plume_protocol_offer_hook_interf(handle%impl, c_str(name), c_str(comment) )
+    end function
 
     function plume_protocol_offer_int_writable( handle, name, avail, comment ) result(err)
         use iso_c_binding, only: c_ptr, c_char, c_int

@@ -8,6 +8,9 @@
  * granted to it by virtue of its status as an intergovernmental organisation nor
  * does it submit to any jurisdiction.
  */
+#include <set>
+#include <string>
+
 #include "eckit/testing/Test.h"
 #include "eckit/config/YAMLConfiguration.h"
 
@@ -144,6 +147,71 @@ CASE("test_plugin_configuration_invalid") {
     EXPECT_THROWS(plume::PluginConfig pluginConfig2(config2));
 
 }
+
+CASE("test_plugin_configuration_hooks") {
+
+    // no "hooks" key: the plugin's own declaration applies
+    std::string no_hooks = R"YAML(
+    name: simple_plugin
+    lib: libsimple_plugin
+    )YAML";
+
+    eckit::YAMLConfiguration config_no_hooks(no_hooks);
+    plume::PluginConfig pluginConfigNoHooks(config_no_hooks);
+    EXPECT_NOT(pluginConfigNoHooks.hooks().has_value());
+
+    // "hooks" key present: it replaces whatever the plugin declared
+    std::string with_hooks = R"YAML(
+    name: simple_plugin
+    lib: libsimple_plugin
+    hooks: [hook-A, hook-B]
+    )YAML";
+
+    eckit::YAMLConfiguration config_with_hooks(with_hooks);
+    plume::PluginConfig pluginConfigWithHooks(config_with_hooks);
+    EXPECT(pluginConfigWithHooks.hooks().has_value());
+
+    std::set<std::string> expected = {"hook-A", "hook-B"};
+    EXPECT_EQUAL(pluginConfigWithHooks.hooks().value(), expected);
+}
+
+
+CASE("test_plugin_configuration_hooks_invalid") {
+
+    // an empty list is not the same as an absent key: it is a configuration mistake
+    std::string empty_hooks = R"YAML(
+    name: simple_plugin
+    lib: libsimple_plugin
+    hooks: []
+    )YAML";
+
+    eckit::YAMLConfiguration config_empty(empty_hooks);
+    EXPECT_THROWS(plume::PluginConfig pluginConfigEmpty(config_empty));
+    EXPECT_NOT(plume::PluginConfig::isValid(config_empty));
+
+    // not a list
+    std::string scalar_hooks = R"YAML(
+    name: simple_plugin
+    lib: libsimple_plugin
+    hooks: hook-A
+    )YAML";
+
+    eckit::YAMLConfiguration config_scalar(scalar_hooks);
+    EXPECT_THROWS(plume::PluginConfig pluginConfigScalar(config_scalar));
+    EXPECT_NOT(plume::PluginConfig::isValid(config_scalar));
+
+    // unknown keys are still rejected
+    std::string unknown_key = R"YAML(
+    name: simple_plugin
+    lib: libsimple_plugin
+    hooks: [hook-A]
+    not-a-key: 1
+    )YAML";
+
+    eckit::YAMLConfiguration config_unknown(unknown_key);
+    EXPECT_THROWS(plume::PluginConfig pluginConfigUnknown(config_unknown));
+}
+
 
 //----------------------------------------------------------------------------------------------------------------------
 

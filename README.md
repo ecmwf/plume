@@ -27,6 +27,30 @@ plume features 3 major components:
 
 plume offers API to this mechanism, available in multiple languages (currently C, C++ and Fortran)
 
+### Hook points
+
+A model can call plume from several points within a single time step. It registers those points by
+name during negotiation (`offerHook()` on the protocol it already builds), and invokes one of them
+with `Manager::run("<name>")`. A plugin says where it wants to run either in its `negotiate()`
+(`requireHook()`) or through an optional `hooks:` list in its entry of the plume configuration,
+which *replaces* what the plugin declared and so lets a deployment re-target a plugin without
+recompiling it. The match is resolved during negotiation: a plugin asking for a hook point the
+model did not register is rejected. During its run a plugin can ask which hook point it is being
+called from, and after negotiation the model can ask which parameters a given hook point consumes
+(`getActiveParamsAtHook()`, `isParamRequestedAtHook()`) so that it can refresh exactly that data.
+
+plume defines an implicit `"default"` hook point that is always registered. A plugin that declares
+no hook point is bound to it, and the argument-less `Manager::run()` targets it — so models and
+plugins that know nothing about hook points behave exactly as before.
+
+> **When adopting hook points, keep calling the argument-less `Manager::run()`** where your single
+> run call used to be. A model that only invokes its own named hook points leaves every plugin
+> that declares no hook point — that is, every plugin written before this feature — silently
+> dormant. The hook point summary that plume logs at the end of negotiation shows which plugins
+> ended up bound to which hook point.
+
+See `examples/example3.{cc,F90}` with `examples/plume_config_hooks.yml` for a worked example.
+
 ### Requirements
 Build dependencies:
 

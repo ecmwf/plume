@@ -28,6 +28,11 @@ void PluginCore::grabData(data::ModelDataView data) {
 };
 
 
+void PluginCore::setCurrentHook(const std::string& hook) {
+    currentHook_ = hook;
+}
+
+
 data::ModelDataView& PluginCore::modelData() {
     ASSERT(modelData_.has_value());
     return *modelData_;
@@ -38,6 +43,11 @@ data::ModelDataView& PluginCore::modelData() {
 // PluginCore.h. (PLUME-82) needed only because views co-own model parameters; observer views would obviate it.
 void PluginCore::releaseData() {
     modelData_.reset();
+}
+
+
+const std::string& PluginCore::currentHook() const {
+    return currentHook_;
 }
 
 

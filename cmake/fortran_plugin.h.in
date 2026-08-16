@@ -20,7 +20,7 @@
 
 // plugincore
 extern "C" void plugincore_setup__@PLUGIN_NAME@__@PLUGINCORE_NAME@(void* config, void* modelData);
-extern "C" void plugincore_run__@PLUGIN_NAME@__@PLUGINCORE_NAME@(void* config, void* modelData);
+extern "C" void plugincore_run__@PLUGIN_NAME@__@PLUGINCORE_NAME@(void* config, void* modelData, const char* hook);
 extern "C" void plugincore_teardown__@PLUGIN_NAME@__@PLUGINCORE_NAME@(void* config, void* modelData);
 
 
@@ -35,8 +35,8 @@ public:
         plugincore_setup__@PLUGIN_NAME@__@PLUGINCORE_NAME@(&config_, &modelData());
     }
 
-    void run() override { 
-        plugincore_run__@PLUGIN_NAME@__@PLUGINCORE_NAME@(&config_, &modelData());
+    void run() override {
+        plugincore_run__@PLUGIN_NAME@__@PLUGINCORE_NAME@(&config_, &modelData(), currentHook().c_str());
     }
 
     virtual void teardown() override {
@@ -67,6 +67,7 @@ public:
     plume::Protocol negotiate() override {
         plume::Protocol protocol;
         @REQUIRED_PARAM_LIST@
+        @REQUIRED_HOOK_LIST@
         return protocol;
     }
 

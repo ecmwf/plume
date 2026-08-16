@@ -21,13 +21,14 @@ install(FILES
 
 
 # #################### Plume plugin ######################
-set(PLUGIN_FILES_H    
+set(PLUGIN_FILES_H
     Plugin.h
     PluginDecision.h
     PluginHandler.h
     Protocol.h
     PluginCore.h
     Configurable.h
+    Hook.h
     data/ModelData.h
     data/ModelDataView.h
     data/FieldAccess.h
@@ -93,6 +94,7 @@ set(PLUME_PLUGIN_MANAGER_SOURCES
     Protocol.cc
     Configurable.h
     Configurable.cc
+    Hook.h
     PluginConfig.h
     coupling/WriteBackPolicy.h
     coupling/WriteBackPolicy.cc

@@ -43,6 +43,10 @@ public:
         plume::Protocol protocol;
         protocol.require<int>("K");
         protocol.require<atlas::Field>("field_dummy_1");
+
+        // No requireHook() call here, so this plugin is bound to the implicit "default" hook
+        // point and runs wherever the model calls Manager::run(). See plume_config_hooks.yml for
+        // how a deployment can re-target it onto another hook point without recompiling it.
         return protocol;
     }
 
