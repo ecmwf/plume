@@ -10,12 +10,14 @@
  */
 #pragma once
 
+#include <map>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "eckit/config/Configuration.h"
+#include "plume/Hook.h"
 #include "plume/data/ParameterCatalogue.h"
 #include "plume/data/ParameterType.h"
 
@@ -32,13 +34,19 @@ private:
 
     void setParamsFromConfig(const eckit::Configuration& config);
 
+    void setHooksFromConfig(const eckit::Configuration& config);
+
     std::string requestedPlumeVersion_;
     std::string requestedAtlasVersion_;
     data::ParameterCatalogue requiredParams_;
+    std::set<std::string> requiredHooks_;
 
     std::string offeredPlumeVersion_;
     std::string offeredAtlasVersion_;
     data::ParameterCatalogue offeredParams_;
+
+    // offered hook points: name -> comment
+    std::map<std::string, std::string> offeredHooks_;
 
 public:
     /**
@@ -78,11 +86,22 @@ public:
         insertParam(data::ParameterDefinition(name, data::deduceType<T>(), options), requiredParams_);
     }
 
+    /**
+     * @brief Lets plugins require to be executed at a specific hook point of the model.
+     *
+     * A plugin that requires no hook point is bound to plume::DEFAULT_HOOK. Hook requirements are
+     * all-or-nothing: if the model does not offer one of the required hook points, the plugin is
+     * rejected.
+     */
+    void requireHook(const std::string& name);
+
     std::set<std::string> requiredParamNames() const;
     const std::string& requiredPlumeVersion() const;
     const std::string& requiredAtlasVersion() const;
+    const std::set<std::string>& requiredHooks() const;
 
     bool isParamRequired(const std::string& name) const;
+    bool isHookRequired(const std::string& name) const;
     const data::ParameterCatalogue& requires() const;
 
 
@@ -95,11 +114,23 @@ public:
         insertParam(data::ParameterDefinition(name, data::deduceType<T>(), avail, comment), offeredParams_);
     }
 
+    /**
+     * @brief Lets the model register a hook point that it is able to call Plume from.
+     *
+     * plume::DEFAULT_HOOK is always registered, so a model that never calls this still offers it.
+     * Registering an already registered hook point - including the default one - only updates its
+     * comment.
+     */
+    void offerHook(const std::string& name, const std::string& comment = "");
+
     std::set<std::string> offeredParamNames() const;
     const std::string& offeredPlumeVersion() const;
     const std::string& offeredAtlasVersion() const;
+    std::set<std::string> offeredHookNames() const;
+    const std::map<std::string, std::string>& offeredHooks() const;
 
     bool isParamOffered(const std::string& name) const;
+    bool isHookOffered(const std::string& name) const;
     const data::ParameterCatalogue& offers() const;
 };
 

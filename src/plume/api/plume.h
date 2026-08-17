@@ -100,6 +100,20 @@ int plume_protocol_offer_bool(plume_protocol_handle_t* h, const char* name, cons
 int plume_protocol_offer_float(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
 int plume_protocol_offer_double(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
 int plume_protocol_offer_atlas_field(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
+
+/**
+ * @brief Register a hook point that the model is able to call Plume from
+ *
+ * The default hook point is always registered, so a model that never calls this can still be
+ * used by plugins that do not request any specific hook point.
+ *
+ * @param h Handle
+ * @param name Name of the hook point
+ * @param comment Human-readable description of the hook point
+ * @return Error code
+ */
+int plume_protocol_offer_hook(plume_protocol_handle_t* h, const char* name, const char* comment);
+
 int plume_protocol_delete_handle(plume_protocol_handle_t* h);
 
 /* --- Plume Manager --- */
@@ -202,12 +216,63 @@ int plume_manager_is_param_requested(plume_manager_handle_t* h, const char* name
 int plume_manager_is_plugin_activated(plume_manager_handle_t* h, const char* name, bool* activated);
 
 /**
- * @brief Run all plugins
+ * @brief Fields requested by the active plugins bound to a specific hook point
+ *
+ * @param h Handle
+ * @param hook Name of the hook point
+ * @param derived When false, only the fields that the model is expected to provide are reported
+ * @param str_in CSV string of active fields
+ * @return Error code
+ */
+int plume_manager_active_fields_at_hook(plume_manager_handle_t* h, const char* hook, bool derived, char** str_in);
+
+/**
+ * @brief Checks if a specific parameter has been requested at a specific hook point
+ *
+ * @param h Handle
+ * @param name Name of parameter
+ * @param hook Name of the hook point
+ * @param requested Pointer to boolean indicating if the parameter is requested at that hook point
+ * @return Error code
+ */
+int plume_manager_is_param_requested_at_hook(plume_manager_handle_t* h, const char* name, const char* hook,
+                                             bool* requested);
+
+/**
+ * @brief Check if any active plugin is bound to a hook point
+ *
+ * @param h Handle
+ * @param name Name of the hook point
+ * @param active Pointer to boolean indicating if any plugin is bound to the hook point
+ * @return Error code
+ */
+int plume_manager_is_hook_active(plume_manager_handle_t* h, const char* name, bool* active);
+
+/**
+ * @brief Hook points registered by the model (always includes the default one)
+ *
+ * @param h Handle
+ * @param str_in CSV string of registered hook points
+ * @return Error code
+ */
+int plume_manager_registered_hooks(plume_manager_handle_t* h, char** str_in);
+
+/**
+ * @brief Run all plugins bound to the default hook point
  *
  * @param h Handle
  * @return Error code
  */
 int plume_manager_run(plume_manager_handle_t* h);
+
+/**
+ * @brief Run the plugins bound to a specific hook point
+ *
+ * @param h Handle
+ * @param hook Name of the hook point
+ * @return Error code
+ */
+int plume_manager_run_hook(plume_manager_handle_t* h, const char* hook);
 
 /**
  * @brief Teardown plugins

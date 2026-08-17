@@ -14,6 +14,7 @@ use iso_c_binding, only : c_ptr, c_null_char, c_loc
 use fckit_configuration_module, only : fckit_configuration
 use plume_module, only : plume_check
 use plume_data_module, only : plume_data
+use plume_utils_module, only : fortranise_cstr
 
 implicit none
 private
@@ -36,14 +37,19 @@ bind(C, name="plugincore_setup_fapi")
     call plume_check(fapi_data%print())
 end subroutine
 
-subroutine plugincore_run_fapi() &
+subroutine plugincore_run_fapi(conf_cptr, data_cptr, hook_cptr) &
 bind(C, name="plugincore_run_fapi")
-    write(*,*) "plugincore_run_fapi called, with data"
+    type(c_ptr), intent(in), value :: conf_cptr
+    type(c_ptr), intent(in), value :: data_cptr
+    type(c_ptr), intent(in), value :: hook_cptr
+    write(*,*) "plugincore_run_fapi called at hook point ", fortranise_cstr(hook_cptr), ", with data"
     call plume_check(fapi_data%print())
 end subroutine
 
-subroutine plugincore_teardown_fapi() &
+subroutine plugincore_teardown_fapi(conf_cptr, data_cptr) &
 bind(C, name="plugincore_teardown_fapi")
+    type(c_ptr), intent(in), value :: conf_cptr
+    type(c_ptr), intent(in), value :: data_cptr
     write(*,*) "plugincore_teardown_fapi called, with data"
     call plume_check(fapi_data%print())
     call plume_check(fapi_data%finalise())

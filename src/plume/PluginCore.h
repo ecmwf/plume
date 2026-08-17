@@ -17,6 +17,7 @@
 #include "eckit/config/Configuration.h"
 #include "eckit/exception/Exceptions.h"
 
+#include "plume/Hook.h"
 #include "plume/data/ModelData.h"
 
 
@@ -61,10 +62,19 @@ public:
 
     /**
      * @brief Grab the necessary data that it needs from available data
-     * 
-     * @param data 
+     *
+     * @param data
      */
     void grabData(const data::ModelData& data);
+
+    /**
+     * @brief Tell the plugincore which hook point it is about to be run at.
+     *
+     * Called by the PluginHandler immediately before run(). Not meant to be called by plugins.
+     *
+     * @param hook
+     */
+    void setCurrentHook(const std::string& hook);
 
     /**
      * @brief Setup
@@ -92,9 +102,21 @@ protected:
 
     data::ModelData& modelData();
 
+    /**
+     * @brief The hook point this plugincore is currently being run at.
+     *
+     * Only meaningful from within run(). A plugincore bound to several hook points can use this
+     * to tell them apart.
+     *
+     * @return const std::string&
+     */
+    const std::string& currentHook() const;
+
 private:
 
     data::ModelData modelData_;
+
+    std::string currentHook_{DEFAULT_HOOK};
 };
 
 

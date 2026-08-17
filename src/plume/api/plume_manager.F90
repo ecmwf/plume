@@ -36,6 +36,11 @@ contains
     procedure :: is_param_requested => plume_manager_is_param_requested
     procedure :: is_plugin_activated => plume_manager_is_plugin_activated
 
+    procedure :: active_fields_at_hook => plume_manager_active_fields_at_hook
+    procedure :: is_param_requested_at_hook => plume_manager_is_param_requested_at_hook
+    procedure :: is_hook_active => plume_manager_is_hook_active
+    procedure :: registered_hooks => plume_manager_registered_hooks
+
     procedure :: feed_plugins => plume_manager_feed_plugins
     procedure :: run => plume_manager_run
     procedure :: finalise => plume_manager_finalise
@@ -118,10 +123,55 @@ function plume_manager_feed_plugins_interf(handle_impl, fdata) result(err) &
   integer(c_int) :: err
 end function
 
+function plume_manager_active_fields_at_hook_interf(handle_impl, hook, derived, fields) result(err) &
+    & bind(C,name="plume_manager_active_fields_at_hook")
+    use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
+    type(c_ptr), intent(in), value :: handle_impl
+    character(c_char), dimension(*) :: hook
+    logical(c_bool), intent(in), value :: derived
+    type(c_ptr), intent(inout) :: fields
+    integer(c_int) :: err
+end function
+
+function plume_manager_is_param_requested_at_hook_interf(handle_impl, name, hook, is_param) result(err) &
+    & bind(C, name="plume_manager_is_param_requested_at_hook")
+    use iso_c_binding, only: c_ptr, c_char, c_bool
+    type(c_ptr), intent(in), value :: handle_impl
+    character(c_char), dimension(*) :: name
+    character(c_char), dimension(*) :: hook
+    logical(c_bool), intent(inout) :: is_param
+    integer :: err
+end function
+
+function plume_manager_is_hook_active_interf(handle_impl, name, is_active) result(err) &
+    & bind(C, name="plume_manager_is_hook_active")
+    use iso_c_binding, only: c_ptr, c_char, c_bool
+    type(c_ptr), intent(in), value :: handle_impl
+    character(c_char), dimension(*) :: name
+    logical(c_bool), intent(inout) :: is_active
+    integer :: err
+end function
+
+function plume_manager_registered_hooks_interf(handle_impl, hooks) result(err) &
+    & bind(C,name="plume_manager_registered_hooks")
+    use iso_c_binding, only: c_ptr, c_int
+    type(c_ptr), intent(in), value :: handle_impl
+    type(c_ptr), intent(inout) :: hooks
+    integer(c_int) :: err
+end function
+
 function plume_manager_run_interf(handle_impl) result(err) &
     & bind(C,name="plume_manager_run")
     use iso_c_binding, only: c_int, c_ptr
     type(c_ptr), intent(in), value :: handle_impl
+    integer(c_int) :: err
+end function
+
+function plume_manager_run_hook_interf(handle_impl, hook) result(err) &
+    & bind(C,name="plume_manager_run_hook")
+    use iso_c_binding, only: c_int, c_ptr, c_char
+    type(c_ptr), intent(in), value :: handle_impl
+    character(c_char), dimension(*) :: hook
     integer(c_int) :: err
 end function
 
@@ -181,10 +231,18 @@ function plume_manager_feed_plugins(handle, fdata) result(err)
   err = plume_manager_feed_plugins_interf(handle%impl, fdata%impl)
 end function
 
-function plume_manager_run(handle) result(err)
+! Run the active plugins. Without the optional "hook" argument this targets the default hook
+! point, exactly as it did before hook points existed.
+function plume_manager_run(handle, hook) result(err)
+    use iso_c_binding, only: c_char
     class(plume_manager), intent(inout) :: handle
+    character(kind=c_char,len=*), intent(in), optional :: hook
     integer :: err
-    err = plume_manager_run_interf(handle%impl)
+    if (present(hook)) then
+        err = plume_manager_run_hook_interf(handle%impl, c_str(hook))
+    else
+        err = plume_manager_run_interf(handle%impl)
+    end if
 end function
 
 ! TODO: this really need to be checked!! not testing for errors, but returns a char*
@@ -230,6 +288,60 @@ function plume_manager_is_plugin_activated(handle, name, is_plugin) result(err)
     logical(c_bool) :: is_plugin
     integer :: err
     err = plume_manager_is_plugin_activated_interf(handle%impl, c_str(name), is_plugin)
+end function
+
+! Fields requested by the plugins bound to a specific hook point.
+! "derived" defaults to .true., matching the global active_fields query. Pass .false. to get only
+! the fields that the model is expected to provide.
+! TODO: like active_fields, this does not check for errors, but returns a char*
+function plume_manager_active_fields_at_hook(handle, hook, derived) result(fields_str)
+    use iso_c_binding, only: c_ptr, c_char, c_bool
+    class(plume_manager), intent(inout) :: handle
+    character(kind=c_char,len=*), intent(in) :: hook
+    logical, intent(in), optional :: derived
+    character(:), allocatable, target :: fields_str
+    type(c_ptr) :: fields_ptr
+    logical(c_bool) :: with_derived
+    integer :: err
+
+    with_derived = .true._c_bool
+    if (present(derived)) then
+        with_derived = logical(derived, kind=c_bool)
+    end if
+
+    err = plume_manager_active_fields_at_hook_interf(handle%impl, c_str(hook), with_derived, fields_ptr)
+    fields_str = fortranise_cstr(fields_ptr)
+end function
+
+function plume_manager_is_param_requested_at_hook(handle, name, hook, is_param) result(err)
+    use iso_c_binding, only: c_ptr, c_char, c_bool
+    class(plume_manager), intent(inout) :: handle
+    character(kind=c_char,len=*), intent(in) :: name
+    character(kind=c_char,len=*), intent(in) :: hook
+    logical(c_bool) :: is_param
+    integer :: err
+    err = plume_manager_is_param_requested_at_hook_interf(handle%impl, c_str(name), c_str(hook), is_param)
+end function
+
+function plume_manager_is_hook_active(handle, name, is_active) result(err)
+    use iso_c_binding, only: c_ptr, c_char, c_bool
+    class(plume_manager), intent(inout) :: handle
+    character(kind=c_char,len=*), intent(in) :: name
+    logical(c_bool) :: is_active
+    integer :: err
+    err = plume_manager_is_hook_active_interf(handle%impl, c_str(name), is_active)
+end function
+
+! Hook points registered by the model (always includes the default one).
+! TODO: like active_fields, this does not check for errors, but returns a char*
+function plume_manager_registered_hooks(handle) result(hooks_str)
+    use iso_c_binding, only: c_ptr
+    class(plume_manager), intent(inout) :: handle
+    character(:), allocatable, target :: hooks_str
+    type(c_ptr) :: hooks_ptr
+    integer :: err
+    err = plume_manager_registered_hooks_interf(handle%impl, hooks_ptr)
+    hooks_str = fortranise_cstr(hooks_ptr)
 end function
 
 function plume_manager_finalise(handle) result(err)

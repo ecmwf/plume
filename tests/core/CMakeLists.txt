@@ -47,13 +47,38 @@ ecbuild_add_test( TARGET   plume_test_manager_json
 
 # simple plugins (used for testing)
 ecbuild_add_library( TARGET simple_plugins
-  SOURCES 
+  SOURCES
     simple_plugin.h
     simple_plugin.cc
     simple_atlas_plugin.h
     simple_atlas_plugin.cc
   PRIVATE_LIBS
     plume_plugin
+)
+# -------------------------------------------
+
+# -------------- test hook points ---------------
+# hook point plugins (used for testing).
+# NOTE: REGISTER_LIBRARY() declares a fixed symbol, so one plugin per translation unit.
+ecbuild_add_library( TARGET hook_plugins
+  SOURCES
+    hook_plugin.h
+    hook_plugin_a.cc
+    hook_plugin_ab.cc
+    hook_plugin_default.cc
+  PRIVATE_LIBS
+    plume_plugin
+)
+
+ecbuild_add_test( TARGET   plume_test_hooks
+                  SOURCES
+                    ManagerTestAccess.h
+                    test_hooks.cc
+                  ENVIRONMENT
+                    DYLD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/lib
+                  LIBS
+                    plume_plugin_manager
+                    eckit
 )
 # -------------------------------------------
 

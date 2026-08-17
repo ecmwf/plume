@@ -50,6 +50,11 @@ call plume_check(offers%offer_int("config-param-1", "always", "this is param con
 call plume_check(offers%offer_double("config-param-2", "always", "this is param config-param-2"))
 call plume_check(offers%offer_atlas_field("config-param-3", "always", "this is param config-param-3"))
 
+! Register the hook points that this model is able to call Plume from. The "default" hook point is
+! always registered, and is the one that the argument-less manager%run() targets.
+call plume_check(offers%offer_hook("pre-compute", "before the step is computed"))
+call plume_check(offers%offer_hook("post-compute", "after the step has been computed"))
+
 
 ! negotiate
 call plume_check(manager%initialise())
@@ -80,13 +85,20 @@ call plume_check(manager%feed_plugins(data))
 ! Run the model for 10 iterations
 do iter=1,10
 
+  ! first hook point of the step
+  call plume_check(manager%run("pre-compute"))
+
   ! update the internal parameters
   call plume_check(data%update_int("I", 0+iter) )
   call plume_check(data%update_int("J", 10+iter) )
   call plume_check(data%update_int("K", 100+iter) )
 
-  ! run the model..
+  ! The default hook point: this is where the single manager%run() call has always been, and it
+  ! is where plugins that declare no hook point run.
   call plume_check(manager%run())
+
+  ! second hook point of the step
+  call plume_check(manager%run("post-compute"))
 enddo
 
 ! finalise
