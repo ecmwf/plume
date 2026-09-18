@@ -82,7 +82,8 @@ public:
         return requiredParams;
     }
 
-    data::ParameterCatalogue getActiveDataCatalogue(bool derived = true) {
+    // This method is usually called by models to sort through their own data, not derived ones
+    data::ParameterCatalogue getActiveDataCatalogue(bool derived = false) {
         return dataCatalogue_.filter(getActiveParams(derived));
     }
 
