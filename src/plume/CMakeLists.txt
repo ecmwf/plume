@@ -29,11 +29,18 @@ set(PLUGIN_FILES_H
     PluginCore.h
     Configurable.h
     data/ModelData.h
+    data/ModelDataView.h
+    data/FieldAccess.h
     data/ParameterCatalogue.h
     data/ParameterType.h
     data/ParameterValue.h
     data/DataChecker.h
     data/FieldProvider.h
+    coupling/WriteBackKey.h
+    coupling/WriteBackState.h
+    coupling/WriteBackPolicy.h
+    coupling/WriteAuthorisation.h
+    coupling/WriteBackTracker.h
 )
 
 set(PLUGIN_FILES_CC
@@ -47,6 +54,10 @@ set(PLUGIN_FILES_CC
     data/ParameterValue.cc
     data/DataChecker.cc
     data/FieldProvider.cc
+    data/FieldAccess.cc
+    coupling/WriteBackPolicy.cc
+    coupling/WriteAuthorisation.cc
+    coupling/WriteBackTracker.cc
 )
 
 set(PLUME_PLUGIN_SOURCES
@@ -83,8 +94,19 @@ set(PLUME_PLUGIN_MANAGER_SOURCES
     Configurable.h
     Configurable.cc
     PluginConfig.h
+    coupling/WriteBackPolicy.h
+    coupling/WriteBackPolicy.cc
+    coupling/WriteAuthorisation.h
+    coupling/WriteAuthorisation.cc
+    coupling/WriteBackKey.h
+    coupling/WriteBackState.h
+    coupling/WriteBackTracker.h
+    coupling/WriteBackTracker.cc
     data/ModelData.h
     data/ModelData.cc
+    data/ModelDataView.h
+    data/FieldAccess.h
+    data/FieldAccess.cc
     data/ParameterType.h
     data/ParameterCatalogue.h
     data/ParameterCatalogue.cc
@@ -111,7 +133,7 @@ ecbuild_add_library(
     PUBLIC_LIBS        
         atlas
         eckit
-    PRIVATE_LIBS        
+    PRIVATE_LIBS
         plume_plugin
 )
 

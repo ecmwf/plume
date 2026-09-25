@@ -16,6 +16,7 @@
 
 #include "plume/data/FieldProvider.h"
 #include "plume/data/ModelData.h"
+#include "plume/data/ModelDataView.h"
 #include "plume/data/ParameterValue.h"
 
 using namespace eckit::testing;
@@ -238,6 +239,28 @@ CASE("test model data - observing params") {
 
     // owning params that actively observe should not allow manual updates
     EXPECT_THROWS(data.updateParam("observable;dummy;00", 3));
+}
+
+CASE("filter_subsets_params_and_sets_consumer") {
+    data::ModelData data;
+    data.createParam<int>("x", 1);
+    data.createParam<int>("y", 2);
+    data.createParam<int>("z", 3);
+
+    // Model-facing instance has no consumer
+    EXPECT(data.consumer().empty());
+
+    // filter with consumer tag
+    auto view = data.filter(std::set<std::string>{"x", "z"}, "PluginA");
+    EXPECT(view.hasParameter("x"));
+    EXPECT(view.hasParameter("z"));
+    EXPECT_NOT(view.hasParameter("y"));
+    EXPECT_EQUAL(view.consumer(), std::string("PluginA"));
+
+    // filter without consumer tag — consumer stays empty
+    auto view2 = data.filter(std::set<std::string>{"y"});
+    EXPECT(view2.hasParameter("y"));
+    EXPECT(view2.consumer().empty());
 }
 
 //----------------------------------------------------------------------------------------------------------------------

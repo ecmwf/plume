@@ -18,8 +18,10 @@
 
 #include "eckit/exception/Exceptions.h"
 
+#include "atlas/array/Array.h"
 #include "atlas/field/Field.h"
 
+#include "plume/coupling/WriteBackKey.h"
 #include "plume/data/FieldProvider.h"
 #include "plume/data/ParameterType.h"
 
@@ -28,11 +30,15 @@ namespace data {
 
 /**
  * @class IParameterValue
- * @brief Interface for parameter values. Non-typed base class managing value update status.
+ * @brief Non-typed base class for parameter values, tracking update and writeback state.
+ *
+ * The writable flag is gated behind WriteBackKey (passkey idiom): only WritebackTracker
+ * can enable or disable write access. This prevents plugins from bypassing the tracker.
  */
 class IParameterValue {
 private:
     bool isUpdated_ = false;
+    bool writable_  = false;
 
 public:
     virtual ~IParameterValue() = default;
@@ -41,23 +47,30 @@ public:
 
     bool isUpdated() const { return isUpdated_; }
     virtual void setUpdated(bool updated) { isUpdated_ = updated; }
+
+    bool isWritable() const { return writable_; }
+
+    /// Only callable by WritebackTracker (passkey idiom). Called during tracker open().
+    void enableWriteback(coupling::WriteBackKey) { writable_ = true; }
+
+    /// Only callable by WritebackTracker (passkey idiom). Called during tracker submit().
+    void disableWriteback(coupling::WriteBackKey) { writable_ = false; }
 };
 
 /**
  * @class ParameterValueTyped
- * @brief Template parameter value with optional ownership.
+ * @brief Typed storage for a parameter value, with optional ownership.
  *
  * Represents a parameter of type `T` that may either own its value or observe an externally owned value.
  * The parameter exposes its runtime type via `ParameterType` and provides read-only or controlled mutable access
- * depending on ownership, with a special case for Atlas fields.
+ * depending on ownership and writability, with a special case for Atlas fields.
  *
- * If constructed in non-owning mode, the referenced value must outlive this object. If constructed in owning mode,
- * the value is stored internally and may be modified through the provided setters.
+ * In non-owning mode the referenced value must outlive this object.
  *
- * @tparam T Underlying parameter value type. Must be supported by `deduceType()`.
+ * @tparam T Underlying parameter value type. Must be supported by deduceType().
  */
 template <typename T>
-class ParameterValueTyped {
+class ParameterValueTyped : public IParameterValue {
 private:
     bool ownsValue_;
     ParameterType type_;
@@ -83,7 +96,8 @@ public:
      * exception: `atlas::Field` is a reference-counted handle around model-owned data, so a copy of the handle is
      * kept as backing storage to keep the field accessible for the session. In both cases the parameter stays
      * non-owning (`ownsValue_ == false`): Plume does not own the underlying data, so `set()`/`getSettableField()`
-     * remain disallowed and `updateParam` cannot mutate it.
+     * are disallowed unless write-back has been authorised for it by the tracker (`isWritable()`), and `updateParam`
+     * (model-facing, owned-only) can never mutate it.
      *
      * @question: do we need special cases for char, char* ? There is currently no support in the C API.
      */
@@ -117,27 +131,60 @@ public:
     const T& get() const { return *valuePtr_; }
 
     /**
-     * @brief Sets the parameter value.
+     * @brief Replaces the stored value or handle.
      *
-     * For Atlas fields this replaces the stored handle, which lets update strategies reshape or reinitialise an
-     * owned field. Model-facing in-place mutation that preserves the handle identity is done via updateParam.
+     * For Atlas fields this rebinds the stored handle to @p value, which lets update strategies reshape or
+     * reinitialise an owned field (e.g. from 3D to 2D). It does not write into the previously referenced data
+     * buffer. In-place mutation that preserves the handle identity (and hence the shared model buffer for
+     * provided fields) is done via writeFieldInPlace().
      *
-     * @pre This instance must own its value.
+     * Allowed when owning the value (normal case) or when write-back is active
+     * (non-owning parameter authorised by WritebackTracker via isWritable()).
      */
     void set(const T& value) {
-        ASSERT(ownsValue_);
-        *ownedValue_ = value;
+        ASSERT(ownsValue_ || isWritable());
+        *valuePtr_ = value;
     }
 
     /**
-     * @brief Returns a mutable reference to the stored Atlas field.
+     * @brief Copies the data of an Atlas field @p value into the existing field buffer, preserving handle identity.
      *
-     * @pre This instance must own its value. This method can be used by update strategies to change the values of
-     *      owned Atlas fields, instead of setting the field from a new one entirely.
+     * Unlike set(), this does not rebind the stored handle: it copies element data into the already-referenced
+     * field implementation, so the update is visible through every handle sharing that implementation — in
+     * particular the model's own handle for a provided field. This is the write path used by model-facing updates
+     * (updateParam) and the value-based plugin write-back (writeParam(name, value)); it copies rather than handing
+     * out the buffer, so unlike getSettableField() it also validates shape/datatype against the stored field.
+     *
+     * Allowed when owning the field (normal case) or when write-back is active
+     * (non-owning parameter authorised by WritebackTracker via isWritable()).
+     *
+     * @throws eckit::UserError if @p value has a shape or datatype that differs from the stored field.
+     */
+    template <typename U = T, typename = std::enable_if_t<std::is_base_of_v<atlas::Field, U>>>
+    void writeFieldInPlace(const T& value) {
+        ASSERT(ownsValue_ || isWritable());
+        if (valuePtr_->shape() != value.shape() || valuePtr_->datatype() != value.datatype()) {
+            throw eckit::UserError("Cannot write Atlas field '" + valuePtr_->name() +
+                                       "': shape or datatype mismatch with the source field.",
+                                   Here());
+        }
+        valuePtr_->array().copy(value.array());
+    }
+
+    /**
+     * @brief Returns a mutable reference to the stored Atlas field for authorised in-place mutation.
+     *
+     * Hands back the field buffer itself (handle identity preserved) so the caller can mutate the model's data in
+     * place with no scratch allocation. Two callers use it: update strategies mutating Plume-owned fields, and the
+     * in-place plugin write-back path (WriteScope/FieldWriter) once the write is authorised by the tracker. The guard
+     * mirrors writeFieldInPlace().
+     *
+     * @warning Plume-internal. The reference aliases the model's own buffer; only hand it out behind the write-back
+     *          protocol (an authorised, staged WriteScope) or a strategy on a Plume-owned field.
      */
     template <typename U = T, typename = std::enable_if_t<std::is_base_of_v<atlas::Field, U>>>
     T& getSettableField() {
-        ASSERT(ownsValue_);
+        ASSERT(ownsValue_ || isWritable());
         return *valuePtr_;
     }
 };
@@ -242,7 +289,7 @@ public:
  * @tparam Role The role of this template. This header implements observer and publisher roles.
  */
 template <typename T, typename Role>
-class ParameterValue : public ParameterValueTyped<T>, public Role, public IParameterValue {
+class ParameterValue : public ParameterValueTyped<T>, public Role {
 public:
     ~ParameterValue() = default;
 
@@ -260,7 +307,7 @@ public:
     void setUpdated(bool updated) override {
         IParameterValue::setUpdated(updated);
         if constexpr (std::is_same_v<Role, IParameterObservable>) {
-            if (isUpdated()) {
+            if (this->isUpdated()) {
                 this->Role::notifyObservers();
             }
         }

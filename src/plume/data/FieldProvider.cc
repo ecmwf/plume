@@ -11,6 +11,7 @@
 #include <sstream>
 
 #include "atlas/array.h"
+#include "atlas/functionspace/FunctionSpace.h"
 #include "atlas/util/Metadata.h"
 
 #include "plume/data/FieldProvider.h"
@@ -119,8 +120,12 @@ void WindAtHeight::update() {
         auto geopotential = atlas::array::make_view<FIELD_TYPE_REAL, 2>(geopotentialField->get());
         auto wind         = atlas::array::make_view<FIELD_TYPE_REAL, 2>(windField->get());
         auto windAtHeight = atlas::array::make_view<FIELD_TYPE_REAL, 2>(windAtHeightField->getSettableField());
+        auto ghost        = atlas::array::make_view<int, 1>(windField->get().functionspace().ghost());
 
         for (size_t i = 0; i < windAtHeight.shape(0); ++i) {
+            if (ghost(i)) {
+                continue; // /!\ skip halo points
+            }
             bool found = false;
             for (size_t lev = wind.shape(1) - 1; lev > 0; --lev) {
                 if (z_ < geopotential(i, lev - 1) && z_ >= geopotential(i, lev)) {

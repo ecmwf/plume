@@ -11,6 +11,7 @@
 #include <functional>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <vector>
 
 #include "eckit/config/YAMLConfiguration.h"
@@ -208,6 +209,42 @@ int plume_protocol_offer_atlas_field(plume_protocol_handle_t* h, const char* nam
     });
 }
 
+int plume_protocol_offer_int_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
+    return wrapApiFunction([h, name, avail, comment] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        h->impl_->offer<int>(name, avail, comment, /*writable=*/true);
+    });
+}
+int plume_protocol_offer_bool_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
+    return wrapApiFunction([h, name, avail, comment] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        h->impl_->offer<bool>(name, avail, comment, /*writable=*/true);
+    });
+}
+int plume_protocol_offer_float_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
+    return wrapApiFunction([h, name, avail, comment] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        h->impl_->offer<float>(name, avail, comment, /*writable=*/true);
+    });
+}
+int plume_protocol_offer_double_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
+    return wrapApiFunction([h, name, avail, comment] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        h->impl_->offer<double>(name, avail, comment, /*writable=*/true);
+    });
+}
+int plume_protocol_offer_atlas_field_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
+    return wrapApiFunction([h, name, avail, comment] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        h->impl_->offer<atlas::Field>(name, avail, comment, /*writable=*/true);
+    });
+}
+
 int plume_protocol_delete_handle(plume_protocol_handle_t* h) {
     return wrapApiFunction([&h] {
         if (h) {
@@ -273,6 +310,8 @@ int plume_manager_feed_plugins(plume_manager_handle_t* h, plume_data_handle_t* f
     return wrapApiFunction([h, fdata] {
         ASSERT(h);
         ASSERT((h)->impl_);
+        ASSERT(fdata);
+        ASSERT((fdata)->impl_);
 
         h->impl_->feedPlugins(*(fdata->impl_));
     });
@@ -283,6 +322,9 @@ int plume_manager_active_fields(plume_manager_handle_t* h, char** str_in) {
     return wrapApiFunction([h, &str_in] {
         ASSERT(h);
         ASSERT((h)->impl_);
+        ASSERT(str_in);
+        // Clear output up front so a failure never leaves a stale pointer with the caller.
+        *str_in = nullptr;
 
         // Decide how we want to wrap the data..
         auto req_params = h->impl_->getActiveParams();
@@ -290,7 +332,10 @@ int plume_manager_active_fields(plume_manager_handle_t* h, char** str_in) {
         // concatenate param names into a CS-string
         std::string tmp;
         for (const auto& p : req_params) {
-            tmp = tmp + "," + p;
+            if (!tmp.empty()) {
+                tmp += ',';
+            }
+            tmp += p;
         }
 
         // allocate and return
@@ -302,7 +347,10 @@ int plume_manager_active_data_catalogue(plume_manager_handle_t* h, void** active
     return wrapApiFunction([h, &active_data_catalogue] {
         ASSERT(h);
         ASSERT((h)->impl_);
- 
+        ASSERT(active_data_catalogue);
+        // Clear output up front so a failure never leaves a stale pointer with the caller.
+        *active_data_catalogue = nullptr;
+
         *active_data_catalogue = new eckit::LocalConfiguration(h->impl_->getActiveDataCatalogue().getConfig());
     });
 }
@@ -490,8 +538,20 @@ int plume_data_provide_atlas_field_shared(plume_data_handle_t* h, const char* na
 
 
 // ----------------- Data view "updaters" (Plugin API) -----------------
+//
+// NOTE (PLUME-75): the read-only field guarantee is C++-ONLY. On the C++ side, a plugin holding a
+// data::ModelDataView gets getParam<atlas::Field> back as a read-only data::FieldView (no mutable handle escapes).
+// This C entry point, however, wraps a full data::ModelData* and hands the raw FieldImpl pointer straight to the
+// Fortran atlas_field below, so a Fortran plugin still receives a fully mutable field that shares the model's buffer
+// and can bypass the write-back tracker. Extending the FieldView-style enforcement to the Fortran/C path is a
+// possible follow-up (needs a read-only Fortran field wrapper or a copy-returning entry point).
 int plume_data_get_shared_atlas_field(plume_data_handle_t* h, const char* name, void** ptr) {
-    return wrapApiFunction([h, name, ptr] { *ptr = h->impl_->getParam<atlas::Field>(name).get(); });
+    return wrapApiFunction([h, name, ptr] {
+        ASSERT(ptr);
+        // Clear output up front so a failure never leaves a stale pointer with the caller.
+        *ptr = nullptr;
+        *ptr = h->impl_->getParam<atlas::Field>(name).get();
+    });
 }
 
 int plume_data_get_int(plume_data_handle_t* h, const char* name, int* val) {
@@ -520,6 +580,108 @@ int plume_data_set_updated(plume_data_handle_t* h, const int count, const char**
         params.push_back(names[i]);
     }
     return wrapApiFunction([h, params] {h->impl_->setUpdated(params); });
+}
+
+
+// ----------------- Write-back API -----------------
+
+int plume_data_write_int(plume_data_handle_t* h, const char* name, int val) {
+    return wrapApiFunction([h, name, val] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        h->impl_->writeParam<int>(name, val);
+    });
+}
+
+int plume_data_write_bool(plume_data_handle_t* h, const char* name, bool val) {
+    return wrapApiFunction([h, name, val] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        h->impl_->writeParam<bool>(name, val);
+    });
+}
+
+int plume_data_write_float(plume_data_handle_t* h, const char* name, float val) {
+    return wrapApiFunction([h, name, val] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        h->impl_->writeParam<float>(name, val);
+    });
+}
+
+int plume_data_write_double(plume_data_handle_t* h, const char* name, double val) {
+    return wrapApiFunction([h, name, val] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        h->impl_->writeParam<double>(name, val);
+    });
+}
+
+int plume_data_write_atlas_field(plume_data_handle_t* h, const char* name, void* ptr) {
+    return wrapApiFunction([h, name, ptr] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        auto field_ptr = static_cast<atlas::Field::Implementation*>(ptr);
+        h->impl_->writeParam<atlas::Field>(name, atlas::Field(field_ptr));
+    });
+}
+
+// C-side backing for the Fortran plume_write_scope. Buffer fetched as in plume_data_get_shared_atlas_field:
+// h->impl_ is statically a ModelData* and getParam is non-virtual, so it binds to the mutable ModelData::getParam.
+int plume_data_write_scope_begin(plume_data_handle_t* h, const char* name, void** scope_out, void** field_ptr_out) {
+    return wrapApiFunction([h, name, scope_out, field_ptr_out] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        ASSERT(scope_out);
+        ASSERT(field_ptr_out);
+        // Clear outputs up front so a failed staging never leaves stale pointers with the caller.
+        *scope_out     = nullptr;
+        *field_ptr_out = nullptr;
+        // Stage first: throws cleanly (nothing allocated) if unauthorised/policy-violating.
+        auto scope     = std::make_unique<plume::data::WriteScope>(h->impl_->writeParam(name));
+        *field_ptr_out = h->impl_->getParam<atlas::Field>(name).get();
+        *scope_out     = scope.release();
+    });
+}
+
+int plume_data_write_scope_commit(void* scope) {
+    return wrapApiFunction([scope] {
+        ASSERT(scope);
+        // Adopt ownership so the WriteScope is always freed, even if commit() throws.
+        std::unique_ptr<plume::data::WriteScope> s(static_cast<plume::data::WriteScope*>(scope));
+        s->commit();
+    });
+}
+
+int plume_data_pending_writebacks(plume_data_handle_t* h, char** names) {
+    return wrapApiFunction([h, &names] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        ASSERT(names);
+        // Clear output up front so a failure never leaves a stale pointer with the caller.
+        *names = nullptr;
+        auto pending = h->impl_->pendingWritebacks();
+        std::string tmp;
+        for (const auto& p : pending) {
+            if (!tmp.empty()) {
+                tmp += ',';
+            }
+            tmp += p;
+        }
+        *names = strcpy(new char[tmp.length() + 1], tmp.c_str());
+    });
+}
+
+int plume_data_acknowledge_writeback(plume_data_handle_t* h, const char* name) {
+    return wrapApiFunction([h, name] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        h->impl_->acknowledgeWriteback(name);
+    });
+}
+
+void plume_free_string(char* s) {
+    delete[] s;
 }
 
 // --------------------------------------------------------------------------------------

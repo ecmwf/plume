@@ -100,6 +100,14 @@ int plume_protocol_offer_bool(plume_protocol_handle_t* h, const char* name, cons
 int plume_protocol_offer_float(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
 int plume_protocol_offer_double(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
 int plume_protocol_offer_atlas_field(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
+
+/* Writable-offer variants: the model declares that plugins may write back to these parameters. */
+int plume_protocol_offer_int_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
+int plume_protocol_offer_bool_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
+int plume_protocol_offer_float_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
+int plume_protocol_offer_double_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
+int plume_protocol_offer_atlas_field_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
+
 int plume_protocol_delete_handle(plume_protocol_handle_t* h);
 
 /* --- Plume Manager --- */
@@ -167,7 +175,7 @@ int plume_manager_feed_plugins(plume_manager_handle_t* h, plume_data_handle_t* f
  * @brief Fields requested by all activate plugins
  *
  * @param h Handle
- * @param str_in CSV string of active fields
+ * @param str_in CSV string of active fields (caller must free with plume_free_string)
  * @return Error code
  */
 int plume_manager_active_fields(plume_manager_handle_t* h, char** str_in);
@@ -456,6 +464,120 @@ int plume_data_print(plume_data_handle_t* h);
  * @return Error code
  */
 int plume_data_set_updated(plume_data_handle_t* h, const int count, const char** names);
+
+
+/* ----------------- Write-back API (Plugin write / Model handshake) ----------------- */
+
+/**
+ * @brief Write an int parameter back to the model (plugin-side API).
+ *
+ * @param h Handle (filtered plugin view — consumer identity carried internally)
+ * @param name Parameter name
+ * @param val Value to write
+ * @return Error code
+ */
+int plume_data_write_int(plume_data_handle_t* h, const char* name, int val);
+
+/**
+ * @brief Write a bool parameter back to the model (plugin-side API).
+ *
+ * @param h Handle (filtered plugin view — consumer identity carried internally)
+ * @param name Parameter name
+ * @param val Value to write
+ * @return Error code
+ */
+int plume_data_write_bool(plume_data_handle_t* h, const char* name, bool val);
+
+/**
+ * @brief Write a float parameter back to the model (plugin-side API).
+ *
+ * @param h Handle (filtered plugin view — consumer identity carried internally)
+ * @param name Parameter name
+ * @param val Value to write
+ * @return Error code
+ */
+int plume_data_write_float(plume_data_handle_t* h, const char* name, float val);
+
+/**
+ * @brief Write a double parameter back to the model (plugin-side API).
+ *
+ * @param h Handle (filtered plugin view — consumer identity carried internally)
+ * @param name Parameter name
+ * @param val Value to write
+ * @return Error code
+ */
+int plume_data_write_double(plume_data_handle_t* h, const char* name, double val);
+
+/**
+ * @brief Write an Atlas field back to the model (plugin-side API).
+ *
+ * @param h Handle (filtered plugin view — consumer identity carried internally)
+ * @param name Parameter name
+ * @param ptr Pointer to atlas::Field::Implementation until PLUME-59
+ * @return Error code
+ */
+int plume_data_write_atlas_field(plume_data_handle_t* h, const char* name, void* ptr);
+
+/**
+ * @brief Begin an in-place write-back scope for an Atlas field (plugin-side API).
+ *
+ * Stages the write with the authorisation tracker (fails if the plugin is not authorised or the single-writer
+ * policy is violated) and returns an opaque scope handle plus the staged field's Implementation pointer. The
+ * returned pointer aliases the model's own buffer, so the caller can mutate it in place (no copy) and then finalise
+ * with plume_data_write_scope_commit. This is the copy-free counterpart of plume_data_write_atlas_field.
+ *
+ * @note This (and plume_data_write_atlas_field) is the authorised write-back path: staging runs the tracker's
+ *       authorisation/policy check, signals the model, and records an audit of writing plugins. Mutating a field
+ *       obtained from plume_data_get_shared_atlas_field bypasses all of that (unauthorised, unsignalled, untraced).
+ *       On the C/Fortran boundary this is convention-enforced only, not structural.
+ *
+ * @param h Handle (filtered plugin view — consumer identity carried internally)
+ * @param name Parameter name
+ * @param scope_out Output: opaque write-scope handle (finalise with plume_data_write_scope_commit)
+ * @param field_ptr_out Output: pointer to the staged atlas::Field::Implementation (the model's own buffer)
+ * @return Error code
+ */
+int plume_data_write_scope_begin(plume_data_handle_t* h, const char* name, void** scope_out, void** field_ptr_out);
+
+/**
+ * @brief Commit and free an in-place write-back scope opened with plume_data_write_scope_begin (plugin-side API).
+ *
+ * Finalises the scope (leaving the tracker slot staged for the model flush) and frees the scope handle. The handle
+ * must not be used afterwards. Always frees the scope, even if committing reports an error.
+ *
+ * @param scope Opaque write-scope handle returned by plume_data_write_scope_begin
+ * @return Error code
+ */
+int plume_data_write_scope_commit(void* scope);
+
+/**
+ * @brief Free a C string previously returned by a Plume API function (e.g. plume_data_pending_writebacks,
+ * plume_manager_active_fields). Use this instead of delete[] directly — required for Fortran callers.
+ *
+ * @param s String to free (may be null)
+ */
+void plume_free_string(char* s);
+
+/**
+ * @brief Get the names of parameters with pending (unacknowledged) write-backs (model-side API).
+ *
+ * Returns a comma-separated string of parameter names. The caller is responsible for
+ * freeing the returned string with plume_free_string().
+ *
+ * @param h Handle
+ * @param names Output: comma-separated pending parameter names (caller must free with plume_free_string)
+ * @return Error code
+ */
+int plume_data_pending_writebacks(plume_data_handle_t* h, char** names);
+
+/**
+ * @brief Acknowledge ingestion of a written parameter (model-side API).
+ *
+ * @param h Handle
+ * @param name Parameter name to acknowledge
+ * @return Error code
+ */
+int plume_data_acknowledge_writeback(plume_data_handle_t* h, const char* name);
 
 
 #if defined(__cplusplus)

@@ -12,8 +12,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
-#include <map>
 #include <memory>
+#include <vector>
 
 #include "eckit/config/LocalConfiguration.h"
 #include "eckit/exception/Exceptions.h"
@@ -27,6 +27,7 @@
 #include "plume/PluginCore.h"
 #include "plume/PluginHandler.h"
 #include "plume/Protocol.h"
+#include "plume/coupling/WriteBackTracker.h"
 #include "plume/data/DataChecker.h"
 #include "plume/data/ParameterCatalogue.h"
 #include "plume/plume.h"
@@ -81,7 +82,8 @@ public:
         return requiredParams;
     }
 
-    data::ParameterCatalogue getActiveDataCatalogue(bool derived = true) {
+    // This method is usually called by models to sort through their own data, not derived ones
+    data::ParameterCatalogue getActiveDataCatalogue(bool derived = false) {
         return dataCatalogue_.filter(getActiveParams(derived));
     }
 
@@ -103,6 +105,10 @@ private:
 std::optional<ManagerConfig> Manager::managerConfig_;
 
 bool Manager::isConfigured_{false};
+
+WriteAuthorisation Manager::writeAuthorisation_;
+
+std::unique_ptr<coupling::WriteBackTracker> Manager::writeBackTracker_;
 
 
 void Manager::configure(const eckit::Configuration& config) {
@@ -139,10 +145,11 @@ void Manager::negotiate(const Protocol& offers) {
     std::vector<std::string> names(pnames.begin(), pnames.end());
     eckit::Log::info() << "Plume config: " << *managerConfig_ << ", offers: " << names << std::endl;
 
-    // Negotiate with each plugin
-    Negotiator negotiator;
+    const WriteBackPolicy policy = managerConfig_.value().writeBackPolicy();
+    eckit::Log::info() << "Plume Write-back policy: " << policy << std::endl;
 
-    // Load all selected plugins as per configuration
+    Negotiator negotiator(policy);
+
     for (const auto& pconfig : managerConfig_.value().plugins()) {
 
         auto name = pconfig.name();
@@ -150,13 +157,9 @@ void Manager::negotiate(const Protocol& offers) {
 
         eckit::Log::info() << std::endl << " <== Evaluating Plugin: " << name << " from Library: " << lib << std::endl;
 
-        // Load the plugin
-        Plugin& plugin = loadPlugin(lib, name);
-
-        // check what each plugin requires
+        Plugin& plugin    = loadPlugin(lib, name);
         Protocol requires = plugin.negotiate();
 
-        // Check plugin parameters requested through configuration (if any)
         auto config_params = pconfig.parameters();
         if (config_params.size() > 0) {
             eckit::Log::info() << "Parameters from Config: " << config_params << std::endl;
@@ -165,15 +168,17 @@ void Manager::negotiate(const Protocol& offers) {
             eckit::Log::info() << "No additional parameters found in Config." << std::endl;
         }
 
-        // negotiator handles the negotiation
-        PluginDecision decision = negotiator.negotiate(offers, requires, config_params);
+        PluginDecision decision = negotiator.negotiate(name, offers, requires, config_params);
         eckit::Log::info() << decision << std::endl;
 
-        // If the plugin is accepted, set it as active
         if (decision.accepted()) {
             PluginRegistry::instance().setActive(plugin, pconfig, decision);
         }
     }
+
+    negotiator.logSummary();
+
+    writeAuthorisation_ = negotiator.writeAuthorisation();
 
     PluginRegistry::instance().setDataCatalogue(offers.offers());
 };
@@ -184,6 +189,19 @@ void Manager::feedPlugins(data::ModelData& data) {
 
     // check data
     Manager::checkData(data);
+
+    // Initialise write-back tracker before feeding plugins so it's propagated into each plugin's filtered ModelData view
+    if (!writeAuthorisation_.empty()) {
+        writeBackTracker_ =
+            std::make_unique<coupling::WriteBackTracker>(writeAuthorisation_, managerConfig_.value().writeBackPolicy());
+        data.enrollWritebackParams(*writeBackTracker_, writeAuthorisation_);
+        data.attachWritebackTracker(writeBackTracker_.get());
+    }
+
+    // PLUME-72: if a future refactor introduces plugin deactivation (e.g. setup() failure recovery,
+    // runtime removal), tracker slots opened here for writable params would never be written.
+    // At submit() they silently reset to IDLE, masking the missing write. A cross-check between
+    // writeAuthorisation_ and the active plugin list at this point would catch this.
 
     // Run each PluginCore for every active plugin
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
@@ -196,8 +214,8 @@ void Manager::feedPlugins(data::ModelData& data) {
         }
 
         // get the share of run data needed to run the plugincore
-        auto requiredParams          = pluginHandler.getRequiredParamNames();
-        data::ModelData requiredData = data.filter(requiredParams);
+        auto requiredParams              = pluginHandler.getRequiredParamNames();
+        data::ModelDataView requiredData = data.filter(requiredParams, pluginHandler.pluginName());
 
         // grab data
         pluginHandler.grabData(requiredData);
@@ -210,8 +228,22 @@ void Manager::feedPlugins(data::ModelData& data) {
 
 // Run all active plugincores
 void Manager::run() {
+    if (writeBackTracker_) {
+        // reset() is safe on the first call (all slots are IDLE); on subsequent calls it transitions
+        // ACKNOWLEDGED → IDLE, clearing acknowledgements from the previous cycle.
+        writeBackTracker_->reset();
+        writeBackTracker_->open();
+    }
+
+    // PLUME-72: getActivePlugins() returns all handlers without filtering by isActive(). If plugin
+    // deactivation is introduced in a future refactor, open slots for inactive plugins would silently
+    // reset at submit(). Filtering by isActive() before open() would be the fix.
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
         pluginHandler.run();
+    }
+
+    if (writeBackTracker_) {
+        writeBackTracker_->submit();  // WRITTEN → PENDING; READY → IDLE; throws on ERROR
     }
 };
 
@@ -219,8 +251,16 @@ void Manager::run() {
 // Teardown all active plugins
 void Manager::teardown() {
     for (auto& pluginHandler : PluginRegistry::instance().getActivePlugins()) {
-        // teardown the plugincore first
         pluginHandler.teardown();
+    }
+
+    if (writeBackTracker_) {
+        if (!writeBackTracker_->allAcknowledged()) {
+            eckit::Log::warning() << "Plume Manager::teardown(): write-back tracker has unacknowledged slots. "
+                                  << "The model did not acknowledge all pending write-backs before teardown."
+                                  << std::endl;
+        }
+        writeBackTracker_.reset();  // destructor fires onDetach_, nulling ModelData::tracker_
     }
 };
 
@@ -237,6 +277,15 @@ bool Manager::isPluginActivated(const std::string& name) {
 
 std::unordered_set<std::string> Manager::getActiveParams() {
     return PluginRegistry::instance().getActiveParams();
+}
+
+
+std::vector<std::string> Manager::getActivePluginNames() {
+    std::vector<std::string> names;
+    for (const auto& handler : PluginRegistry::instance().getActivePlugins()) {
+        names.push_back(handler.pluginName());
+    }
+    return names;
 }
 
 
@@ -260,6 +309,10 @@ bool Manager::isConfigured() {
     return Manager::isConfigured_;
 }
 
+const WriteAuthorisation& Manager::writeAuthorisation() {
+    return writeAuthorisation_;
+}
+
 
 void Manager::checkData(const data::ModelData& data) {
 
@@ -278,9 +331,13 @@ void Manager::checkData(const data::ModelData& data) {
 }
 
 void Manager::reset() {
+    if (writeBackTracker_) {
+        writeBackTracker_.reset();  // destructor fires onDetach_, nulling ModelData::tracker_
+    }
     PluginRegistry::instance().reset();
     isConfigured_ = false;
     managerConfig_.reset();
+    writeAuthorisation_ = WriteAuthorisation{};
 }
 
 

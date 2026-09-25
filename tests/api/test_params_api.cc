@@ -104,6 +104,7 @@ CASE("test_params_api") {
     char* active_fields_csv = nullptr;
     EXPECT_PLUME_CODE_SUCCESS(plume_manager_active_fields(mgr_handle, &active_fields_csv));
     std::string active_fields(active_fields_csv);
+    plume_free_string(active_fields_csv);
 
     for (const auto& name : {"I", "J", "FF1", "DD1", "AA1"}) {
         EXPECT(active_fields.find(name) != std::string::npos);

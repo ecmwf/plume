@@ -40,7 +40,7 @@ const std::set<plume::data::ParameterDefinition>& PluginHandler::getRequiredPara
 }
 
 
-void PluginHandler::grabData(const data::ModelData& data) {
+void PluginHandler::grabData(data::ModelDataView data) {
     plugincorePtr_->grabData(data);
 }
 
@@ -57,6 +57,11 @@ void PluginHandler::run() {
 
 void PluginHandler::teardown() {
     plugincorePtr_->teardown();
+    // Drop the grabbed model data view now — during the model's finalise() while atlas is still alive —
+    // rather than at program exit (see PluginCore::releaseData()). The empty PluginCore itself lingers in
+    // the process-static PluginRegistry (only the test-only Manager::reset() erases it), but once its data
+    // view is released it holds no atlas::Field, so that lingering is harmless.
+    plugincorePtr_->releaseData();
 }
 
 std::string PluginHandler::pluginName() const {

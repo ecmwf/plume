@@ -14,6 +14,8 @@
 #include "atlas/array/ArrayView.h"
 #include "atlas/array/MakeView.h"
 #include "atlas/field/Field.h"
+#include "atlas/functionspace/PointCloud.h"
+#include "atlas/option.h"
 
 #include "eckit/testing/Test.h"
 
@@ -29,16 +31,24 @@ CASE("test update strategies - wind at height") {
     using AtlasObservable = plume::data::ParameterValue<atlas::Field, plume::data::IParameterObservable>;
     using AtlasObserver   = plume::data::ParameterValue<atlas::Field, plume::data::IParameterObserver>;
 
-    atlas::Field geopotential("z", atlas::array::make_datatype<double>(), atlas::array::make_shape(3, 5));
-    atlas::Field u("u", atlas::array::make_datatype<double>(), atlas::array::make_shape(3, 5));
-    u.set_levels(5);
+    atlas::Field lonlat("lonlat", atlas::array::make_datatype<double>(), atlas::array::make_shape(4, 2));
+    atlas::Field ghost("ghost", atlas::array::make_datatype<int>(), atlas::array::make_shape(4));
+    auto lonlatView = atlas::array::make_view<double, 2>(lonlat);
+    auto ghostView  = atlas::array::make_view<int, 1>(ghost);
+    lonlatView.assign({0., 0., 1., 0., 2., 0., 3., 0.});
+    ghostView.assign({0, 0, 0, 1});
+
+    // Use unstructured grid here to ensure implementation is not dependant on structured grids
+    atlas::functionspace::PointCloud fs(lonlat, ghost);
+    atlas::Field geopotential = fs.createField<double>(atlas::option::name("z") | atlas::option::levels(5));
+    atlas::Field u            = fs.createField<double>(atlas::option::name("u") | atlas::option::levels(5));
 
     // mimick how the model data creates the target field
     atlas::Field u200tmp  = u.clone();
     atlas::Field u5000tmp = u.clone();
 
     EXPECT_EQUAL(u200tmp.levels(), 5);
-    EXPECT_EQUAL(u200tmp.shape(), atlas::array::make_shape(3, 5));
+    EXPECT_EQUAL(u200tmp.shape(), atlas::array::make_shape(4, 5));
 
     auto zView = atlas::array::make_view<double, 2>(geopotential);
     auto uView = atlas::array::make_view<double, 2>(u);
@@ -51,11 +61,15 @@ CASE("test update strategies - wind at height") {
     std::array<std::array<double, 5>, 3> uValues = {
         {{{32.0, 22.0, 12.0, 8.0, 4.0}}, {{38.0, 28.0, 15.0, 9.0, 3.5}}, {{42.0, 30.0, 17.0, 10.0, 4.0}}}};
 
-    for (atlas::idx_t i = 0; i < u.shape(0); ++i) {
+    for (atlas::idx_t i = 0; i < 3; ++i) {
         for (atlas::idx_t j = 0; j < u.shape(1); ++j) {
             zView(i, j) = zValues[i][j];
             uView(i, j) = uValues[i][j];
         }
+    }
+    for (atlas::idx_t j = 0; j < u.shape(1); ++j) {
+        zView(3, j) = 0.;
+        uView(3, j) = 0.;
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -74,8 +88,14 @@ CASE("test update strategies - wind at height") {
 
     EXPECT_EQUAL(u200Ptr->get().levels(), 1);
     EXPECT_EQUAL(u5000Ptr->get().levels(), 1);
-    EXPECT_EQUAL(u200Ptr->get().shape(), atlas::array::make_shape(3, 1));
-    EXPECT_EQUAL(u5000Ptr->get().shape(), atlas::array::make_shape(3, 1));
+    EXPECT_EQUAL(u200Ptr->get().shape(), atlas::array::make_shape(4, 1));
+    EXPECT_EQUAL(u5000Ptr->get().shape(), atlas::array::make_shape(4, 1));
+
+    auto u200Target = atlas::array::make_view<double, 2>(u200Ptr->getSettableField());
+    auto u5000Target = atlas::array::make_view<double, 2>(u5000Ptr->getSettableField());
+    // Sentinel values verify the strategy does not overwrite the ghost row.
+    u200Target(3, 0) = -1234.;
+    u5000Target(3, 0) = -5678.;
 
     // -----------------------------------------------------------------------------------------------------------------
     // Check update correctness
@@ -88,10 +108,12 @@ CASE("test update strategies - wind at height") {
 
     auto u200View  = atlas::array::make_view<double, 2>(u200Ptr->get());
     auto u5000View = atlas::array::make_view<double, 2>(u5000Ptr->get());
-    for (atlas::idx_t i = 0; i < u.shape(0); ++i) {
+    for (atlas::idx_t i = 0; i < 3; ++i) {
         EXPECT((u200View(i, 0) < uValues[i][3] && u200View(i, 0) > uValues[i][4]));
         EXPECT((u5000View(i, 0) < uValues[i][1] && u5000View(i, 0) > uValues[i][2]));
     }
+    EXPECT_EQUAL(u200View(3, 0), -1234.);
+    EXPECT_EQUAL(u5000View(3, 0), -5678.);
     EXPECT(eckit::types::is_approximately_equal(u5000View(1, 0), 25.00, 0.01));
 
     // -----------------------------------------------------------------------------------------------------------------
