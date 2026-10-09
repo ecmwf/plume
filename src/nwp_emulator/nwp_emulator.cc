@@ -9,7 +9,9 @@
  * does it submit to any jurisdiction.
  */
 #include <iostream>
+#include <sstream>
 #include <stdlib.h>
+#include <vector>
 
 #include "eckit/log/Log.h"
 
@@ -22,6 +24,25 @@
 
 using namespace nwp_emulator;
 
+namespace {
+
+/// Split a comma-separated string into trimmed, non-empty tokens.
+std::vector<std::string> splitCommaList(const std::string& csv) {
+    std::vector<std::string> tokens;
+    std::stringstream ss(csv);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        const size_t start = token.find_first_not_of(" \t");
+        const size_t end   = token.find_last_not_of(" \t");
+        if (start != std::string::npos) {
+            tokens.push_back(token.substr(start, end - start + 1));
+        }
+    }
+    return tokens;
+}
+
+}  // namespace
+
 /**
  * @class NWPEmulator
  * @brief Emulates a model run and makes data available at each time step to facilitate Plume and plugins testing.
@@ -32,8 +53,12 @@ class NWPEmulator final : public atlas::AtlasTool {
     std::string briefDescription() override { return "NWP model emulator to facilitate Plume & plugins development"; }
     std::string usage() override {
         return name() +
-               " [--grib-src=<path> | --config-src=<path>] [--plume-cfg=<path>] [OPTION]... [--help]\n"
-               "        --plume-cfg is optional, pass it to run Plume, else the emulator will do a dry run\n";
+               " [--grib-src=<path> | --config-src=<path>] [--plume-cfg=<path>] [--writable=all|<name1,name2,...>] "
+               "[OPTION]... [--help]\n"
+               "        --plume-cfg is optional, pass it to run Plume, else the emulator will do a dry run\n"
+               "        --writable is optional: offer all model parameters as writable (\"all\"), or a "
+               "comma-separated subset (e.g. \"u,v,msl\"), so plugins may negotiate write-back access. Has no "
+               "effect without --plume-cfg.\n";
     }
 
     int numberOfPositionalArguments() override { return -1; }
@@ -45,6 +70,8 @@ public:
         add_option(new SimpleOption<std::string>("grib-src", "Path to GRIB files source"));
         add_option(new SimpleOption<std::string>("config-src", "Path to emulator config file"));
         add_option(new SimpleOption<std::string>("plume-cfg", "Path to Plume configuration"));
+        add_option(new SimpleOption<std::string>(
+            "writable", "Offer parameters as writable: \"all\", or a comma-separated subset (e.g. \"u,v,msl\")"));
     }
 
 private:
@@ -53,6 +80,9 @@ private:
 
     // Empty means dry-run mode (no Plume execution).
     std::string plumeConfigPath_;
+
+    bool writableAll_{false};
+    std::vector<std::string> writableParams_;
 };
 
 int NWPEmulator::execute(const Args& args) {
@@ -76,10 +106,19 @@ int NWPEmulator::execute(const Args& args) {
         return 1;
     }
     args.get("plume-cfg", plumeConfigPath_);
+    std::string writableArg;
+    if (args.get("writable", writableArg)) {
+        if (writableArg == "all") {
+            writableAll_ = true;
+        }
+        else {
+            writableParams_ = splitCommaList(writableArg);
+        }
+    }
 
     // The AtlasTool wrapper is now a thin adapter over the reusable core.
     NWPEmulatorCore core;
-    NWPEmulatorRunOptions options{dataSourceType_, dataSourcePath_, plumeConfigPath_};
+    NWPEmulatorRunOptions options{dataSourceType_, dataSourcePath_, plumeConfigPath_, writableAll_, writableParams_};
 
     NWPEmulatorRunResult result = core.execute(options);
     return result.returnCode;

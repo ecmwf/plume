@@ -56,16 +56,29 @@ PYBIND11_MODULE(NWP_EMULATOR_BINDINGS_MODULE_NAME, m) {
         .def_readwrite("data_source_type", &NWPEmulatorRunOptions::dataSourceType)
         .def_readwrite("data_source_path", &NWPEmulatorRunOptions::dataSourcePath)
         .def_readwrite("plume_config_path", &NWPEmulatorRunOptions::plumeConfigPath)
+        .def_readwrite("writable_all", &NWPEmulatorRunOptions::writableAll)
+        .def_readwrite("writable_params", &NWPEmulatorRunOptions::writableParams)
         .def("__eq__", [](const NWPEmulatorRunOptions& a, const NWPEmulatorRunOptions& b) {
             return a.dataSourceType == b.dataSourceType &&
                    a.dataSourcePath == b.dataSourcePath &&
-                   a.plumeConfigPath == b.plumeConfigPath;
+                   a.plumeConfigPath == b.plumeConfigPath &&
+                   a.writableAll == b.writableAll &&
+                   a.writableParams == b.writableParams;
         }, py::is_operator())
         .def("__repr__", [](const NWPEmulatorRunOptions& o) {
             py::object dst = py::cast(o.dataSourceType);
+            std::string params;
+            for (size_t i = 0; i < o.writableParams.size(); ++i) {
+                if (i > 0) {
+                    params += ", ";
+                }
+                params += "'" + o.writableParams[i] + "'";
+            }
             return "RunOptions(data_source_type=" + py::str(dst).cast<std::string>() +
                    ", data_source_path='" + o.dataSourcePath +
-                   "', plume_config_path='" + o.plumeConfigPath + "')";
+                   "', plume_config_path='" + o.plumeConfigPath +
+                   "', writable_all=" + (o.writableAll ? "True" : "False") +
+                   ", writable_params=[" + params + "])";
         });
 
     py::class_<NWPEmulatorRunResult>(m, "RunResult")

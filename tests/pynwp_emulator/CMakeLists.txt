@@ -18,6 +18,14 @@ set(PYNWP_EMULATOR_FINDLIBS_ENV
     "FINDLIBS_DISABLE_PACKAGE=yes"
 )
 
+# The bindings are always built against the preferred (dp > sp) precision (see src/bindings/CMakeLists.txt),
+# so the write-back test plugin and config must match that same precision.
+if(HAVE_NWP_EMULATOR_dp)
+    set(PYNWP_EMULATOR_WRITEBACK_PREC dp)
+elseif(HAVE_NWP_EMULATOR_sp)
+    set(PYNWP_EMULATOR_WRITEBACK_PREC sp)
+endif()
+
 # Binding surface tests — no test data required.
 ecbuild_add_test(
     TARGET      plume_test_pynwp_emulator
@@ -42,7 +50,10 @@ ecbuild_add_test(
     ENVIRONMENT
         PYTHONPATH=${PYNWP_EMULATOR_PYTHONPATH}
         TEST_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../nwp_emulator/data/
+        PLUME_WRITEBACK_CONFIG_PATH=${CMAKE_CURRENT_SOURCE_DIR}/../nwp_emulator/data/plume_config_writeback_${PYNWP_EMULATOR_WRITEBACK_PREC}.yml
         ${PYNWP_EMULATOR_FINDLIBS_ENV}
+    TEST_DEPENDS nwp_emulator_writeback_plugin_${PYNWP_EMULATOR_WRITEBACK_PREC}
+    CONDITION   PYNWP_EMULATOR_WRITEBACK_PREC
     LABELS      pynwp_emulator pynwp_emulator_integration
 )
 

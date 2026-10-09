@@ -81,6 +81,8 @@ bool NWPEmulatorCore::setupDataProvider(const NWPEmulatorRunOptions& options) {
     }
 
     plumeConfigPath_ = options.plumeConfigPath;
+    writableAll_ = options.writableAll;
+    writableParams_ = std::unordered_set<std::string>(options.writableParams.begin(), options.writableParams.end());
 
     const size_t root   = 0;
     const size_t nprocs = eckit::mpi::comm().size();
@@ -216,18 +218,20 @@ bool NWPEmulatorCore::setupPlume(NWPDataProvider& dataProvider) {
     plumeUpdatingParams_.clear();
 
     plume::Protocol offers;  // Define data offered by the emulator to Plume.
-    offers.offer<int>("NSTEP", "always", "Simulation Step");
+    offers.offer<int>("NSTEP", "always", "Simulation Step", isWritableRequested("NSTEP"));
     plumeUpdatingParams_.push_back("NSTEP");
-    offers.offer<double>("TSTEP", "always", "Simulation Time Step");
-    offers.offer<int>("NFLEVG", "always", "Number of vertical levels");
-    offers.offer<double>("WSTEP", "always", "Wave simulation time");
+    offers.offer<double>("TSTEP", "always", "Simulation Time Step", isWritableRequested("TSTEP"));
+    offers.offer<int>("NFLEVG", "always", "Number of vertical levels", isWritableRequested("NFLEVG"));
+    offers.offer<double>("WSTEP", "always", "Wave simulation time", isWritableRequested("WSTEP"));
     plumeUpdatingParams_.push_back("WSTEP");
 
     // Offer every model field so plugin negotiation can decide which fields are
-    // actually needed for the configured plugin set.
+    // actually needed for the configured plugin set. Fields requested via --writable
+    // (or "--writable=all") are additionally offered as writable so plugins may
+    // negotiate write-back access to them.
     auto& fields = dataProvider.getModelFieldSet();
     for (const auto& field: fields) {
-        offers.offer<atlas::Field>(field.name(), "on-request", field.name());
+        offers.offer<atlas::Field>(field.name(), "on-request", field.name(), isWritableRequested(field.name()));
     }
     plume::Manager::negotiate(offers);
 
@@ -249,6 +253,10 @@ bool NWPEmulatorCore::setupPlume(NWPDataProvider& dataProvider) {
     return true;
 }
 
+bool NWPEmulatorCore::isWritableRequested(const std::string& name) const {
+    return writableAll_ || writableParams_.count(name) > 0;
+}
+
 void NWPEmulatorCore::runPlume(int step) {
     // Update step metadata and mark backing fields as updated only after the
     // provider has populated this step's data.
@@ -257,6 +265,14 @@ void NWPEmulatorCore::runPlume(int step) {
     plumeData_.setUpdated(plumeUpdatingParams_);
 
     plume::Manager::run();
+
+    // Immediately ingest any write-back performed by plugins this cycle: the emulator has no
+    // Fortran-side buffers to copy into, the plugin already wrote in place into the shared
+    // atlas::Field/scalar storage, so acknowledging simply lets the write-back tracker cycle
+    // PENDING -> ACKNOWLEDGED -> IDLE ahead of the next step.
+    for (const auto& name: plumeData_.pendingWritebacks()) {
+        plumeData_.acknowledgeWriteback(name);
+    }
 }
 
 }  // namespace nwp_emulator

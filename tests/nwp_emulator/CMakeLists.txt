@@ -68,12 +68,39 @@ foreach(prec sp dp)
                 plume_plugin
         )
 
+        ecbuild_add_library(
+            TARGET nwp_emulator_writeback_plugin_${prec}
+            SOURCES
+                nwp_emulator_writeback_plugin.h
+                nwp_emulator_writeback_plugin.cc
+            DEFINITIONS
+                ${NWP_EMULATOR_DEFINITIONS_${prec}}
+            PRIVATE_LIBS
+                plume_plugin
+                plume_nwp_emulator_${prec}
+        )
+
         ecbuild_add_test(
             TARGET  plume_test_nwp_tool_${prec}
             LIBS simple_plugins nwp_emulator_test_plugin_${prec}
             COMMAND nwp_emulator_run_${prec}.x
             ARGS --config-src=${CMAKE_CURRENT_SOURCE_DIR}/data/valid_config.yml
                 --plume-cfg=${CMAKE_CURRENT_SOURCE_DIR}/data/plume_config_${prec}.yml
+        )
+
+        # Exercises the emulator's --writable CLI flag end-to-end (both --writable and RunOptions), and verifies
+        # that a plugin requesting write access to "u" is rejected without it and accepted (and actually writes
+        # back into the model's field buffer) with it.
+        ecbuild_add_test(
+            TARGET      plume_test_nwp_writable_${prec}
+            SOURCES     test_writable.cc
+            LIBS        plume_nwp_emulator_${prec} nwp_emulator_writeback_plugin_${prec}
+            DEFINITIONS ${NWP_EMULATOR_DEFINITIONS_${prec}}
+            ENVIRONMENT
+                TEST_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/data/
+                NWP_EMULATOR_RUN_BIN=$<TARGET_FILE:nwp_emulator_run_${prec}.x>
+                PLUME_WRITEBACK_CONFIG=${CMAKE_CURRENT_SOURCE_DIR}/data/plume_config_writeback_${prec}.yml
+                OMP_NUM_THREADS=1
         )
     endif()
 endforeach()

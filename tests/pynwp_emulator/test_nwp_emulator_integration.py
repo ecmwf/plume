@@ -35,6 +35,9 @@ TEST_DATA_DIR = os.environ.get("TEST_DATA_DIR", "")
 PLUME_CONFIG_PATH = (
     os.path.join(TEST_DATA_DIR, "plume_config_simple.yml") if TEST_DATA_DIR else ""
 )
+# Config for the write-back plugin, precision-matched to the bindings by CMake (see
+# tests/pynwp_emulator/CMakeLists.txt). Only set when a writable-capable emulator precision is available.
+PLUME_WRITEBACK_CONFIG_PATH = os.environ.get("PLUME_WRITEBACK_CONFIG_PATH", "")
 
 
 def _valid_config() -> dict:
@@ -60,6 +63,11 @@ needs_data = pytest.mark.skipif(
 needs_plume = pytest.mark.skipif(
     not (TEST_DATA_DIR and PLUME_CONFIG_PATH),
     reason="TEST_DATA_DIR or PLUME_CONFIG_PATH not set — skipping Plume integration tests",
+)
+
+needs_writeback = pytest.mark.skipif(
+    not (TEST_DATA_DIR and PLUME_WRITEBACK_CONFIG_PATH),
+    reason="TEST_DATA_DIR or PLUME_WRITEBACK_CONFIG_PATH not set — skipping write-back integration tests",
 )
 
 
@@ -337,3 +345,91 @@ def test_plume_context_manager_iterator(valid_cfg):
         assert steps_seen == sorted(set(steps_seen)), f"steps not monotonically increasing: {{steps_seen}}"
     """)
     assert proc.returncode == 0, proc.stderr
+
+
+# ---------------------------------------------------------------------------
+# Write-back / "--writable" propagation (RunOptions.writable_all / writable_params)
+#
+# NWPEmulatorWriteBackPlugin (tests/nwp_emulator/nwp_emulator_writeback_plugin.h) requires write access to
+# "u" and, when accepted, overwrites every point/level of "u" with the sentinel value 12345.0.
+# ---------------------------------------------------------------------------
+
+
+@needs_writeback
+def test_writable_params_subset_enables_plugin_writeback(valid_cfg):
+    """Setting writable_params=["u"] must let the write-back plugin negotiate and write into "u"."""
+    proc = _run_plume_subprocess(f"""
+        import pynwp_emulator as emu, os
+        opts = emu.RunOptions()
+        opts.data_source_type = emu.DataSourceType.CONFIG
+        opts.data_source_path = os.path.join({TEST_DATA_DIR!r}, "valid_config.yml")
+        opts.plume_config_path = {PLUME_WRITEBACK_CONFIG_PATH!r}
+        opts.writable_params = ["u"]
+
+        emulator = emu.NWPEmulator()
+        assert emulator.setup_data_provider(opts) is True
+        assert emulator.setup_plume_provider() is True
+        assert emulator.run_step() is True
+
+        key = next(k for k in emulator.available_field_keys() if k.startswith("u,"))
+        snapshot = emulator.get_field_overlay_snapshot(key)
+        assert snapshot.values, "expected non-empty field values"
+        assert all(v == 12345.0 for v in snapshot.values), snapshot.values
+
+        emulator.finalize_run()
+    """)
+    assert proc.returncode == 0, proc.stderr
+
+
+@needs_writeback
+def test_writable_all_enables_plugin_writeback(valid_cfg):
+    """Setting writable_all=True must also let the write-back plugin negotiate and write into "u"."""
+    proc = _run_plume_subprocess(f"""
+        import pynwp_emulator as emu, os
+        opts = emu.RunOptions()
+        opts.data_source_type = emu.DataSourceType.CONFIG
+        opts.data_source_path = os.path.join({TEST_DATA_DIR!r}, "valid_config.yml")
+        opts.plume_config_path = {PLUME_WRITEBACK_CONFIG_PATH!r}
+        opts.writable_all = True
+
+        emulator = emu.NWPEmulator()
+        assert emulator.setup_data_provider(opts) is True
+        assert emulator.setup_plume_provider() is True
+        assert emulator.run_step() is True
+
+        key = next(k for k in emulator.available_field_keys() if k.startswith("u,"))
+        snapshot = emulator.get_field_overlay_snapshot(key)
+        assert snapshot.values, "expected non-empty field values"
+        assert all(v == 12345.0 for v in snapshot.values), snapshot.values
+
+        emulator.finalize_run()
+    """)
+    assert proc.returncode == 0, proc.stderr
+
+
+@needs_writeback
+def test_writable_not_requested_plugin_rejected(valid_cfg):
+    """Without writable_all/writable_params, "u" is offered read-only: the plugin must be rejected and "u"
+    must keep its emulator-generated data instead of the write-back sentinel value."""
+    proc = _run_plume_subprocess(f"""
+        import pynwp_emulator as emu, os
+        opts = emu.RunOptions()
+        opts.data_source_type = emu.DataSourceType.CONFIG
+        opts.data_source_path = os.path.join({TEST_DATA_DIR!r}, "valid_config.yml")
+        opts.plume_config_path = {PLUME_WRITEBACK_CONFIG_PATH!r}
+        # writable_all/writable_params left at their defaults (False / []).
+
+        emulator = emu.NWPEmulator()
+        assert emulator.setup_data_provider(opts) is True
+        assert emulator.setup_plume_provider() is True
+        assert emulator.run_step() is True
+
+        key = next(k for k in emulator.available_field_keys() if k.startswith("u,"))
+        snapshot = emulator.get_field_overlay_snapshot(key)
+        assert snapshot.values, "expected non-empty field values"
+        assert all(v != 12345.0 for v in snapshot.values), snapshot.values
+
+        emulator.finalize_run()
+    """)
+    assert proc.returncode == 0, proc.stderr
+

@@ -14,9 +14,13 @@ You can use it to emulate model runs with Plume loading the plugins from your co
 
 Once installed (check out [Plume install guide](../../README.md/#installation) for more info), the emulator tool can be used as follows:
 ```bash
-mpirun -np 2 nwp_emulator_run_<sp|dp> [--grib-src=<path> | --config-src=<path>] [--plume-cfg=<path>] [OPTION]... [--help]
+mpirun -np 2 nwp_emulator_run_<sp|dp> [--grib-src=<path> | --config-src=<path>] [--plume-cfg=<path>] [--writable=all|<name1,name2,...>] [OPTION]... [--help]
 ```
 To make a dry run, omit the `--plume-cfg` flag.
+
+### Write-back
+
+Plume plugins can request write access to model parameters (see Plume's write-back protocol). By default, the emulator offers every parameter read-only, so any plugin negotiating writable access is rejected. Pass `--writable=all` to offer every parameter as writable, or `--writable=u,v,msl` to offer only a specific subset. `--writable` has no effect without `--plume-cfg`, and the referenced Plume configuration must also set a `write-back-policy` other than the default `disabled` for negotiation to actually grant write access.
 
 ## Quick start
 ### GRIB source

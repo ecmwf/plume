@@ -12,6 +12,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "plume/data/ModelData.h"
@@ -32,6 +33,14 @@ struct NWPEmulatorRunOptions {
     DataSourceType dataSourceType = DataSourceType::INVALID;
     std::string dataSourcePath;
     std::string plumeConfigPath;
+
+    /// When true, every parameter offered to Plume (scalars and fields) is offered as writable,
+    /// regardless of writableParams. Mirrors the CLI "--writable=all" form.
+    bool writableAll = false;
+
+    /// Names of the parameters that should be offered as writable when writableAll is false.
+    /// Mirrors the CLI "--writable=<comma-separated names>" form. Ignored when writableAll is true.
+    std::vector<std::string> writableParams;
 };
 
 /**
@@ -173,9 +182,21 @@ private:
      */
     void runPlume(int step);
 
+    /**
+     * @brief Whether a parameter should be offered to Plume as writable.
+     *
+     * True when the run was configured with "--writable=all" (writableAll_), or when the
+     * parameter name is explicitly listed via "--writable=<name1,name2,...>" (writableParams_).
+     */
+    bool isWritableRequested(const std::string& name) const;
+
     /// Empty means dry-run mode with emulator data generation only.
     std::string plumeConfigPath_;
     bool plumeInitialised_{false};
+
+    /// See NWPEmulatorRunOptions::writableAll / writableParams. Populated in setupDataProvider().
+    bool writableAll_{false};
+    std::unordered_set<std::string> writableParams_;
 
     // dataProvider_ is declared before plumeData_ so it is destroyed after plumeData_.
     // plumeData_ holds non-owning raw pointers into the atlas FieldSet owned by

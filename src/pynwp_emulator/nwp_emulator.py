@@ -67,6 +67,10 @@ class NWPEmulator:
         opts.data_source_type = emu.DataSourceType.GRIB
         opts.data_source_path = "/path/to/data"
         opts.plume_config_path = "/path/to/plume.yml"
+        # Optional: offer parameters as writable so plugins may negotiate write-back.
+        # Set writable_all = True to offer every parameter as writable, or list the
+        # precise subset in writable_params (ignored when writable_all is True).
+        opts.writable_params = ["u", "v", "msl"]
 
         with emu.NWPEmulator(opts) as emulator:
             for step in emulator:

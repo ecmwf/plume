@@ -71,6 +71,8 @@ def test_run_options_defaults():
     assert opts.data_source_type == emu.DataSourceType.INVALID
     assert opts.data_source_path == ""
     assert opts.plume_config_path == ""
+    assert opts.writable_all is False
+    assert opts.writable_params == []
 
 
 def test_run_options_attribute_assignment():
@@ -84,6 +86,25 @@ def test_run_options_attribute_assignment():
     assert opts.plume_config_path == "/some/plume.yml"
 
 
+def test_run_options_writable_all_assignment():
+    """writable_all mirrors the CLI '--writable=all' form."""
+    opts = emu.RunOptions()
+    assert opts.writable_all is False
+    opts.writable_all = True
+    assert opts.writable_all is True
+
+
+def test_run_options_writable_params_assignment():
+    """writable_params mirrors the CLI '--writable=<name1,name2,...>' form."""
+    opts = emu.RunOptions()
+    opts.writable_params = ["u", "v", "msl"]
+    assert opts.writable_params == ["u", "v", "msl"]
+
+
+def test_run_options_writable_params_default_empty():
+    assert emu.RunOptions().writable_params == []
+
+
 def test_run_options_config_source():
     opts = emu.RunOptions()
     opts.data_source_type = emu.DataSourceType.CONFIG
@@ -95,14 +116,30 @@ def test_run_options_equality():
     a.data_source_type = emu.DataSourceType.GRIB
     a.data_source_path = "/some/path"
     a.plume_config_path = "/some/plume.yml"
+    a.writable_all = True
+    a.writable_params = ["u"]
 
     b = emu.RunOptions()
     b.data_source_type = emu.DataSourceType.GRIB
     b.data_source_path = "/some/path"
     b.plume_config_path = "/some/plume.yml"
+    b.writable_all = True
+    b.writable_params = ["u"]
 
     assert a == b
     assert not (a != b)
+
+
+def test_run_options_writable_inequality():
+    """RunOptions differing only in writable_all/writable_params must compare unequal."""
+    a = emu.RunOptions()
+    b = emu.RunOptions()
+    b.writable_all = True
+    assert a != b
+
+    c = emu.RunOptions()
+    c.writable_params = ["u"]
+    assert a != c
 
 
 def test_run_options_inequality():
@@ -112,6 +149,16 @@ def test_run_options_inequality():
     b.data_source_path = "/b"
     assert a != b
     assert not (a == b)
+
+
+def test_run_options_repr_contains_writable_fields():
+    opts = emu.RunOptions()
+    opts.writable_all = True
+    opts.writable_params = ["u", "v"]
+    text = repr(opts)
+    assert "writable_all=True" in text
+    assert "writable_params=" in text
+    assert "u" in text and "v" in text
 
 
 def test_run_options_default_equality():

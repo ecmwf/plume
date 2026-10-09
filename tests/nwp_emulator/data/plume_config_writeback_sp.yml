@@ -1,0 +1,5 @@
+write-back-policy: single-writer
+plugins:
+  - name: "NWPEmulatorWriteBackPlugin"
+    lib: "nwp_emulator_writeback_plugin_sp"
+    core-config: {}
