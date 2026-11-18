@@ -33,23 +33,10 @@ on:
   # Trigger the workflow manually — always runs regardless of paths
   workflow_dispatch: ~
 
-  # Trigger after public PR approved for CI
-  pull_request_target:
-    types: [labeled]
-    paths:
-      - 'src/nwp_emulator/**'
-      - 'src/bindings/**'
-      - 'src/pynwp_emulator/**'
-      - 'tests/nwp_emulator/**'
-      - 'tests/pynwp_emulator/**'
-      - 'CMakeLists.txt'
-      - 'src/CMakeLists.txt'
-      - '.github/workflows/pynwp_emulator.yml'
-
 jobs:
   prepare-deps:
     runs-on: ubuntu-latest
-    if: ${{ (success() || failure()) && (!github.event.pull_request.head.repo.fork && github.event.action != 'labeled' || github.event.label.name == 'approved-for-ci') }}
+    if: ${{ success() || failure() }}
     steps:
       # MPI system packages are fast to install and are not cached because they
       # live in /usr rather than dependencies/.
@@ -195,7 +182,7 @@ jobs:
   build-and-test:
     needs: prepare-deps
     runs-on: ubuntu-latest
-    if: ${{ (success() || failure()) && (!github.event.pull_request.head.repo.fork && github.event.action != 'labeled' || github.event.label.name == 'approved-for-ci') }}
+    if: ${{ success() || failure() }}
     strategy:
       matrix:
         python-version: ['3.11', '3.12', '3.13']
