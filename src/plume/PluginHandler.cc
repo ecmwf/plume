@@ -62,17 +62,6 @@ void PluginHandler::run(const std::string& hook) {
 }
 
 
-bool PluginHandler::runsAt(const std::string& hook) const {
-    const auto& hooks = decision_.agreedHooks();
-    return hooks.find(hook) != hooks.end();
-}
-
-
-const std::set<std::string>& PluginHandler::hooks() const {
-    return decision_.agreedHooks();
-}
-
-
 void PluginHandler::teardown() {
     plugincorePtr_->teardown();
     // Drop the grabbed model data view now — during the model's finalise() while atlas is still alive —

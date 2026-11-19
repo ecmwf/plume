@@ -65,10 +65,10 @@ ecbuild_add_library( TARGET simple_plugins
 # NOTE: REGISTER_LIBRARY() declares a fixed symbol, so one plugin per translation unit.
 ecbuild_add_library( TARGET hook_plugins
   SOURCES
-    hook_plugin.h
-    hook_plugin_a.cc
-    hook_plugin_ab.cc
-    hook_plugin_default.cc
+    plugins/hook_plugin.h
+    plugins/hook_plugin_a.cc
+    plugins/hook_plugin_ab.cc
+    plugins/hook_plugin_default.cc
   PRIVATE_LIBS
     plume_plugin
 )

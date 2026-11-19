@@ -57,6 +57,10 @@ int main(int argc, char** argv) {
     offers.offerHook("pre-compute", "before the step is computed");
     offers.offerHook("post-compute", "after the step has been computed");
 
+    // A param that this model only keeps current at some of its hook points is offered with a hook
+    // scope; a plugin needing it at any other hook point is rejected during negotiation.
+    offers.offerAt<int>("L", "on-request", "this is param L, only updated after the step", {"post-compute"});
+
     // Negotiate with plugins
     plume::Manager::negotiate(offers);
 

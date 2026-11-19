@@ -81,7 +81,7 @@ public:
     static void feedPlugins(data::ModelData& data);
 
     /**
-     * @brief run all active plugins bound to the default hook point
+     * @brief run all active plugins bound to the default hook point (same as run(plume::DEFAULT_HOOK))
      *
      */
     static void run();
@@ -89,8 +89,13 @@ public:
     /**
      * @brief run the active plugins bound to a specific hook point
      *
+     * Each call is one write-back cycle: only the params writable at this hook point can be written by the plugins,
+     * and after the call returns the model can query and acknowledge the pending write-backs (ModelData). A param
+     * still pending from a previous call must be acknowledged before it can be written again.
+     *
      * @param hook name of a hook point registered by the model through Protocol::offerHook()
      * @throws eckit::BadValue if the hook point was never registered
+     * @throws eckit::Exception if a param writable at this hook point has a pending write-back not acknowledged yet
      */
     static void run(const std::string& hook);
 
@@ -107,11 +112,20 @@ public:
      * Lets a model skip preparatory work for a hook point that nothing is listening to.
      *
      * @param hook
-     * @return true
-     * @return false
+     * @return true if at least one active plugin is bound to the hook; false otherwise.
      * @throws eckit::BadValue if the hook point was never registered
      */
     static bool isHookActive(const std::string& hook);
+
+    /**
+     * @brief Params that the active plugins may write back at a hook point (after negotiation)
+     *
+     * Lets a model know in advance which params it may have to copy back after calling run(hook).
+     *
+     * @param hook
+     * @throws eckit::BadValue if the hook point was never registered
+     */
+    static std::set<std::string> getWritableParamsAtHook(const std::string& hook);
 
     /**
      * @brief Teardown all active plugins and clean up the write-back tracker (if active).
@@ -163,7 +177,9 @@ public:
      * @brief Params requested by the active plugins bound to a specific hook point.
      *
      * Lets a model know which of its data a given hook point actually consumes, so that it can
-     * update exactly that before invoking it.
+     * update exactly that before invoking it. A param that a plugin required only at some of its
+     * hook points (Protocol::requireAt, or a "hooks" key in the configuration) is only reported
+     * at those.
      *
      * @param hook
      * @param derived when false, params that Plume derives itself are left out and only the params
@@ -215,6 +231,9 @@ private:
      * @param data
      */
     static void checkData(const data::ModelData& data);
+
+    // warn about the params used at a hook point whose previous write-back is still pending acknowledgement
+    static void warnPendingReadAt(const std::string& hook);
 
     /**
      * @brief Reset the manager to its initial state. Intended for use within tests only.

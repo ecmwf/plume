@@ -55,6 +55,10 @@ call plume_check(offers%offer_atlas_field("config-param-3", "always", "this is p
 call plume_check(offers%offer_hook("pre-compute", "before the step is computed"))
 call plume_check(offers%offer_hook("post-compute", "after the step has been computed"))
 
+! A param that this model only keeps current at some of its hook points is offered with a hook scope
+! (comma-separated hook point names); a plugin needing it at any other hook point is rejected.
+call plume_check(offers%offer_int("L", "on-request", "this is param L, only updated after the step", hooks="post-compute"))
+
 
 ! negotiate
 call plume_check(manager%initialise())

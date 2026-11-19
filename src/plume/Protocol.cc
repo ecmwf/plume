@@ -11,6 +11,8 @@
 #include <algorithm>
 
 #include "atlas/library/version.h"
+#include "eckit/exception/Exceptions.h"
+#include "eckit/log/Log.h"
 
 #include "plume/plume_version.h"
 #include "plume/Protocol.h"
@@ -133,6 +135,14 @@ bool Protocol::isHookOffered(const std::string& name) const {
 const data::ParameterCatalogue& Protocol::offers() const {
     return offeredParams_;
 }
+
+std::set<std::string> Protocol::offeredHooksFor(const std::string& name) const {
+    if (!offeredParams_.hasParam(name)) {
+        return {};
+    }
+    const auto& scope = offeredParams_.getParam(name).hooks();
+    return scope.empty() ? offeredHookNames() : scope;
+}
 // -------------------------------------------------------------------------------------------------
 
 
@@ -141,7 +151,21 @@ void Protocol::insertParam(const data::ParameterDefinition& param, data::Paramet
         catalogue.insertParam(param);
     }
     else {
-        // eckit::Log::warning() << "Parameter " << param.name() << " already requested!" << std::endl;
+        // the first definition wins, except for the hook scope and the access mode, which are merged per hook
+        // point: e.g. requireWritableAt<T>("p", {"A"}) then requireAt<T>("p", {"B"}) gives "p" writable at A and
+        // read-only at B (see data::ParameterDefinition::mergeAccess)
+        if (catalogue.mergeParam(param)) {
+            eckit::Log::warning() << "Plume Protocol: param '" << param.name()
+                                  << "' is writable at every hook point: an unscoped writable definition overrides "
+                                     "the read-only access requested at some hook points"
+                                  << std::endl;
+        }
+    }
+}
+
+void Protocol::checkHookScope(const std::string& name, const std::set<std::string>& hooks) {
+    if (hooks.empty()) {
+        throw eckit::BadValue("Param '" + name + "': a hook scope needs a non-empty set of hook points", Here());
     }
 }
 
@@ -150,13 +174,13 @@ void Protocol::setParamsFromConfig(const eckit::Configuration& config) {
     if (config.has("required")) {
         std::vector<eckit::LocalConfiguration> reqParams = config.getSubConfigurations("required");
         for (const auto& p : reqParams) {
-            requiredParams_.insertParam(data::ParameterDefinition(p));
+            insertParam(data::ParameterDefinition(p), requiredParams_);
         }
     }
     if (config.has("offered")) {
         std::vector<eckit::LocalConfiguration> offeredParams = config.getSubConfigurations("offered");
         for (const auto& p : offeredParams) {
-            offeredParams_.insertParam(data::ParameterDefinition(p));
+            insertParam(data::ParameterDefinition(p), offeredParams_);
         }
     }
 

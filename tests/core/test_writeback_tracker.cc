@@ -8,9 +8,11 @@
  * granted to it by virtue of its status as an intergovernmental organisation nor
  * does it submit to any jurisdiction.
  */
+#include <set>
 #include <string>
 #include <vector>
 
+#include "eckit/exception/Exceptions.h"
 #include "eckit/testing/Test.h"
 
 #include "plume/coupling/WriteAuthorisation.h"
@@ -409,6 +411,116 @@ CASE("tracker_destructor_nulls_modeldata_pointer") {
 
     // ModelData::tracker_ is now null — acknowledgeWriteback throws the "not attached" error
     EXPECT_THROWS_AS(data.acknowledgeWriteback("x"), eckit::BadValue);
+}
+
+// ---- per-hook write cycles ----
+
+CASE("per_hook_cycle_opens_only_the_slots_writable_at_the_hook") {
+    // x writable by PluginA at H1 only, y at H2 only
+    WriteAuthorisation auth;
+    auth.grant("PluginA", "x", "H1");
+    auth.grant("PluginA", "y", "H2");
+    data::ParameterValueTyped<int> x{0}, y{0};
+    coupling::WriteBackTracker tracker{auth, WriteBackPolicy::single_writer};
+    tracker.attachParam("x", &x);
+    tracker.attachParam("y", &y);
+
+    EXPECT_EQUAL(auth.writableParamsAt("H1"), std::set<std::string>{"x"});
+
+    tracker.open("H1");
+    EXPECT_EQUAL(tracker.currentHook(), std::string("H1"));
+    EXPECT_EQUAL(std::string(tracker.slotState("x")), std::string("READY"));
+    EXPECT_EQUAL(std::string(tracker.slotState("y")), std::string("IDLE"));
+    EXPECT(x.isWritable());
+    EXPECT_NOT(y.isWritable());
+
+    EXPECT(tracker.isWritable("x", "PluginA"));
+    EXPECT_NOT(tracker.isWritable("y", "PluginA"));  // read-only at H1
+    EXPECT_NOT(tracker.isWritable("x", "PluginB"));  // not authorised
+
+    EXPECT_THROWS_AS(tracker.write("y", "PluginA"), eckit::BadValue);  // read-only at H1
+    tracker.write("x", "PluginA");
+    EXPECT_NOT(tracker.isWritable("x", "PluginA"));  // single writer: already written this cycle
+    tracker.submit();
+
+    EXPECT_EQUAL(std::string(tracker.slotState("x")), std::string("PENDING"));
+    EXPECT(tracker.currentHook().empty());
+    EXPECT_NOT(tracker.isWritable("x", "PluginA"));  // outside a cycle
+    EXPECT_THROWS_AS(tracker.write("x", "PluginA"), eckit::BadValue);
+
+    // H2 does not touch x: its cycle opens even though x is still PENDING
+    EXPECT_NO_THROW(tracker.open("H2"));
+    EXPECT_EQUAL(std::string(tracker.slotState("x")), std::string("PENDING"));
+    tracker.write("y", "PluginA");
+    tracker.submit();
+
+    std::vector<std::string> pending = tracker.pendingWritebacks();
+    EXPECT_EQUAL(pending.size(), size_t(2));
+
+    // re-opening H1 with x still PENDING throws; acknowledging x lets it through (ACKNOWLEDGED → IDLE → READY)
+    EXPECT_THROWS(tracker.open("H1"));
+    tracker.acknowledgeWriteback("x");
+    EXPECT_NO_THROW(tracker.open("H1"));
+    EXPECT_EQUAL(std::string(tracker.slotState("x")), std::string("READY"));
+    tracker.submit();
+    EXPECT_EQUAL(std::string(tracker.slotState("x")), std::string("IDLE"));
+
+    tracker.acknowledgeWriteback("y");
+    tracker.reset();
+}
+
+CASE("per_hook_cycle_write_authorised_at_another_hook_throws") {
+    // x writable at both hook points, but PluginA only at H1 and PluginB only at H2
+    WriteAuthorisation auth;
+    auth.grant("PluginA", "x", "H1");
+    auth.grant("PluginB", "x", "H2");
+    data::ParameterValueTyped<int> x{0};
+    coupling::WriteBackTracker tracker{auth, WriteBackPolicy::multi_writer};
+    tracker.attachParam("x", &x);
+
+    tracker.open("H2");
+    EXPECT_NOT(tracker.isWritable("x", "PluginA"));
+    EXPECT_THROWS_AS(tracker.write("x", "PluginA"), eckit::BadValue);
+    tracker.write("x", "PluginB");
+    tracker.submit();
+    tracker.acknowledgeWriteback("x");
+    tracker.reset();
+}
+
+CASE("per_hook_cycle_error_at_one_hook_does_not_block_another") {
+    WriteAuthorisation auth;
+    auth.grant("PluginA", "x", "H1");
+    auth.grant("PluginA", "y", "H2");
+    data::ParameterValueTyped<int> x{0}, y{0};
+    coupling::WriteBackTracker tracker{auth, WriteBackPolicy::single_writer};
+    tracker.attachParam("x", &x);
+    tracker.attachParam("y", &y);
+
+    tracker.open("H1");
+    tracker.reportError("x", "x failed");
+    EXPECT_THROWS(tracker.submit());
+
+    // y is not affected by x's error
+    EXPECT_NO_THROW(tracker.open("H2"));
+    tracker.write("y", "PluginA");
+    EXPECT_NO_THROW(tracker.submit());
+
+    // x stays poisoned for its own hook point
+    EXPECT_THROWS(tracker.open("H1"));
+
+    ManagerTestAccess::forceTrackerReset(tracker);
+}
+
+CASE("per_hook_cycle_cannot_be_nested") {
+    WriteAuthorisation auth;
+    auth.grant("PluginA", "x", "H1");
+    data::ParameterValueTyped<int> x{0};
+    coupling::WriteBackTracker tracker{auth, WriteBackPolicy::single_writer};
+    tracker.attachParam("x", &x);
+
+    tracker.open("H1");
+    EXPECT_THROWS(tracker.open("H2"));
+    tracker.submit();
 }
 
 }  // namespace plume::test

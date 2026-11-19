@@ -42,8 +42,8 @@ real(c_double) :: param_dd1_fort = 888.8
 
 logical(c_bool) :: is_plugin_activated
 logical(c_bool) :: is_hook_active
-logical(c_bool) :: is_param_at_hook
-character(:), allocatable :: hook_fields
+logical(c_bool) :: requested_at_hook
+character(:), allocatable :: hook_params
 character(:), allocatable :: registered
 
 integer :: iter
@@ -72,6 +72,13 @@ call plume_check(offers%offer_double("FORT_DD1", "always", "this is param FORT_D
 
 ! register an additional hook point (the default one is always registered)
 call plume_check(offers%offer_hook("fapi-hook", "an extra hook point"))
+
+! offer a param only at some hook points (hook scope: comma-separated hook point names)
+call plume_check(offers%offer_int("SCOPED_I", "always", "offered at fapi-hook only", hooks="fapi-hook"))
+! per-hook access: writable at fapi-hook, read-only at the default hook point
+call plume_check(offers%offer_int("RW_I", "always", "writable at fapi-hook", hooks="fapi-hook", writable=.true.))
+call plume_check(offers%offer_int_writable("RW_J", "always", "writable at fapi-hook only", hooks="fapi-hook"))
+call plume_check(offers%offer_int("RW_I", "always", "read-only at default", hooks="default"))
 
 
 ! negotiate
@@ -145,15 +152,15 @@ call plume_check(manager%is_hook_active("default", is_hook_active))
 FCTEST_CHECK(is_hook_active)
 
 ! params requested at a specific hook point
-is_param_at_hook = .false.
-call plume_check(manager%is_param_requested_at_hook("FORT_I", "fapi-hook", is_param_at_hook))
-FCTEST_CHECK(is_param_at_hook)
+requested_at_hook = .false.
+call plume_check(manager%is_param_requested_at_hook("FORT_I", "fapi-hook", requested_at_hook))
+FCTEST_CHECK(requested_at_hook)
 
-call plume_check(manager%is_param_requested_at_hook("I", "fapi-hook", is_param_at_hook))
-FCTEST_CHECK(.not. is_param_at_hook)
+call plume_check(manager%is_param_requested_at_hook("I", "fapi-hook", requested_at_hook))
+FCTEST_CHECK(.not. requested_at_hook)
 
-hook_fields = manager%active_fields_at_hook("fapi-hook")
-write(*,*) "Params requested at fapi-hook: ", hook_fields
+hook_params = manager%active_params_at_hook("fapi-hook")
+write(*,*) "Params requested at fapi-hook: ", hook_params
 
 registered = manager%registered_hooks()
 write(*,*) "Registered hook points: ", registered

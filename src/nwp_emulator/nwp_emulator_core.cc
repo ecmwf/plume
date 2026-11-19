@@ -233,7 +233,7 @@ bool NWPEmulatorCore::setupPlume(NWPDataProvider& dataProvider) {
     // Hook points the emulator is able to call Plume from, in addition to the implicit default
     // one that it keeps calling where it always has.
     offers.offerHook("step-begin", "Beginning of a model step, before the step data is marked as updated");
-    offers.offerHook("step-end", "End of a model step, after all plugins bound to the default hook point");
+    offers.offerHook("step-end", "End of a model step, after the default hook point");
 
     plume::Manager::negotiate(offers);
 
@@ -256,8 +256,8 @@ bool NWPEmulatorCore::setupPlume(NWPDataProvider& dataProvider) {
 }
 
 void NWPEmulatorCore::runPlume(int step) {
-    // Plugins bound to "step-begin" see the previous step's values: the step metadata has not
-    // been updated yet.
+
+    // Beginning of the model step
     plume::Manager::run("step-begin");
 
     // Update step metadata and mark backing fields as updated only after the

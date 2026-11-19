@@ -50,6 +50,25 @@ CASE("test_manager_api") {
     // register an additional hook point (the default one is always registered)
     EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_hook(protocol_handle, "api-hook", "an extra hook point"));
 
+    // offer params only at some hook points (hook scope): comma-separated hook point names
+    EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_int_ext(protocol_handle, "SCOPED_I", "always",
+                                                            "offered at api-hook only", false, "api-hook"));
+    EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_double_ext(protocol_handle, "SCOPED_DD", "always",
+                                                               "offered at both", false, " api-hook , default "));
+    // NULL or "" mean unscoped
+    EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_float_ext(protocol_handle, "UNSCOPED_F", "always",
+                                                              "offered everywhere", false, nullptr));
+    EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_float_ext(protocol_handle, "UNSCOPED_G", "always",
+                                                              "offered everywhere", false, ""));
+    // per-hook access: writable at api-hook, read-only at the default hook point
+    EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_int_ext(protocol_handle, "RW_I", "always",
+                                                            "writable at api-hook", true, "api-hook"));
+    EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_int_ext(protocol_handle, "RW_I", "always",
+                                                            "read-only at default", false, "default"));
+    // a hook scope without any hook point name is an error
+    EXPECT_PLUME_CODE_FAILURE( plume_protocol_offer_int_ext(protocol_handle, "SCOPED_BAD", "always",
+                                                            "empty scope", false, " , "));
+
     // configure and Negotiate
     std::string mgr_conf_str = 
     R"YAML(
@@ -145,14 +164,22 @@ CASE("test_manager_api") {
     EXPECT(!param_at_hook);
 
     // the CSV listing of the params requested at a hook point
-    char* hook_fields = nullptr;
-    EXPECT_PLUME_CODE_SUCCESS( plume_manager_active_fields_at_hook(mgr_handle, "api-hook", true, &hook_fields));
-    EXPECT(hook_fields != nullptr);
-    EXPECT(std::string(hook_fields).find("FORT_I") != std::string::npos);
-    EXPECT(std::string(hook_fields).find(",I,") == std::string::npos);
-    delete[] hook_fields;
+    char* hook_params = nullptr;
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_active_params_at_hook(mgr_handle, "api-hook", true, &hook_params));
+    EXPECT(hook_params != nullptr);
+    EXPECT(std::string(hook_params).find("FORT_I") != std::string::npos);
+    EXPECT(std::string(hook_params).find(",I,") == std::string::npos);
+    delete[] hook_params;
 
-    EXPECT_PLUME_CODE_FAILURE( plume_manager_active_fields_at_hook(mgr_handle, "not-a-hook", true, &hook_fields));
+    EXPECT_PLUME_CODE_FAILURE( plume_manager_active_params_at_hook(mgr_handle, "not-a-hook", true, &hook_params));
+
+    // no plugin writes anything (write-back is disabled): nothing to copy back at any hook point
+    char* writable_params = nullptr;
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_writable_params_at_hook(mgr_handle, "api-hook", &writable_params));
+    EXPECT(writable_params != nullptr);
+    EXPECT(std::string(writable_params).empty());
+    plume_free_string(writable_params);
+    EXPECT_PLUME_CODE_FAILURE( plume_manager_writable_params_at_hook(mgr_handle, "not-a-hook", &writable_params));
 
     // Provide data as needed
     int param_i = 111;

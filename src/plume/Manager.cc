@@ -10,11 +10,14 @@
  */
 #include <dirent.h>
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <functional>
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "eckit/config/LocalConfiguration.h"
@@ -54,6 +57,7 @@ public:
         pluginHandlers_.clear();
         dataCatalogue_ = data::ParameterCatalogue();
         hookIndex_.clear();
+        hookParams_.clear();
         // the default hook point is always registered, so that Manager::run() stays valid even
         // before a negotiation has taken place
         registeredHooks_ = {DEFAULT_HOOK};
@@ -79,6 +83,18 @@ public:
         for (const auto& hook : decision.agreedHooks()) {
             PluginRegistry::instance().hookIndex_[hook].push_back(pluginIdx);
         }
+
+        // cache the params needed at each of those hook points (with and without the derived ones), so
+        // that querying them from the model does not rebuild the sets at every call. A param restricted
+        // to some hook points (hook scope) only counts at those. Plugins are only activated during
+        // negotiation, so the cache is complete afterwards.
+        for (const auto& hook : decision.agreedHooks()) {
+            auto& cached = PluginRegistry::instance().hookParams_[hook];
+            for (bool derived : {true, false}) {
+                auto names = decision.offeredParamNamesAtHook(hook, derived);
+                cached[derived].insert(names.begin(), names.end());
+            }
+        }
     }
 
     // get the active Plugins
@@ -95,7 +111,7 @@ public:
         return registeredHooks_.find(hook) != registeredHooks_.end();
     }
 
-    void checkHookRegistered(const std::string& hook) const {
+    void requireHookRegistered(const std::string& hook) const {
         if (!isHookRegistered(hook)) {
             throw eckit::BadValue("Hook point " + hook + " has not been registered by the model!", Here());
         }
@@ -108,17 +124,18 @@ public:
         return (it == hookIndex_.end()) ? noPlugins : it->second;
     }
 
-    // Parameters requested by the active plugins bound to a hook point
-    std::unordered_set<std::string> getActiveParamsAtHook(const std::string& hook, bool derived = true) {
-        checkHookRegistered(hook);
-        std::unordered_set<std::string> requiredParams;
-        for (const auto& pluginIdx : getPluginsAtHook(hook)) {
-            auto req_fields = pluginHandlers_[pluginIdx].getRequiredParamNames(derived);
-            requiredParams.insert(req_fields.begin(), req_fields.end());
+    // Parameters requested by the active plugins bound to a hook point (cached at activation time).
+    // A hook with plugins is necessarily registered, so the common case is a single lookup; the
+    // registration check is only paid for hooks without any plugin bound.
+    const std::unordered_set<std::string>& getActiveParamsAtHook(const std::string& hook, bool derived = true) const {
+        static const std::unordered_set<std::string> noParams;
+        auto it = hookParams_.find(hook);
+        if (it != hookParams_.end()) {
+            return it->second[derived];
         }
-        return requiredParams;
+        requireHookRegistered(hook);
+        return noParams;
     }
-
 
     // Parameters requested by all active plugins collectively
     std::unordered_set<std::string> getActiveParams(bool derived = true) {
@@ -149,6 +166,9 @@ private:
 
     // hook point -> indices of the active plugins bound to it
     std::map<std::string, std::vector<std::size_t>> hookIndex_;
+
+    // params requested at each hook point, indexed by [derived]: [false] = model-provided only
+    std::unordered_map<std::string, std::array<std::unordered_set<std::string>, 2>> hookParams_;
 
     // hook points registered by the model (the default one is always registered)
     std::set<std::string> registeredHooks_{DEFAULT_HOOK};
@@ -199,8 +219,28 @@ void Manager::negotiate(const Protocol& offers) {
     std::vector<std::string> names(pnames.begin(), pnames.end());
     eckit::Log::info() << "Plume config: " << *managerConfig_ << ", offers: " << names << std::endl;
 
-    // Register the hook points offered by the model
+    // A param offered only at some hook points must name hook points the model registers: anything
+    // else is a mistake on the model side. Checked here, not in Protocol::offer, because the model
+    // is free to call offerHook() after offer().
     auto hnames = offers.offeredHookNames();
+    for (const auto& param : offers.offers().getParams()) {
+        for (const auto& hook : param.hooks()) {
+            if (hnames.find(hook) == hnames.end()) {
+                throw eckit::BadValue("Parameter " + param.name() + " is offered at hook point " + hook +
+                                          ", which the model has not registered!",
+                                      Here());
+            }
+        }
+        for (const auto& hook : param.writableHooks()) {
+            if (hnames.find(hook) == hnames.end()) {
+                throw eckit::BadValue("Parameter " + param.name() + " is offered writable at hook point " + hook +
+                                          ", which the model has not registered!",
+                                      Here());
+            }
+        }
+    }
+
+    // Register the hook points offered by the model
     std::vector<std::string> hooks(hnames.begin(), hnames.end());
     eckit::Log::info() << "Offered hook points: " << hooks << std::endl;
     PluginRegistry::instance().setRegisteredHooks(hnames);
@@ -208,6 +248,7 @@ void Manager::negotiate(const Protocol& offers) {
     const WriteBackPolicy policy = managerConfig_.value().writeBackPolicy();
     eckit::Log::info() << "Plume Write-back policy: " << policy << std::endl;
 
+    // Negotiate with each plugin
     Negotiator negotiator(policy);
 
     for (const auto& pconfig : managerConfig_.value().plugins()) {
@@ -254,14 +295,15 @@ void Manager::negotiate(const Protocol& offers) {
     // Report which plugins ended up bound to which hook point. A model that adopts hook points and
     // stops calling the hook-less Manager::run() leaves everything bound to the default hook point
     // dormant, so this summary is worth having in the log.
-    eckit::Log::info() << std::endl << "--- Plume hook point summary ---" << std::endl;
+    eckit::Log::info() << "\n--- Plume hook point summary ---\n";
     for (const auto& hook : PluginRegistry::instance().getRegisteredHooks()) {
         std::vector<std::string> boundPlugins;
         for (const auto& pluginIdx : PluginRegistry::instance().getPluginsAtHook(hook)) {
             boundPlugins.push_back(PluginRegistry::instance().getActivePlugins()[pluginIdx].pluginName());
         }
-        eckit::Log::info() << " - Hook point '" << hook << "': " << boundPlugins << std::endl;
+        eckit::Log::info() << " - Hook point '" << hook << "': " << boundPlugins << "\n";
     }
+    eckit::Log::info() << std::endl;  // single flush for the whole summary
 };
 
 
@@ -318,28 +360,50 @@ void Manager::run(const std::string& hook) {
 
     // an unregistered hook point is a mistake on the model side: fail loudly rather than
     // silently running nothing
-    PluginRegistry::instance().checkHookRegistered(hook);
+    PluginRegistry::instance().requireHookRegistered(hook);
 
+    // One write-back cycle per hook point call: only the slots of the params writable at this hook
+    // point are opened (ACKNOWLEDGED → IDLE → READY). open() throws if one of them is still PENDING,
+    // i.e. the model has not acknowledged its previous write.
     if (writeBackTracker_) {
-        // reset() is safe on the first call (all slots are IDLE); on subsequent calls it transitions
-        // ACKNOWLEDGED → IDLE, clearing acknowledgements from the previous cycle.
-        writeBackTracker_->reset();
-        writeBackTracker_->open();
+        warnPendingReadAt(hook);
+        writeBackTracker_->open(hook);
     }
 
     // PLUME-72: getActivePlugins() returns all handlers without filtering by isActive(). If plugin
     // deactivation is introduced in a future refactor, open slots for inactive plugins would silently
     // reset at submit(). Filtering by isActive() before open() would be the fix.
-
     auto& pluginHandlers = PluginRegistry::instance().getActivePlugins();
     for (const auto& pluginIdx : PluginRegistry::instance().getPluginsAtHook(hook)) {
         pluginHandlers[pluginIdx].run(hook);
     }
 
     if (writeBackTracker_) {
-        writeBackTracker_->submit();  // WRITTEN → PENDING; READY → IDLE; throws on ERROR
+        writeBackTracker_->submit();  // opened slots: WRITTEN → PENDING; READY → IDLE; throws on ERROR
     }
 };
+
+
+// A param written back at a previous hook point and not yet acknowledged by the model, which is
+// read at this hook point: if the model refreshes it before ingesting the write, the write is lost.
+void Manager::warnPendingReadAt(const std::string& hook) {
+    const auto& activeParams = PluginRegistry::instance().getActiveParamsAtHook(hook);
+    for (const auto& param : writeBackTracker_->pendingWritebacks()) {
+        if (activeParams.find(param) != activeParams.end()) {
+            eckit::Log::warning() << "Plume Manager::run(\"" << hook << "\"): param \"" << param
+                                  << "\" is used at this hook point but its previous write-back has not been "
+                                     "acknowledged by the model yet. If the model refreshed it in the meantime, the "
+                                     "written value has been overwritten."
+                                  << std::endl;
+        }
+    }
+}
+
+
+std::set<std::string> Manager::getWritableParamsAtHook(const std::string& hook) {
+    PluginRegistry::instance().requireHookRegistered(hook);
+    return writeAuthorisation_.writableParamsAt(hook);
+}
 
 
 std::set<std::string> Manager::registeredHooks() {
@@ -348,7 +412,7 @@ std::set<std::string> Manager::registeredHooks() {
 
 
 bool Manager::isHookActive(const std::string& hook) {
-    PluginRegistry::instance().checkHookRegistered(hook);
+    PluginRegistry::instance().requireHookRegistered(hook);
     return !PluginRegistry::instance().getPluginsAtHook(hook).empty();
 }
 
@@ -416,7 +480,8 @@ std::unordered_set<std::string> Manager::getActiveParamsAtHook(const std::string
 
 
 bool Manager::isParamRequestedAtHook(const std::string& name, const std::string& hook) {
-    auto activeParams = Manager::getActiveParamsAtHook(hook);
+    // bind to the cached set: no copy on this (potentially hot) path
+    const auto& activeParams = PluginRegistry::instance().getActiveParamsAtHook(hook);
     return activeParams.find(name) != activeParams.end();
 }
 

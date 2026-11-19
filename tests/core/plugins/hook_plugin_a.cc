@@ -15,12 +15,16 @@
 
 namespace plume_hook_plugin {
 
-void bumpCounter(plume::data::ModelData& data, const std::string& name) {
+void bumpCounter(plume::data::ModelDataView& data, const std::string& name) {
     if (!data.hasParameter(name)) {
         eckit::Log::warning() << "Hook fixture: counter " << name << " not available!" << std::endl;
         return;
     }
-    data.updateParam<int>(name, data.getParam<int>(name) + 1);
+    if (!data.isWritable(name)) {
+        eckit::Log::info() << "Hook fixture: counter " << name << " not writable here, left untouched" << std::endl;
+        return;
+    }
+    data.writeParam<int>(name, data.getParam<int>(name) + 1);
 }
 
 

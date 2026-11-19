@@ -11,8 +11,10 @@
 #include <set>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #include "eckit/config/YAMLConfiguration.h"
+#include "eckit/exception/Exceptions.h"
 #include "eckit/testing/Test.h"
 
 #include "ManagerTestAccess.h"
@@ -45,14 +47,58 @@ plugins:
 )YAML";
 
 
+// As managerConfig, with the counters requested writable so that the plugincores can bump them
+// (per-hook access for HookPluginAB: each of its counters is writable at one hook point only)
+const std::string dispatchConfig = R"YAML(
+write-back-policy: single-writer
+plugins:
+  - lib: hook_plugins
+    name: HookPluginA
+    parameters:
+      -
+        - name: count-A
+          type: INT
+          writable: true
+    core-config: {}
+  - lib: hook_plugins
+    name: HookPluginAB
+    parameters:
+      -
+        - name: count-AB-hook-A
+          type: INT
+          writable: [hook-A]
+        - name: count-AB-hook-B
+          type: INT
+          writable: [hook-B]
+    core-config: {}
+  - lib: hook_plugins
+    name: HookPluginDefault
+    parameters:
+      -
+        - name: count-D
+          type: INT
+          writable: true
+    core-config: {}
+)YAML";
+
+
+// acknowledge the write-backs of the last run, as a model would after ingesting them
+void acknowledgeAll(plume::data::ModelData& data) {
+    for (const auto& name : data.pendingWritebacks()) {
+        data.acknowledgeWriteback(name);
+    }
+}
+
+
 plume::Protocol makeOffers() {
     plume::Protocol offers;
     offers.offer<int>("I", "always", "param I");
     offers.offer<int>("J", "always", "param J");
-    offers.offer<int>("count-A", "always", "counter for HookPluginA");
-    offers.offer<int>("count-AB-hook-A", "always", "counter for HookPluginAB at hook-A");
-    offers.offer<int>("count-AB-hook-B", "always", "counter for HookPluginAB at hook-B");
-    offers.offer<int>("count-D", "always", "counter for HookPluginDefault");
+    // the counters are offered writable: plugins may bump them where they are granted write access
+    offers.offer<int>("count-A", "always", "counter for HookPluginA", /*writable=*/true);
+    offers.offer<int>("count-AB-hook-A", "always", "counter for HookPluginAB at hook-A", /*writable=*/true);
+    offers.offer<int>("count-AB-hook-B", "always", "counter for HookPluginAB at hook-B", /*writable=*/true);
+    offers.offer<int>("count-D", "always", "counter for HookPluginDefault", /*writable=*/true);
 
     offers.offerHook("hook-A", "the first hook point");
     offers.offerHook("hook-B", "the second hook point");
@@ -88,7 +134,7 @@ CASE("test_hook_dispatch") {
     EXPECT(plume::Manager::registeredHooks().count(plume::DEFAULT_HOOK) == 1);
     EXPECT_NO_THROW(plume::Manager::run());
 
-    eckit::YAMLConfiguration mgr_cfg(managerConfig);
+    eckit::YAMLConfiguration mgr_cfg(dispatchConfig);
     plume::Manager::configure(mgr_cfg);
     EXPECT(plume::Manager::isConfigured());
 
@@ -112,6 +158,12 @@ CASE("test_hook_dispatch") {
     feedCounters(data);
     plume::Manager::feedPlugins(data);
 
+    // each counter may be written back at the hook point of its plugin only
+    EXPECT_EQUAL(plume::Manager::getWritableParamsAtHook("hook-A"),
+                 (std::set<std::string>{"count-A", "count-AB-hook-A"}));
+    EXPECT_EQUAL(plume::Manager::getWritableParamsAtHook("hook-B"), std::set<std::string>{"count-AB-hook-B"});
+    EXPECT_EQUAL(plume::Manager::getWritableParamsAtHook(plume::DEFAULT_HOOK), std::set<std::string>{"count-D"});
+
     // --- run "hook-A": HookPluginA and HookPluginAB only
     plume::Manager::run("hook-A");
     EXPECT_EQUAL(data.getParam<int>("count-A"), 1);
@@ -119,12 +171,19 @@ CASE("test_hook_dispatch") {
     EXPECT_EQUAL(data.getParam<int>("count-AB-hook-B"), 0);
     EXPECT_EQUAL(data.getParam<int>("count-D"), 0);
 
+    // the model is told what was written back during that cycle
+    std::vector<std::string> pendingA = data.pendingWritebacks();
+    EXPECT_EQUAL(std::set<std::string>(pendingA.begin(), pendingA.end()),
+                 (std::set<std::string>{"count-A", "count-AB-hook-A"}));
+    acknowledgeAll(data);
+
     // --- run "hook-B": HookPluginAB only, and currentHook() must have followed the invocation
     plume::Manager::run("hook-B");
     EXPECT_EQUAL(data.getParam<int>("count-A"), 1);
     EXPECT_EQUAL(data.getParam<int>("count-AB-hook-A"), 1);
     EXPECT_EQUAL(data.getParam<int>("count-AB-hook-B"), 1);
     EXPECT_EQUAL(data.getParam<int>("count-D"), 0);
+    acknowledgeAll(data);
 
     // --- run the default hook point: the plugin that declared no hook point only
     plume::Manager::run();
@@ -132,6 +191,17 @@ CASE("test_hook_dispatch") {
     EXPECT_EQUAL(data.getParam<int>("count-AB-hook-A"), 1);
     EXPECT_EQUAL(data.getParam<int>("count-AB-hook-B"), 1);
     EXPECT_EQUAL(data.getParam<int>("count-D"), 1);
+    acknowledgeAll(data);
+
+    // --- a second "hook-A" cycle: the acknowledged slots are re-opened
+    plume::Manager::run("hook-A");
+    EXPECT_EQUAL(data.getParam<int>("count-A"), 2);
+    EXPECT_EQUAL(data.getParam<int>("count-AB-hook-A"), 2);
+    EXPECT_EQUAL(data.getParam<int>("count-AB-hook-B"), 1);
+
+    // ... and re-running it before acknowledging its write-backs is an error
+    EXPECT_THROWS(plume::Manager::run("hook-A"));
+    acknowledgeAll(data);
 
     // --- an unregistered hook point is an error, not a silent no-op
     EXPECT_THROWS(plume::Manager::run("not-a-hook"));
@@ -248,6 +318,101 @@ CASE("test_plugin_rejected_when_hook_not_offered") {
 
     EXPECT_NOT(plume::Manager::isPluginActivated("HookPluginAB"));
     EXPECT_NOT(plume::Manager::isHookActive("hook-A"));
+}
+
+
+CASE("test_hook_scoped_params") {
+
+    ManagerTestAccess::reset();
+    EXPECT_NOT(plume::Manager::isConfigured());
+
+    // HookPluginAB is bound to "hook-A" and "hook-B"; through its configuration it additionally
+    // requires "J", but only at "hook-B" (hook scope)
+    std::string mgr_conf_str = R"YAML(
+    plugins:
+      - lib: hook_plugins
+        name: HookPluginAB
+        core-config: {}
+        parameters:
+          -
+            - name: J
+              type: INT
+              hooks: [hook-B]
+    )YAML";
+
+    eckit::YAMLConfiguration mgr_cfg(mgr_conf_str);
+    plume::Manager::configure(mgr_cfg);
+    plume::Manager::negotiate(makeOffers());
+
+    EXPECT(plume::Manager::isPluginActivated("HookPluginAB"));
+
+    // "J" only counts at "hook-B"; the unscoped params count at both hook points
+    std::unordered_set<std::string> paramsAtA = plume::Manager::getActiveParamsAtHook("hook-A");
+    std::set<std::string> expectedAtA        = {"I", "count-AB-hook-A", "count-AB-hook-B"};
+    EXPECT_EQUAL(std::set<std::string>(paramsAtA.begin(), paramsAtA.end()), expectedAtA);
+
+    std::unordered_set<std::string> paramsAtB = plume::Manager::getActiveParamsAtHook("hook-B");
+    std::set<std::string> expectedAtB        = {"I", "J", "count-AB-hook-A", "count-AB-hook-B"};
+    EXPECT_EQUAL(std::set<std::string>(paramsAtB.begin(), paramsAtB.end()), expectedAtB);
+
+    EXPECT(plume::Manager::isParamRequestedAtHook("J", "hook-B"));
+    EXPECT_NOT(plume::Manager::isParamRequestedAtHook("J", "hook-A"));
+
+    // the plugin still receives "J" (data feeding is not per hook), and the union of the per-hook
+    // sets is still the global set
+    EXPECT(plume::Manager::isParamRequested("J"));
+    std::set<std::string> unionOfHooks;
+    for (const auto& hook : plume::Manager::registeredHooks()) {
+        auto params = plume::Manager::getActiveParamsAtHook(hook);
+        unionOfHooks.insert(params.begin(), params.end());
+    }
+    auto globalParams = plume::Manager::getActiveParams();
+    EXPECT_EQUAL(unionOfHooks, std::set<std::string>(globalParams.begin(), globalParams.end()));
+}
+
+
+CASE("test_plugin_rejected_when_param_not_offered_at_hook") {
+
+    ManagerTestAccess::reset();
+    EXPECT_NOT(plume::Manager::isConfigured());
+
+    std::string mgr_conf_str = R"YAML(
+    plugins:
+      - lib: hook_plugins
+        name: HookPluginA
+        core-config: {}
+    )YAML";
+
+    eckit::YAMLConfiguration mgr_cfg(mgr_conf_str);
+    plume::Manager::configure(mgr_cfg);
+
+    // HookPluginA needs "I" at "hook-A", but the model only keeps "I" current at "hook-B"
+    plume::Protocol offers;
+    offers.offerAt<int>("I", "always", "param I", {"hook-B"});
+    offers.offer<int>("count-A", "always", "counter for HookPluginA");
+    offers.offerHook("hook-A", "the first hook point");
+    offers.offerHook("hook-B", "the second hook point");
+
+    plume::Manager::negotiate(offers);
+
+    EXPECT_NOT(plume::Manager::isPluginActivated("HookPluginA"));
+    EXPECT_NOT(plume::Manager::isHookActive("hook-A"));
+}
+
+
+CASE("test_offer_scoped_to_unregistered_hook") {
+
+    ManagerTestAccess::reset();
+    EXPECT_NOT(plume::Manager::isConfigured());
+
+    eckit::YAMLConfiguration mgr_cfg(managerConfig);
+    plume::Manager::configure(mgr_cfg);
+
+    // a param offered at a hook point the model never registers is a model-side mistake
+    plume::Protocol offers = makeOffers();
+    offers.offerAt<int>("K", "always", "param K", {"hook-Z"});
+
+    EXPECT_THROWS_AS(plume::Manager::negotiate(offers), eckit::BadValue);
 }
 
 

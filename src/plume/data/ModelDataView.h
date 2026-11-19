@@ -80,6 +80,9 @@ public:
     // Write model values back within the authorised write-back protocol.
     using ModelData::writeParam;
 
+    // May this plugin write a param at the hook point it is being run at?
+    using ModelData::isWritable;
+
     // Query updated state and availability.
     using ModelData::hasParameter;
     using ModelData::isUpdated;

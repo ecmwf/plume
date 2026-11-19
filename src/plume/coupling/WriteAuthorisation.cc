@@ -10,12 +10,27 @@
  */
 #include "plume/coupling/WriteAuthorisation.h"
 
+#include "plume/Hook.h"
+
 namespace plume {
 
-const std::set<std::string> WriteAuthorisation::kEmptySet_{};
+void WriteAuthorisation::grant(const std::string& pluginName, const std::string& paramName,
+                               const std::string& hook) {
+    authorisations_[pluginName][paramName].insert(hook);
+}
 
 void WriteAuthorisation::grant(const std::string& pluginName, const std::string& paramName) {
-    authorisations_[pluginName].insert(paramName);
+    grant(pluginName, paramName, DEFAULT_HOOK);
+}
+
+bool WriteAuthorisation::isAuthorised(const std::string& pluginName, const std::string& paramName,
+                                      const std::string& hook) const {
+    auto it = authorisations_.find(pluginName);
+    if (it == authorisations_.end()) {
+        return false;
+    }
+    auto pit = it->second.find(paramName);
+    return pit != it->second.end() && pit->second.count(hook) > 0;
 }
 
 bool WriteAuthorisation::isAuthorised(const std::string& pluginName, const std::string& paramName) const {
@@ -26,12 +41,27 @@ bool WriteAuthorisation::isAuthorised(const std::string& pluginName, const std::
     return it->second.count(paramName) > 0;
 }
 
-const std::set<std::string>& WriteAuthorisation::authorisedParams(const std::string& pluginName) const {
+std::set<std::string> WriteAuthorisation::authorisedParams(const std::string& pluginName) const {
+    std::set<std::string> result;
     auto it = authorisations_.find(pluginName);
-    if (it == authorisations_.end()) {
-        return kEmptySet_;
+    if (it != authorisations_.end()) {
+        for (const auto& [param, hooks] : it->second) {
+            result.insert(result.end(), param);
+        }
     }
-    return it->second;
+    return result;
+}
+
+std::set<std::string> WriteAuthorisation::writableParamsAt(const std::string& hook) const {
+    std::set<std::string> result;
+    for (const auto& [plugin, params] : authorisations_) {
+        for (const auto& [param, hooks] : params) {
+            if (hooks.count(hook) > 0) {
+                result.insert(param);
+            }
+        }
+    }
+    return result;
 }
 
 std::set<std::string> WriteAuthorisation::authorisedPlugins() const {

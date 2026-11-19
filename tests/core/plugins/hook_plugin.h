@@ -23,6 +23,11 @@
  * plugincore and the test share the same underlying value and the test can read back exactly
  * which plugin ran at which hook point.
  *
+ * Plugins only get a read-only ModelDataView, so a counter is incremented through the authorised
+ * write-back path, and only where the plugin has been granted write access to it at the current
+ * hook point (the test requests the counters writable through the manager configuration). Without
+ * write access the counter is left untouched.
+ *
  * Note that REGISTER_LIBRARY() declares a fixed "libregist" symbol, so each plugin has to live in
  * its own translation unit.
  */
@@ -31,7 +36,7 @@ namespace plume_hook_plugin {
 /**
  * @brief Increments a counter parameter, if the plugincore has been given one.
  */
-void bumpCounter(plume::data::ModelData& data, const std::string& name);
+void bumpCounter(plume::data::ModelDataView& data, const std::string& name);
 
 
 // ---------- Bound to "hook-A" only ----------

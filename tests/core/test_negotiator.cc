@@ -11,8 +11,8 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <vector>
 
-#include "eckit/testing/Test.h"
 #include "eckit/config/YAMLConfiguration.h"
 #include "eckit/testing/Test.h"
 
@@ -322,7 +322,7 @@ CASE("test_negotiator_hooks") {
     // 1) a plugin that requires no hook point is bound to the default one
     Protocol requiresNoHook;
     requiresNoHook.require<int>("I");
-    PluginDecision decisionNoHook = negotiator.negotiate("plugin", offers, requiresNoHook);
+    PluginDecision decisionNoHook = negotiator.negotiate("TestPlugin", offers, requiresNoHook);
     EXPECT_EQUAL(decisionNoHook.accepted(), true);
     EXPECT_EQUAL(decisionNoHook.agreedHooks(), std::set<std::string>{DEFAULT_HOOK});
 
@@ -330,7 +330,7 @@ CASE("test_negotiator_hooks") {
     Protocol requiresA;
     requiresA.require<int>("I");
     requiresA.requireHook("hook-A");
-    PluginDecision decisionA = negotiator.negotiate("plugin", offers, requiresA);
+    PluginDecision decisionA = negotiator.negotiate("TestPlugin", offers, requiresA);
     EXPECT_EQUAL(decisionA.accepted(), true);
     EXPECT_EQUAL(decisionA.agreedHooks(), std::set<std::string>{"hook-A"});
 
@@ -340,7 +340,7 @@ CASE("test_negotiator_hooks") {
     requiresAB.require<int>("I");
     requiresAB.requireHook("hook-A");
     requiresAB.requireHook("hook-B");
-    PluginDecision decisionAB = negotiator.negotiate("plugin", offers, requiresAB);
+    PluginDecision decisionAB = negotiator.negotiate("TestPlugin", offers, requiresAB);
     EXPECT_EQUAL(decisionAB.accepted(), false);
 
     // 4) the default hook point is always offered, even by a model that registers none
@@ -349,7 +349,7 @@ CASE("test_negotiator_hooks") {
     Protocol requiresDefault;
     requiresDefault.require<int>("I");
     requiresDefault.requireHook(DEFAULT_HOOK);
-    EXPECT_EQUAL(negotiator.negotiate("plugin", bareOffers, requiresDefault).accepted(), true);
+    EXPECT_EQUAL(negotiator.negotiate("TestPlugin", bareOffers, requiresDefault).accepted(), true);
 }
 
 
@@ -368,7 +368,7 @@ CASE("test_negotiator_hooks_from_config") {
 
     // narrowing/re-targeting: the configured hook point replaces the declared one
     std::optional<std::set<std::string>> configB = std::set<std::string>{"hook-B"};
-    PluginDecision decisionB = negotiator.negotiate("plugin", offers, requiresA, {}, configB);
+    PluginDecision decisionB = negotiator.negotiate("TestPlugin", offers, requiresA, {}, configB);
     EXPECT_EQUAL(decisionB.accepted(), true);
     EXPECT_EQUAL(decisionB.agreedHooks(), std::set<std::string>{"hook-B"});
 
@@ -376,14 +376,333 @@ CASE("test_negotiator_hooks_from_config") {
     Protocol requiresNoHook;
     requiresNoHook.require<int>("I");
     std::optional<std::set<std::string>> configAB = std::set<std::string>{"hook-A", "hook-B"};
-    PluginDecision decisionAB = negotiator.negotiate("plugin", offers, requiresNoHook, {}, configAB);
+    PluginDecision decisionAB = negotiator.negotiate("TestPlugin", offers, requiresNoHook, {}, configAB);
     EXPECT_EQUAL(decisionAB.accepted(), true);
     std::set<std::string> expectedAB = {"hook-A", "hook-B"};
     EXPECT_EQUAL(decisionAB.agreedHooks(), expectedAB);
 
     // a configured hook point that the model does not offer rejects the plugin
     std::optional<std::set<std::string>> configMissing = std::set<std::string>{"hook-C"};
-    EXPECT_EQUAL(negotiator.negotiate("plugin", offers, requiresA, {}, configMissing).accepted(), false);
+    EXPECT_EQUAL(negotiator.negotiate("TestPlugin", offers, requiresA, {}, configMissing).accepted(), false);
+}
+
+
+CASE("test_negotiator_hook_scoped_params") {
+
+    Negotiator negotiator;
+
+    // the model keeps u and v current everywhere, pz0m only before the surface exchange and swh
+    // only at the wave model hook point
+    Protocol offers;
+    offers.offerHook("before-surface", "before the surface exchange");
+    offers.offerHook("after-phys", "after the physics");
+    offers.offerHook("wam", "wave model");
+    offers.offer<int>("u", "always", "u");
+    offers.offer<int>("v", "always", "v");
+    offers.offerAt<int>("pz0m", "always", "pz0m", {"before-surface"});
+    offers.offerAt<int>("swh", "always", "swh", {"wam"});
+
+    const std::set<std::string> beforeSurfaceAndAfterPhys = {"before-surface", "after-phys"};
+
+    // 1) u, v needed at both hook points, pz0m only before the surface exchange
+    Protocol requiresWF;
+    requiresWF.requireHook("before-surface");
+    requiresWF.requireHook("after-phys");
+    requiresWF.require<int>("u");
+    requiresWF.require<int>("v");
+    requiresWF.requireAt<int>("pz0m", {"before-surface"});
+    PluginDecision decisionWF = negotiator.negotiate("TestPlugin", offers, requiresWF);
+    EXPECT_EQUAL(decisionWF.accepted(), true);
+    EXPECT_EQUAL(decisionWF.agreedHooks(), beforeSurfaceAndAfterPhys);
+    std::set<std::string> expectedBefore = {"pz0m", "u", "v"};
+    std::set<std::string> expectedAfter  = {"u", "v"};
+    EXPECT_EQUAL(decisionWF.offeredParamNamesAtHook("before-surface"), expectedBefore);
+    EXPECT_EQUAL(decisionWF.offeredParamNamesAtHook("after-phys"), expectedAfter);
+    // the plugin still gets all its params (data feeding is not per hook)
+    EXPECT_EQUAL(decisionWF.offeredParamNames(), expectedBefore);
+
+    // 2) pz0m needed at a hook point where the model does not offer it: rejected
+    Protocol requiresPz0mAfter;
+    requiresPz0mAfter.requireHook("after-phys");
+    requiresPz0mAfter.require<int>("pz0m");
+    EXPECT_EQUAL(negotiator.negotiate("TestPlugin", offers, requiresPz0mAfter).accepted(), false);
+
+    // 3) swh required at "wam", offered there: accepted; offered elsewhere only: rejected
+    Protocol requiresSwh;
+    requiresSwh.requireHook("wam");
+    requiresSwh.requireHook("after-phys");
+    requiresSwh.requireAt<int>("swh", {"wam"});
+    EXPECT_EQUAL(negotiator.negotiate("TestPlugin", offers, requiresSwh).accepted(), true);
+
+    Protocol requiresSwhAfter;
+    requiresSwhAfter.requireHook("after-phys");
+    requiresSwhAfter.requireAt<int>("swh", {"after-phys"});
+    EXPECT_EQUAL(negotiator.negotiate("TestPlugin", offers, requiresSwhAfter).accepted(), false);
+
+    // 4) a scope naming a hook point the plugin is not bound to: rejected
+    Protocol requiresUnbound;
+    requiresUnbound.requireHook("after-phys");
+    requiresUnbound.requireAt<int>("u", {"before-surface"});
+    EXPECT_EQUAL(negotiator.negotiate("TestPlugin", offers, requiresUnbound).accepted(), false);
+
+    // ... including when a configured "hooks" override takes that hook point away
+    std::optional<std::set<std::string>> configAfterOnly = std::set<std::string>{"after-phys"};
+    EXPECT_EQUAL(negotiator.negotiate("TestPlugin", offers, requiresWF, {}, configAfterOnly).accepted(), false);
+
+    // 5) requiring the same param at two hook points unites the scopes
+    Protocol requiresTwice;
+    requiresTwice.requireHook("before-surface");
+    requiresTwice.requireHook("after-phys");
+    requiresTwice.requireAt<int>("u", {"before-surface"});
+    requiresTwice.requireAt<int>("u", {"after-phys"});
+    PluginDecision decisionTwice = negotiator.negotiate("TestPlugin", offers, requiresTwice);
+    EXPECT_EQUAL(decisionTwice.accepted(), true);
+    EXPECT_EQUAL(decisionTwice.offeredParamNamesAtHook("before-surface"), std::set<std::string>{"u"});
+    EXPECT_EQUAL(decisionTwice.offeredParamNamesAtHook("after-phys"), std::set<std::string>{"u"});
+
+    // 6) an empty scope is a mistake, not "unscoped"
+    Protocol requiresEmpty;
+    EXPECT_THROWS(requiresEmpty.requireAt<int>("u", std::set<std::string>{}));
+}
+
+
+CASE("test_negotiator_hook_scoped_config_groups") {
+
+    Negotiator negotiator;
+
+    Protocol offers;
+    offers.offerHook("hook-A", "the first hook point");
+    offers.offerHook("hook-B", "the second hook point");
+    offers.offer<int>("I", "always", "I");
+    offers.offerAt<int>("J", "always", "J", {"hook-B"});
+
+    Protocol required;
+    required.requireHook("hook-A");
+    required.requireHook("hook-B");
+    required.require<int>("I");
+
+    std::string groups_str = R"YAML(
+    parameters:
+      -
+        - name: J
+          type: INT
+          hooks: [hook-A]
+      -
+        - name: J
+          type: INT
+          hooks: [hook-B]
+    )YAML";
+    auto groups = eckit::YAMLConfiguration(groups_str).getSubConfigurations("parameters");
+
+    // the first group asks for J where it is not offered and is rejected, the second is satisfied
+    PluginDecision decision = negotiator.negotiate("TestPlugin", offers, required, groups);
+    EXPECT_EQUAL(decision.accepted(), true);
+    EXPECT_EQUAL(decision.offeredParamNamesAtHook("hook-A"), std::set<std::string>{"I"});
+    std::set<std::string> expectedAtB = {"I", "J"};
+    EXPECT_EQUAL(decision.offeredParamNamesAtHook("hook-B"), expectedAtB);
+
+    // a malformed scope fails loudly
+    std::string bad_groups_str = R"YAML(
+    parameters:
+      -
+        - name: J
+          type: INT
+          hooks: []
+    )YAML";
+    auto badGroups = eckit::YAMLConfiguration(bad_groups_str).getSubConfigurations("parameters");
+    EXPECT_THROWS(negotiator.negotiate("TestPlugin", offers, required, badGroups));
+}
+
+
+// =================================================================================================
+// Per-hook access (writable at some hook points, read-only at others)
+// =================================================================================================
+
+namespace {
+
+// the model offers P writable at H1 and read-only at H2, and Q read-only everywhere
+Protocol perHookOffers() {
+    Protocol offers;
+    offers.offerHook("H1");
+    offers.offerHook("H2");
+    offers.offerAt<int>("P", "always", "P", {"H1"}, /*writable=*/true);
+    offers.offerAt<int>("P", "always", "P", {"H2"});
+    offers.offer<int>("Q", "always", "Q");
+    return offers;
+}
+
+// a plugin bound to H1 and H2
+Protocol boundToH1H2() {
+    Protocol req;
+    req.requireHook("H1");
+    req.requireHook("H2");
+    return req;
+}
+
+}  // namespace
+
+
+CASE("test_negotiator - per-hook access") {
+
+    const Protocol offers = perHookOffers();
+
+    // 1) P written at H1, read at H2: accepted, granted at H1 only
+    {
+        Negotiator negotiator(WriteBackPolicy::single_writer);
+        Protocol req = boundToH1H2();
+        req.requireWritableAt<int>("P", {"H1"});
+        req.requireAt<int>("P", {"H2"});
+        PluginDecision decision = negotiator.negotiate("PluginA", offers, req);
+        EXPECT(decision.accepted());
+        const auto& p = *decision.offeredParams().begin();
+        EXPECT(p.isWritableAt("H1"));
+        EXPECT_NOT(p.isWritableAt("H2"));
+
+        auto auth = negotiator.writeAuthorisation();
+        EXPECT(auth.isAuthorised("PluginA", "P", "H1"));
+        EXPECT_NOT(auth.isAuthorised("PluginA", "P", "H2"));
+        EXPECT_EQUAL(auth.writableParamsAt("H1"), std::set<std::string>{"P"});
+        EXPECT(auth.writableParamsAt("H2").empty());
+    }
+
+    // 2) P written at H2, where the model offers it read-only: rejected
+    {
+        Negotiator negotiator(WriteBackPolicy::single_writer);
+        Protocol req = boundToH1H2();
+        req.requireWritableAt<int>("P", {"H2"});
+        EXPECT_NOT(negotiator.negotiate("PluginA", offers, req).accepted());
+    }
+
+    // 3) P written everywhere (develop's requireWritable): rejected, it is read-only at H2
+    {
+        Negotiator negotiator(WriteBackPolicy::single_writer);
+        Protocol req = boundToH1H2();
+        req.requireWritable<int>("P");
+        EXPECT_NOT(negotiator.negotiate("PluginA", offers, req).accepted());
+    }
+
+    // 4) write-back disabled: rejected even where offered writable
+    {
+        Negotiator negotiator;
+        Protocol req = boundToH1H2();
+        req.requireWritableAt<int>("P", {"H1"});
+        EXPECT_NOT(negotiator.negotiate("PluginA", offers, req).accepted());
+    }
+
+    // 5) Q is not offered writable anywhere: rejected
+    {
+        Negotiator negotiator(WriteBackPolicy::single_writer);
+        Protocol req = boundToH1H2();
+        req.requireWritableAt<int>("Q", {"H1"});
+        EXPECT_NOT(negotiator.negotiate("PluginA", offers, req).accepted());
+    }
+
+    // 6) list form from config: writable at a hook point the plugin is not bound to is rejected
+    {
+        Negotiator negotiator(WriteBackPolicy::single_writer);
+        Protocol req;
+        req.requireHook("H2");
+        auto groups = eckit::YAMLConfiguration(std::string(R"YAML(
+        parameters:
+          -
+            - name: P
+              type: INT
+              writable: [H1]
+        )YAML")).getSubConfigurations("parameters");
+        EXPECT_NOT(negotiator.negotiate("PluginA", offers, req, groups).accepted());
+    }
+
+    // 7) list form from config, bound to both: read at H2, written at H1
+    {
+        Negotiator negotiator(WriteBackPolicy::single_writer);
+        Protocol req = boundToH1H2();
+        auto groups = eckit::YAMLConfiguration(std::string(R"YAML(
+        parameters:
+          -
+            - name: P
+              type: INT
+              writable: [H1]
+        )YAML")).getSubConfigurations("parameters");
+        PluginDecision decision = negotiator.negotiate("PluginA", offers, req, groups);
+        EXPECT(decision.accepted());
+        EXPECT(negotiator.writeAuthorisation().isAuthorised("PluginA", "P", "H1"));
+        EXPECT_NOT(negotiator.writeAuthorisation().isAuthorised("PluginA", "P", "H2"));
+    }
+
+    // 8) code read-only at H2 + config writable at H1: merged per hook point
+    {
+        Negotiator negotiator(WriteBackPolicy::single_writer);
+        Protocol req = boundToH1H2();
+        req.requireAt<int>("P", {"H2"});
+        auto groups = eckit::YAMLConfiguration(std::string(R"YAML(
+        parameters:
+          -
+            - name: P
+              type: INT
+              hooks: [H1]
+              writable: true
+        )YAML")).getSubConfigurations("parameters");
+        PluginDecision decision = negotiator.negotiate("PluginA", offers, req, groups);
+        EXPECT(decision.accepted());
+        const auto& p = *decision.offeredParams().begin();
+        EXPECT(p.isWritableAt("H1"));
+        EXPECT_NOT(p.isWritableAt("H2"));
+        EXPECT_EQUAL(decision.hooksOf("P"), (std::set<std::string>{"H1", "H2"}));
+    }
+}
+
+
+CASE("test_negotiator - per-hook conflicts") {
+
+    // P offered writable at both hook points
+    Protocol offers;
+    offers.offerHook("H1");
+    offers.offerHook("H2");
+    offers.offerAt<int>("P", "always", "P", {"H1", "H2"}, /*writable=*/true);
+
+    auto writerAt = [](const std::string& hook) {
+        Protocol req = boundToH1H2();
+        req.requireWritableAt<int>("P", {hook});
+        return req;
+    };
+    auto readerAt = [](const std::string& hook) {
+        Protocol req = boundToH1H2();
+        req.requireAt<int>("P", {hook});
+        return req;
+    };
+
+    // is the second plugin accepted after the first one, for a policy?
+    auto secondAccepted = [&offers](WriteBackPolicy policy, const Protocol& first, const Protocol& second) {
+        Negotiator negotiator(policy);
+        EXPECT(negotiator.negotiate("First", offers, first).accepted());
+        return negotiator.negotiate("Second", offers, second).accepted();
+    };
+
+    const std::vector<WriteBackPolicy> policies = {WriteBackPolicy::single_writer,
+                                                   WriteBackPolicy::single_writer_strict, WriteBackPolicy::multi_writer,
+                                                   WriteBackPolicy::multi_writer_strict};
+
+    for (auto policy : policies) {
+        const bool multi  = isMultiWriter(policy);
+        const bool strict = isStrictPolicy(policy);
+
+        // different hook points never conflict
+        EXPECT(secondAccepted(policy, writerAt("H1"), readerAt("H2")));
+        EXPECT(secondAccepted(policy, readerAt("H2"), writerAt("H1")));
+        EXPECT(secondAccepted(policy, writerAt("H1"), writerAt("H2")));
+
+        // same hook point: develop's rules
+        EXPECT_EQUAL(secondAccepted(policy, writerAt("H1"), writerAt("H1")), multi);
+        EXPECT_EQUAL(secondAccepted(policy, writerAt("H1"), readerAt("H1")), !strict);
+        EXPECT_EQUAL(secondAccepted(policy, readerAt("H1"), writerAt("H1")), !strict);
+
+        // a plugin never conflicts with itself (written at H1, read at H2)
+        Negotiator negotiator(policy);
+        Protocol self = boundToH1H2();
+        self.requireWritableAt<int>("P", {"H1"});
+        self.requireAt<int>("P", {"H2"});
+        EXPECT(negotiator.negotiate("Self", offers, self).accepted());
+    }
 }
 
 

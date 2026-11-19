@@ -12,6 +12,9 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <set>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "eckit/config/YAMLConfiguration.h"
@@ -101,6 +104,39 @@ int plume_set_failure_handler(plume_failure_handler_t handler, void* context) {
         g_failure_handler_context = context;
         eckit::Log::info() << "plume-plugins setting failure handler fn." << std::endl;
     });
+}
+
+// parse a comma-separated list of hook point names, ignoring blanks around names and empty entries
+static std::set<std::string> parseHookList(const char* hooks) {
+    ASSERT(hooks);
+    std::set<std::string> parsed;
+    std::stringstream ss{std::string{hooks}};
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        const auto first = token.find_first_not_of(" \t");
+        if (first == std::string::npos) {
+            continue;
+        }
+        const auto last = token.find_last_not_of(" \t");
+        parsed.insert(token.substr(first, last - first + 1));
+    }
+    if (parsed.empty()) {
+        throw eckit::BadValue("Hook scope '" + std::string{hooks} + "' contains no hook point name", Here());
+    }
+    return parsed;
+}
+
+// offer a param with an optional hook scope (NULL or "": unscoped) and access mode. Defined outside the
+// extern "C" block: a template cannot have C linkage.
+template <typename T>
+static void offerExt(plume::Protocol& protocol, const char* name, const char* avail, const char* comment,
+                     bool writable, const char* hooks) {
+    if (hooks == nullptr || std::string{hooks}.empty()) {
+        protocol.offer<T>(name, avail, comment, writable);
+    }
+    else {
+        protocol.offerAt<T>(name, avail, comment, parseHookList(hooks), writable);
+    }
 }
 
 #ifdef __cplusplus
@@ -209,6 +245,55 @@ int plume_protocol_offer_atlas_field(plume_protocol_handle_t* h, const char* nam
     });
 }
 
+int plume_protocol_offer_int_ext(plume_protocol_handle_t* h, const char* name, const char* avail,
+                               const char* comment, bool writable, const char* hooks) {
+    return wrapApiFunction([h, name, avail, comment, writable, hooks] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        offerExt<int>(*h->impl_, name, avail, comment, writable, hooks);
+    });
+}
+int plume_protocol_offer_bool_ext(plume_protocol_handle_t* h, const char* name, const char* avail,
+                               const char* comment, bool writable, const char* hooks) {
+    return wrapApiFunction([h, name, avail, comment, writable, hooks] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        offerExt<bool>(*h->impl_, name, avail, comment, writable, hooks);
+    });
+}
+int plume_protocol_offer_float_ext(plume_protocol_handle_t* h, const char* name, const char* avail,
+                               const char* comment, bool writable, const char* hooks) {
+    return wrapApiFunction([h, name, avail, comment, writable, hooks] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        offerExt<float>(*h->impl_, name, avail, comment, writable, hooks);
+    });
+}
+int plume_protocol_offer_double_ext(plume_protocol_handle_t* h, const char* name, const char* avail,
+                               const char* comment, bool writable, const char* hooks) {
+    return wrapApiFunction([h, name, avail, comment, writable, hooks] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        offerExt<double>(*h->impl_, name, avail, comment, writable, hooks);
+    });
+}
+int plume_protocol_offer_atlas_field_ext(plume_protocol_handle_t* h, const char* name, const char* avail,
+                               const char* comment, bool writable, const char* hooks) {
+    return wrapApiFunction([h, name, avail, comment, writable, hooks] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        offerExt<atlas::Field>(*h->impl_, name, avail, comment, writable, hooks);
+    });
+}
+
+int plume_protocol_offer_hook(plume_protocol_handle_t* h, const char* name, const char* comment) {
+    return wrapApiFunction([h, name, comment] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        h->impl_->offerHook(name, comment);
+    });
+}
+
 int plume_protocol_offer_int_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment) {
     return wrapApiFunction([h, name, avail, comment] {
         ASSERT(h);
@@ -242,13 +327,6 @@ int plume_protocol_offer_atlas_field_writable(plume_protocol_handle_t* h, const 
         ASSERT(h);
         ASSERT((h)->impl_);
         h->impl_->offer<atlas::Field>(name, avail, comment, /*writable=*/true);
-    });
-}
-int plume_protocol_offer_hook(plume_protocol_handle_t* h, const char* name, const char* comment) {
-    return wrapApiFunction([h, name, comment] {
-        ASSERT(h);
-        ASSERT((h)->impl_);
-        h->impl_->offerHook(name, comment);
     });
 }
 
@@ -372,7 +450,7 @@ int plume_manager_is_param_requested(plume_manager_handle_t* h, const char* name
     });
 }
 
-int plume_manager_active_fields_at_hook(plume_manager_handle_t* h, const char* hook, bool derived, char** str_in) {
+int plume_manager_active_params_at_hook(plume_manager_handle_t* h, const char* hook, bool derived, char** str_in) {
 
     return wrapApiFunction([h, hook, derived, &str_in] {
         ASSERT(h);
@@ -407,6 +485,24 @@ int plume_manager_is_hook_active(plume_manager_handle_t* h, const char* name, bo
         ASSERT((h)->impl_);
 
         *active = h->impl_->isHookActive(std::string{name});
+    });
+}
+
+int plume_manager_writable_params_at_hook(plume_manager_handle_t* h, const char* hook, char** names) {
+    return wrapApiFunction([h, hook, &names] {
+        ASSERT(h);
+        ASSERT((h)->impl_);
+        ASSERT(names);
+        // Clear output up front so a failure never leaves a stale pointer with the caller.
+        *names = nullptr;
+        std::string tmp;
+        for (const auto& p : h->impl_->getWritableParamsAtHook(hook)) {
+            if (!tmp.empty()) {
+                tmp += ',';
+            }
+            tmp += p;
+        }
+        *names = strcpy(new char[tmp.length() + 1], tmp.c_str());
     });
 }
 
@@ -750,6 +846,14 @@ int plume_data_acknowledge_writeback(plume_data_handle_t* h, const char* name) {
         ASSERT(h);
         ASSERT(h->impl_);
         h->impl_->acknowledgeWriteback(name);
+    });
+}
+int plume_data_is_writable(plume_data_handle_t* h, const char* name, bool* writable) {
+    return wrapApiFunction([h, name, writable] {
+        ASSERT(h);
+        ASSERT(h->impl_);
+        ASSERT(writable);
+        *writable = h->impl_->isWritable(name);
     });
 }
 

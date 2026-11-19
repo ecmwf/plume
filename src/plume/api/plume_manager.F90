@@ -36,9 +36,10 @@ contains
     procedure :: is_param_requested => plume_manager_is_param_requested
     procedure :: is_plugin_activated => plume_manager_is_plugin_activated
 
-    procedure :: active_fields_at_hook => plume_manager_active_fields_at_hook
+    procedure :: active_params_at_hook => plume_manager_active_params_at_hook
     procedure :: is_param_requested_at_hook => plume_manager_is_param_requested_at_hook
     procedure :: is_hook_active => plume_manager_is_hook_active
+    procedure :: writable_params_at_hook => plume_manager_writable_params_at_hook
     procedure :: registered_hooks => plume_manager_registered_hooks
 
     procedure :: feed_plugins => plume_manager_feed_plugins
@@ -123,23 +124,23 @@ function plume_manager_feed_plugins_interf(handle_impl, fdata) result(err) &
   integer(c_int) :: err
 end function
 
-function plume_manager_active_fields_at_hook_interf(handle_impl, hook, derived, fields) result(err) &
-    & bind(C,name="plume_manager_active_fields_at_hook")
+function plume_manager_active_params_at_hook_interf(handle_impl, hook, derived, params) result(err) &
+    & bind(C,name="plume_manager_active_params_at_hook")
     use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
     type(c_ptr), intent(in), value :: handle_impl
     character(c_char), dimension(*) :: hook
     logical(c_bool), intent(in), value :: derived
-    type(c_ptr), intent(inout) :: fields
+    type(c_ptr), intent(inout) :: params
     integer(c_int) :: err
 end function
 
-function plume_manager_is_param_requested_at_hook_interf(handle_impl, name, hook, is_param) result(err) &
+function plume_manager_is_param_requested_at_hook_interf(handle_impl, name, hook, requested) result(err) &
     & bind(C, name="plume_manager_is_param_requested_at_hook")
     use iso_c_binding, only: c_ptr, c_char, c_bool
     type(c_ptr), intent(in), value :: handle_impl
     character(c_char), dimension(*) :: name
     character(c_char), dimension(*) :: hook
-    logical(c_bool), intent(inout) :: is_param
+    logical(c_bool), intent(inout) :: requested
     integer :: err
 end function
 
@@ -150,6 +151,15 @@ function plume_manager_is_hook_active_interf(handle_impl, name, is_active) resul
     character(c_char), dimension(*) :: name
     logical(c_bool), intent(inout) :: is_active
     integer :: err
+end function
+
+function plume_manager_writable_params_at_hook_interf(handle_impl, hook, names) result(err) &
+    & bind(C,name="plume_manager_writable_params_at_hook")
+    use iso_c_binding, only: c_ptr, c_char, c_int
+    type(c_ptr), intent(in), value :: handle_impl
+    character(c_char), dimension(*) :: hook
+    type(c_ptr), intent(out) :: names
+    integer(c_int) :: err
 end function
 
 function plume_manager_registered_hooks_interf(handle_impl, hooks) result(err) &
@@ -294,37 +304,37 @@ function plume_manager_is_plugin_activated(handle, name, is_plugin) result(err)
     err = plume_manager_is_plugin_activated_interf(handle%impl, c_str(name), is_plugin)
 end function
 
-! Fields requested by the plugins bound to a specific hook point.
-! "derived" defaults to .true., matching the global active_fields query. Pass .false. to get only
-! the fields that the model is expected to provide.
+! Params requested by the plugins bound to a specific hook point.
+! "derived" defaults to .false.: only the params that the model is expected to provide are returned,
+! as this is meant to be called by the model. Pass .true. to also include the params derived by Plume.
 ! TODO: like active_fields, this does not check for errors, but returns a char*
-function plume_manager_active_fields_at_hook(handle, hook, derived) result(fields_str)
+function plume_manager_active_params_at_hook(handle, hook, derived) result(params_str)
     use iso_c_binding, only: c_ptr, c_char, c_bool
     class(plume_manager), intent(inout) :: handle
     character(kind=c_char,len=*), intent(in) :: hook
     logical, intent(in), optional :: derived
-    character(:), allocatable, target :: fields_str
-    type(c_ptr) :: fields_ptr
+    character(:), allocatable, target :: params_str
+    type(c_ptr) :: params_ptr
     logical(c_bool) :: with_derived
     integer :: err
 
-    with_derived = .true._c_bool
+    with_derived = .false._c_bool
     if (present(derived)) then
         with_derived = logical(derived, kind=c_bool)
     end if
 
-    err = plume_manager_active_fields_at_hook_interf(handle%impl, c_str(hook), with_derived, fields_ptr)
-    fields_str = fortranise_cstr(fields_ptr)
+    err = plume_manager_active_params_at_hook_interf(handle%impl, c_str(hook), with_derived, params_ptr)
+    params_str = fortranise_cstr(params_ptr)
 end function
 
-function plume_manager_is_param_requested_at_hook(handle, name, hook, is_param) result(err)
+function plume_manager_is_param_requested_at_hook(handle, name, hook, requested) result(err)
     use iso_c_binding, only: c_ptr, c_char, c_bool
     class(plume_manager), intent(inout) :: handle
     character(kind=c_char,len=*), intent(in) :: name
     character(kind=c_char,len=*), intent(in) :: hook
-    logical(c_bool) :: is_param
+    logical(c_bool) :: requested
     integer :: err
-    err = plume_manager_is_param_requested_at_hook_interf(handle%impl, c_str(name), c_str(hook), is_param)
+    err = plume_manager_is_param_requested_at_hook_interf(handle%impl, c_str(name), c_str(hook), requested)
 end function
 
 function plume_manager_is_hook_active(handle, name, is_active) result(err)
@@ -334,6 +344,22 @@ function plume_manager_is_hook_active(handle, name, is_active) result(err)
     logical(c_bool) :: is_active
     integer :: err
     err = plume_manager_is_hook_active_interf(handle%impl, c_str(name), is_active)
+end function
+
+! Params that the active plugins may write back at a hook point (comma-separated, possibly empty): the
+! model may have to copy them back (and acknowledge them) after running this hook point.
+! TODO: like active_fields, this does not check for errors, but returns a char*
+function plume_manager_writable_params_at_hook(handle, hook) result(names_str)
+    use iso_c_binding, only: c_ptr, c_char
+    use plume_utils_module, only: plume_free_string
+    class(plume_manager), intent(inout) :: handle
+    character(kind=c_char,len=*), intent(in) :: hook
+    character(:), allocatable, target :: names_str
+    type(c_ptr) :: names_ptr
+    integer :: err
+    err = plume_manager_writable_params_at_hook_interf(handle%impl, c_str(hook), names_ptr)
+    names_str = fortranise_cstr(names_ptr)
+    call plume_free_string(names_ptr)
 end function
 
 ! Hook points registered by the model (always includes the default one).

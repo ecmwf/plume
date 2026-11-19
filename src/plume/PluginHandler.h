@@ -99,22 +99,6 @@ public:
     void run(const std::string& hook);
 
     /**
-     * @brief is this plugin bound to the given hook point?
-     *
-     * @param hook
-     * @return true
-     * @return false
-     */
-    bool runsAt(const std::string& hook) const;
-
-    /**
-     * @brief Get the hook points this plugin has been accepted for
-     *
-     * @return const std::set<std::string>&
-     */
-    const std::set<std::string>& hooks() const;
-
-    /**
      * @brief teardown the plugincore
      *
      */

@@ -96,6 +96,8 @@ public:
      * An empty optional means that the key is absent, in which case the hook points declared by
      * the plugin itself apply. A value means that the configuration *replaces* what the plugin
      * declared, so that a deployment can re-target a plugin without recompiling it.
+     * An empty list is not accepted; to bind a plugin back to the default hook point, list it
+     * explicitly (hooks: [default]).
      *
      * @return std::optional<std::set<std::string>>
      */
@@ -120,25 +122,12 @@ private:
     }
 
     static bool hasValidHooksFormat(const eckit::Configuration& config) {
-        if (config.has("hooks")) {
-            if (!config.isList("hooks")) {
-                return false;
-            }
-            // an empty list is rejected: it is not the same as the key being absent, and
-            // conflating the two would hide a configuration mistake
-            std::vector<std::string> hookNames;
-            try {
-                hookNames = config.getStringVector("hooks");
-            }
-            catch (const eckit::Exception&) {
-                // not a list of strings
-                return false;
-            }
-            if (hookNames.empty()) {
-                return false;
-            }
+        if (!config.has("hooks")) {
+            return true;
         }
-        return true;
+        // an empty list is rejected: it is not the same as the key being absent, and conflating
+        // the two would hide a configuration mistake
+        return config.isStringList("hooks") && !config.getStringVector("hooks").empty();
     }
 
 };

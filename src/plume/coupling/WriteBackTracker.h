@@ -12,6 +12,7 @@
 
 #include <functional>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -37,10 +38,11 @@ namespace coupling {
  * It is the only entity that can enable or disable writeback on IParameterValue objects,
  * enforced at compile time via the WriteBackKey passkey.
  *
- * Lifecycle per run() cycle:
- *   open()                 — all slots IDLE → READY; writeback enabled on each param
+ * Lifecycle per run(hook) cycle (one cycle per hook point call):
+ *   open(hook)             — slots writable at the hook point (ACKNOWLEDGED → IDLE →) READY; writeback enabled on
+ *                            each of them; the other slots stay closed
  *   write() × N            — authorisation + policy check; slot READY/WRITTEN → WRITTEN
- *   submit()                — slots WRITTEN → PENDING, READY → IDLE (silent skip);
+ *   submit()                — opened slots WRITTEN → PENDING, READY → IDLE (silent skip);
  *                            writeback disabled unconditionally; throws if any ERROR
  *   acknowledgeWriteback() — model acknowledges each PENDING slot → ACKNOWLEDGED
  *                            guarantees that the model has ingested the changes from the field copies
@@ -63,6 +65,11 @@ private:
     const WriteAuthorisation& auth_;
     WriteBackPolicy policy_;
     std::map<std::string, ParamSlot> slots_;
+
+    // Current write cycle: the hook point being run and the slots opened for it (empty outside a cycle).
+    bool inCycle_ = false;
+    std::string currentHook_;
+    std::set<std::string> openSlots_;
     std::function<void()> onDetach_;  ///< Called in the destructor to auto-detach from ModelData.
 
     ParamSlot& getSlot(const std::string& paramName);
@@ -100,29 +107,47 @@ public:
     void attachParam(const std::string& name, data::IParameterValue* param);
 
     /**
-     * @brief Open all slots for writing: IDLE → READY, writeback enabled on each param.
+     * @brief Open a write cycle for a hook point: the slots of the params writable at that hook point go
+     *        (ACKNOWLEDGED → IDLE →) IDLE → READY, writeback enabled on each param. The other slots stay closed.
      *
-     * Called by Manager at the start of each run(). Throws if any slot is not in IDLE.
+     * Called by Manager at the start of each run(hook).
+     *
+     * @throws eckit::Exception if a slot to open is not IDLE or ACKNOWLEDGED, e.g. still PENDING: the model has not
+     *         acknowledged the previous write of that param.
      */
+    void open(const std::string& hook);
+
+    /// Open a write cycle for the default hook point (plume::DEFAULT_HOOK).
     void open();
 
     /**
      * @brief Record that pluginName is writing paramName and advance READY/WRITTEN → WRITTEN.
      *
-     * @throws eckit::BadValue param not registered, plugin not authorised, or single-writer policy violated.
+     * @throws eckit::BadValue param not open for writing at the current hook point (or no open cycle), plugin not
+     *         authorised at the current hook point, or single-writer policy violated.
      */
     void write(const std::string& paramName, const std::string& pluginName);
+
+    /**
+     * @brief Whether pluginName may write paramName now: a cycle is open, the slot is open at the current hook point,
+     *        not in ERROR, and the plugin is authorised to write it at the current hook point.
+     */
+    bool isWritable(const std::string& paramName, const std::string& pluginName) const;
+
+    /// The hook point of the open write cycle (empty outside a cycle).
+    const std::string& currentHook() const { return currentHook_; }
 
     /// Transition a slot to ERROR and record the reason. Called by ModelData when a write throws.
     void reportError(const std::string& paramName, const std::string& reason);
 
     /**
-     * @brief Advance all slots: WRITTEN → PENDING, READY → IDLE (silent skip, not an error).
+     * @brief Close the write cycle: advance the opened slots WRITTEN → PENDING, READY → IDLE (silent skip, not an
+     *        error). Outside a cycle, all the slots are advanced.
      *
      * State-only — no data movement (writes were applied immediately at write() time), but signals to the
-     * model that it potentially has new field copies to ingest. Disables writeback on all params unconditionally.
+     * model that it potentially has new field copies to ingest. Disables writeback on these params unconditionally.
      *
-     * @throws eckit::Exception if any slots are in ERROR.
+     * @throws eckit::Exception if any of these slots are in ERROR.
      */
     void submit();
 
