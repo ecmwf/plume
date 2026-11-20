@@ -49,7 +49,9 @@ plugins that know nothing about hook points behave exactly as before.
 > dormant. The hook point summary that plume logs at the end of negotiation shows which plugins
 > ended up bound to which hook point.
 
-See `examples/example3.{cc,F90}` with `examples/plume_config_hooks.yml` for a worked example.
+See `examples/example3.{cc,F90}` with `examples/plume_config_hooks.yml` for a worked example. `examples/plume_config_hooks_params.yml`
+shows a plugin bound to two hook points that requests some parameters at one of them and other
+parameters at the other one.
 
 ### Requirements
 Build dependencies:

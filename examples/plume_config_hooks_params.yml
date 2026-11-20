@@ -1,0 +1,43 @@
+# Alternative configuration for example 3, which registers two hook points ("pre-compute" and
+# "post-compute") on top of the implicit "default" one.
+#
+# It shows how a plugin bound to several hook points can request some parameters at one hook point
+# and other parameters at another one:
+#
+#  - the plugin-level "hooks" key binds PluginBar to both "pre-compute" and "post-compute"
+#    (replacing whatever the plugin declared in its negotiate());
+#  - the "hooks" key of a parameter restricts that parameter to the listed hook points, which must
+#    be among the ones the plugin is bound to. Here config-param-1 is only needed at "pre-compute",
+#    while config-param-2 and config-param-3 are only needed at "post-compute";
+#  - a parameter without a "hooks" key is needed at every hook point the plugin is bound to. This
+#    is the case of K and field_dummy_1, which PluginBar requires from its negotiate().
+#
+# After negotiation the model can ask which parameters each hook point consumes
+# (Manager::getActiveParamsAtHook()), so that it only refreshes what is needed there:
+#
+#   pre-compute  : K, field_dummy_1, config-param-1
+#   post-compute : K, field_dummy_1, config-param-2, config-param-3
+#   default      : I, J (PluginFoo, which declares no hook point)
+#
+# Note that a parameter must be offered by the model at every hook point it is requested at,
+# otherwise the plugin is rejected during negotiation.
+verbose: true
+plugins:
+  - name: PluginFoo
+    lib: plugin_foo
+  - name: PluginBar
+    lib: plugin_bar
+    hooks: [pre-compute, post-compute]
+    parameters:
+      -
+        - name: config-param-1
+          type: int
+          hooks: [pre-compute]
+        - name: config-param-2
+          type: double
+          hooks: [post-compute]
+        - name: config-param-3
+          type: atlas_field
+          hooks: [post-compute]
+    core-config:
+      exceptions-dump-trace: true

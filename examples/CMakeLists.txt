@@ -24,6 +24,14 @@ ecbuild_add_library( TARGET plugin_bar
     plume_plugin
 )
 
+ecbuild_add_library( TARGET plugin_hooks
+  SOURCES
+    plugin_hooks.h
+    plugin_hooks.cc
+  PRIVATE_LIBS
+    plume_plugin
+)
+
 
 # --------- script to run examples ----------
 ecbuild_configure_file(run_examples.sh.in
@@ -82,5 +90,20 @@ ecbuild_add_executable( TARGET plume_example3_fort.x
   SOURCES example3.F90
   LIBS
     atlas
+    plume_f
+)
+
+
+
+# ================ Example 4 ====================
+ecbuild_add_executable( TARGET plume_example4_cpp.x
+  SOURCES example4.cc
+  LIBS
+    plume_plugin_manager
+)
+
+ecbuild_add_executable( TARGET plume_example4_fort.x
+  SOURCES example4.F90
+  LIBS
     plume_f
 )
