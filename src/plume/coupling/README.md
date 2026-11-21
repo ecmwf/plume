@@ -33,7 +33,8 @@ existing model configurations that do not use write-back are unaffected. This ca
 Three types of cross-plugin interaction become relevant once write-back is enabled:
 
 In all cases **run order is determined by the order plugins appear in the
-manager config** (first listed = first run). Plume logs the run order so you can reason about what each plugin will observe at runtime.
+manager config** (first listed = first run), within each hook point (see "Hook Points and
+Per-Hook Access" below). Plume logs the run order so you can reason about what each plugin will observe at runtime.
 
 ---
 
@@ -128,6 +129,86 @@ the reader.
 > list).  If the reader is listed before the writer, it is the **writer** that
 > gets rejected, not the reader.  If you want a guaranteed outcome, place the
 > plugin you want to keep first in the config.
+
+---
+
+## Hook Points and Per-Hook Access
+
+When the model registers hook points (see `Protocol::offerHook` and `Manager::run(hook)`), write-back
+is negotiated and enforced **per (param, hook point)**. A model or plugin that uses no hook point
+behaves exactly as described above: everything happens at the implicit `default` hook point, which
+`Manager::run()` runs.
+
+### Declaring the access mode per hook point
+
+A param's access mode (read-only or writable) may differ from one hook point to another. It is
+declared by combining definitions of the same param, which Plume merges per hook point
+("writable wins" at each hook point):
+
+```yaml
+plugins:
+  - name: MyPlugin
+    hooks: [H1, H2]
+    parameters:
+      -
+        - name: P
+          type: ATLAS_FIELD
+          hooks: [H1]
+          writable: true      # written at H1
+        - name: P
+          type: ATLAS_FIELD
+          hooks: [H2]         # read-only at H2
+```
+
+or with the list form of `writable` (equivalent): `{name: P, type: ATLAS_FIELD, writable: [H1]}`
+(read-only at every other hook point the plugin is bound to).
+
+From code: `requireWritableAt<T>("P", {"H1"}); requireAt<T>("P", {"H2"});`. On the model side,
+`offerAt<T>("P", avail, comment, {"H1"}, /*writable=*/true); offerAt<T>("P", avail, comment, {"H2"});`
+(C: `plume_protocol_offer_<type>_ext`, Fortran: `offer_<type>(..., hooks=..., writable=...)`).
+
+A plugin requesting write access at a hook point is accepted only if the model offers the param
+writable **at that hook point**. An unscoped `writable: true` means writable at every hook point the
+plugin is bound to; merged with a definition that asks for read-only access at specific hook points,
+it wins everywhere (a warning is logged).
+
+### Conflicts
+
+The policies above are evaluated between claims **at the same hook point**. Claims at different hook
+points never conflict: their order is set by the order in which the model calls the hook points, which
+Plume does not know. These cross-hook interactions are logged.
+
+| Policy | Write-Write (same hook) | Write-Read (same hook) | Different hook points |
+|---|---|---|---|
+| `single-writer` | 2nd **rejected** | allowed, logged | allowed, logged |
+| `single-writer-strict` | 2nd **rejected** | 2nd **rejected** | allowed, logged |
+| `multi-writer` | allowed, logged | allowed, logged | allowed, logged |
+| `multi-writer-strict` | allowed, logged | 2nd **rejected** | allowed, logged |
+
+A plugin never conflicts with itself (e.g. writing P at H1 and reading it at H2).
+
+### Write cycles
+
+Each `Manager::run(hook)` call is one write cycle: only the slots of the params writable at that hook
+point are opened (`ACKNOWLEDGED → IDLE → READY`); the others stay closed, and a write to them throws.
+After `run(hook)` returns, the model calls `pendingWritebacks()` and acknowledges the params written
+during that cycle. A param must be acknowledged before it can be written again: opening a cycle in
+which a slot is still `PENDING` throws. Params written at other hook points do not need to be
+acknowledged first.
+
+If a param written at one hook point is still pending when a later hook point that uses it is run,
+Plume logs a warning: if the model refreshed the param in the meantime (e.g. re-copied its Atlas
+field), the written value has been overwritten. Models should ingest write-backs right after each
+`run(hook)` call.
+
+### Model and plugin queries
+
+- Model: `Manager::getWritableParamsAtHook(hook)` (C: `plume_manager_writable_params_at_hook`,
+  Fortran: `writable_params_at_hook`) lists the params that may be written back at a hook point, i.e.
+  what the model may have to copy back after calling it.
+- Plugin: `ModelDataView::isWritable(name)` (C: `plume_data_is_writable`, Fortran: `is_writable`) tells
+  whether the plugin may write a param at the hook point it is being run at. C++ plugin cores can also
+  call `PluginCore::currentHook()`; C/Fortran plugin cores receive it from their C++ shim.
 
 ---
 

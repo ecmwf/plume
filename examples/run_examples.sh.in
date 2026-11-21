@@ -2,6 +2,9 @@
 
 exe_dir=@CMAKE_BINARY_DIR@/bin
 plume_config=@CMAKE_CURRENT_SOURCE_DIR@/plume_config.yml
+plume_config_hooks=@CMAKE_CURRENT_SOURCE_DIR@/plume_config_hooks.yml
+plume_config_hooks_params=@CMAKE_CURRENT_SOURCE_DIR@/plume_config_hooks_params.yml
+plume_config_hooks_writeback=@CMAKE_CURRENT_SOURCE_DIR@/plume_config_hooks_writeback.yml
 
 # ===================== Example 1 =====================
 # example 1: demonstrate how to configure plume data
@@ -33,10 +36,34 @@ $exe_dir/plume_example2_fort.x $plume_config
 
 # ===================== Example 3 =====================
 # example 3: Similar to example 1, but this time some parameters
-# are "created" and then updated by the model during the run
+# are "created" and then updated by the model during the run.
+# It also registers two hook points on top of the implicit "default" one, and uses a
+# configuration that binds one of the plugins to one of them.
 
 # Example C++
-$exe_dir/plume_example3_cpp.x $plume_config
+$exe_dir/plume_example3_cpp.x $plume_config_hooks
 
 # Example Fortran
-$exe_dir/plume_example3_fort.x $plume_config
+$exe_dir/plume_example3_fort.x $plume_config_hooks
+
+# Same example, with a configuration that binds a plugin to both hook points and requests
+# some parameters at one hook point and other parameters at the other one.
+
+# Example C++
+$exe_dir/plume_example3_cpp.x $plume_config_hooks_params
+
+# Example Fortran
+$exe_dir/plume_example3_fort.x $plume_config_hooks_params
+
+
+# ===================== Example 4 =====================
+# example 4: hook points and per-hook access to parameters. The model registers two hook
+# points and shares three parameters with a plugin, each of them used at both hook points:
+# one is read-only at both, the other two are writable at one hook point and read-only at
+# the other one. See README.md in the examples directory.
+
+# Example C++
+$exe_dir/plume_example4_cpp.x $plume_config_hooks_writeback
+
+# Example Fortran
+$exe_dir/plume_example4_fort.x $plume_config_hooks_writeback

@@ -15,6 +15,8 @@
 #include "eckit/exception/Exceptions.h"
 #include "eckit/log/Log.h"
 
+#include "plume/Hook.h"
+
 // ParameterValue.h brings in IParameterValue (full definition) and WriteBackKey.h (passkey).
 #include "plume/data/ParameterValue.h"
 
@@ -56,21 +58,65 @@ void WriteBackTracker::attachParam(const std::string& name, data::IParameterValu
 
 // ---------------------------------------------------------------------------
 
-void WriteBackTracker::open() {
-    for (auto& [name, slot] : slots_) {
-        const WriteBackState* next = slot.state->onOpen();
-        if (!next->isReady()) {
-            // Only IDLE slots are valid to set ready in production.
-            // If this condition is met, a previous cycle left an error unhandled.
+void WriteBackTracker::open(const std::string& hook) {
+    if (inCycle_) {
+        throw eckit::Exception("WriteBackTracker::open(): a write cycle is already open for hook point '" +
+                                   currentHook_ + "'",
+                               Here());
+    }
+
+    const std::set<std::string> writable = auth_.writableParamsAt(hook);
+
+    // validate first, so that a failure leaves no slot half-opened
+    for (const auto& [name, slot] : slots_) {
+        if (writable.count(name) == 0) {
+            continue;
+        }
+        if (!slot.state->isIdle() && !slot.state->isAcknowledged()) {
+            // Only IDLE (or ACKNOWLEDGED, reset here) slots are valid to set ready. A PENDING slot means the model
+            // has not acknowledged the previous write of this param; an ERROR slot was left unhandled.
             throw eckit::Exception("WriteBackTracker::open(): slot '" + name + "' is in state '" + slot.state->name() +
-                                       "' and cannot be set ready",
+                                       "' and cannot be set ready at hook point '" + hook + "'" +
+                                       (slot.state->isPending() ? " (previous write not acknowledged by the model)"
+                                                                : ""),
                                    Here());
         }
-        slot.state = next;
+    }
+
+    for (auto& [name, slot] : slots_) {
+        if (writable.count(name) == 0) {
+            continue;
+        }
+        if (slot.state->isAcknowledged()) {
+            slot.state = slot.state->onReset();  // ACKNOWLEDGED → IDLE
+        }
+        slot.state = slot.state->onOpen();  // IDLE → READY
         slot.writingPlugins.clear();
         slot.errorReason.clear();
         slot.param->enableWriteback(WriteBackKey{});
+        openSlots_.insert(name);
     }
+
+    inCycle_     = true;
+    currentHook_ = hook;
+}
+
+void WriteBackTracker::open() {
+    open(DEFAULT_HOOK);
+}
+
+bool WriteBackTracker::isWritable(const std::string& paramName, const std::string& pluginName) const {
+    if (!inCycle_ || openSlots_.count(paramName) == 0) {
+        return false;
+    }
+    const ParamSlot& slot = getSlot(paramName);
+    if (slot.state->isError()) {
+        return false;
+    }
+    if (slot.state->isWritten() && !isMultiWriter(policy_)) {
+        return false;
+    }
+    return auth_.isAuthorised(pluginName, paramName, currentHook_);
 }
 
 // ---------------------------------------------------------------------------
@@ -78,10 +124,22 @@ void WriteBackTracker::open() {
 void WriteBackTracker::write(const std::string& paramName, const std::string& pluginName) {
     ParamSlot& slot = getSlot(paramName);
 
-    if (!auth_.isAuthorised(pluginName, paramName)) {
-        throw eckit::BadValue(
-            "WriteBackTracker: plugin '" + pluginName + "' is not authorised to write parameter '" + paramName + "'",
-            Here());
+    if (!inCycle_) {
+        throw eckit::BadValue("WriteBackTracker: plugin '" + pluginName + "' cannot write parameter '" + paramName +
+                                  "' outside a write cycle (Manager::run)",
+                              Here());
+    }
+
+    if (openSlots_.count(paramName) == 0) {
+        throw eckit::BadValue("WriteBackTracker: plugin '" + pluginName + "' cannot write parameter '" + paramName +
+                                  "' at hook point '" + currentHook_ + "': it is read-only at this hook point",
+                              Here());
+    }
+
+    if (!auth_.isAuthorised(pluginName, paramName, currentHook_)) {
+        throw eckit::BadValue("WriteBackTracker: plugin '" + pluginName + "' is not authorised to write parameter '" +
+                                  paramName + "' at hook point '" + currentHook_ + "'",
+                              Here());
     }
 
     if (slot.state->isWritten() && !isMultiWriter(policy_)) {
@@ -112,18 +170,25 @@ void WriteBackTracker::reportError(const std::string& paramName, const std::stri
 // ---------------------------------------------------------------------------
 
 void WriteBackTracker::submit() {
+    // within a cycle only the slots opened for it are closed: the other slots may still be PENDING from the cycle
+    // of another hook point, waiting for the model to acknowledge them
+    std::string details;
     for (auto& [name, slot] : slots_) {
+        if (inCycle_ && openSlots_.count(name) == 0) {
+            continue;
+        }
         slot.state = slot.state->onSubmit();            // WRITTEN → PENDING; READY → IDLE; ERROR → ERROR
         slot.param->disableWriteback(WriteBackKey{});  // unconditional — always lock writes after submit
+        if (slot.state->isError()) {
+            details += "\n  '" + name + "': " + slot.errorReason;
+        }
     }
 
-    if (hasErrors()) {
-        std::string details;
-        for (const auto& [name, slot] : slots_) {
-            if (slot.state->isError()) {
-                details += "\n  '" + name + "': " + slot.errorReason;
-            }
-        }
+    inCycle_ = false;
+    currentHook_.clear();
+    openSlots_.clear();
+
+    if (!details.empty()) {
         throw eckit::Exception("WriteBackTracker::submit() completed with errors:" + details, Here());
     }
 }
@@ -173,6 +238,10 @@ void WriteBackTracker::forceReset() {
             slot.param->disableWriteback(WriteBackKey{});
         }
     }
+
+    inCycle_ = false;
+    currentHook_.clear();
+    openSlots_.clear();
 }
 
 // ---------------------------------------------------------------------------

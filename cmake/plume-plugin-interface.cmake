@@ -30,6 +30,7 @@ function( plume_plugin_interface )
 
     set(multi_value_args
         PLUGIN_REQUIRED_PARAMS
+        PLUGIN_REQUIRED_HOOKS
     )
 
     cmake_parse_arguments( _PAR "${options}" "${single_value_args}" "${multi_value_args}"  ${_FIRST_ARG} ${ARGN} )
@@ -43,27 +44,65 @@ function( plume_plugin_interface )
     set(PLUGIN_SHA ${_PAR_PLUGIN_SHA})
     set(PLUGINCORE_NAME ${_PAR_PLUGINCORE_NAME})
     set(PLUGIN_REQUIRED_PARAMS ${_PAR_PLUGIN_REQUIRED_PARAMS})
+    set(PLUGIN_REQUIRED_HOOKS ${_PAR_PLUGIN_REQUIRED_HOOKS})
     set(PLUGIN_PRECISION ${_PAR_PLUGIN_PRECISION})
 
-    # list of required parameters
+    # list of required parameters. Each entry is "name:TYPE", or "name:TYPE:hookA,hookB" to require the
+    # parameter only at some of the plugin's hook points (hook scope)
     set(REQUIRED_PARAM_LIST "")
     foreach(param ${PLUGIN_REQUIRED_PARAMS})
         string(REPLACE ":" ";" param_name_type ${param})
+        list(LENGTH param_name_type param_nfields)
         list(GET param_name_type 0 param_name)
         list(GET param_name_type 1 param_type)
         message("param_name ${param_name}, param_type ${param_type}")
+
         if(param_type STREQUAL "INT")
-            set(REQUIRED_PARAM_LIST "${REQUIRED_PARAM_LIST} protocol.require<int>(\"${param_name}\");\n")
+            set(param_cxx_type "int")
         elseif(param_type STREQUAL "BOOL")
-            set(REQUIRED_PARAM_LIST "${REQUIRED_PARAM_LIST} protocol.require<bool>(\"${param_name}\");\n")
+            set(param_cxx_type "bool")
         elseif(param_type STREQUAL "FLOAT")
-            set(REQUIRED_PARAM_LIST "${REQUIRED_PARAM_LIST} protocol.require<float>(\"${param_name}\");\n")
+            set(param_cxx_type "float")
         elseif(param_type STREQUAL "DOUBLE")
-            set(REQUIRED_PARAM_LIST "${REQUIRED_PARAM_LIST} protocol.require<double>(\"${param_name}\");\n")
+            set(param_cxx_type "double")
         elseif(param_type STREQUAL "ATLAS_FIELD")
-            set(REQUIRED_PARAM_LIST "${REQUIRED_PARAM_LIST} protocol.require<atlas::Field>(\"${param_name}\");\n")
+            set(param_cxx_type "atlas::Field")
+        else()
+            # unchanged behaviour: an unknown type generates no requirement
+            message(WARNING "plume_plugin_interface: unknown type '${param_type}' for parameter '${param_name}', skipped")
+            continue()
+        endif()
+
+        if(param_nfields GREATER 2)
+            # hook scope: "hookA,hookB" -> {"hookA", "hookB"}
+            list(GET param_name_type 2 param_hooks)
+            if(param_hooks STREQUAL "")
+                message(FATAL_ERROR "plume_plugin_interface: empty hook scope for parameter '${param_name}'")
+            endif()
+            message("param_name ${param_name}, hook scope ${param_hooks}")
+            string(REPLACE "," "\", \"" param_hooks_cxx "${param_hooks}")
+            set(REQUIRED_PARAM_LIST
+                "${REQUIRED_PARAM_LIST} protocol.requireAt<${param_cxx_type}>(\"${param_name}\", {\"${param_hooks_cxx}\"});\n")
+        else()
+            set(REQUIRED_PARAM_LIST "${REQUIRED_PARAM_LIST} protocol.require<${param_cxx_type}>(\"${param_name}\");\n")
         endif()
     endforeach()
+
+    # list of required hook points (the plugin runs at the default hook point if none are given)
+    set(REQUIRED_HOOK_LIST "")
+    foreach(hook ${PLUGIN_REQUIRED_HOOKS})
+        message("required hook point ${hook}")
+        set(REQUIRED_HOOK_LIST "${REQUIRED_HOOK_LIST} protocol.requireHook(\"${hook}\");\n")
+    endforeach()
+
+    # A plugin that declares hook points gets the current hook point name forwarded to its "run"
+    # subroutine. A plugin that does not keeps the original 2-argument signature, so existing
+    # Fortran plugins do not need any change.
+    if(PLUGIN_REQUIRED_HOOKS)
+        set(PLUGINCORE_RUN_FORWARD "call plugincore_run__${PLUGIN_NAME}(${PLUGIN_NAME}_configuration, ${PLUGIN_NAME}_data, fortranise_cstr(hook_cptr))")
+    else()
+        set(PLUGINCORE_RUN_FORWARD "call plugincore_run__${PLUGIN_NAME}(${PLUGIN_NAME}_configuration, ${PLUGIN_NAME}_data)")
+    endif()
 
     get_filename_component( PLUGIN_TEMPLATE_FILENAME ${_PAR_PLUGIN_TEMPLATE} NAME)
     get_filename_component( GENERATED_USER_SOURCE_FILE ${_PAR_PLUGIN_TEMPLATE} NAME_WLE)

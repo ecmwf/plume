@@ -11,7 +11,10 @@
 #pragma once
 
 #include <memory>
+#include <set>
+#include <string>
 
+#include "plume/Hook.h"
 #include "plume/Plugin.h"
 #include "plume/PluginConfig.h"
 #include "plume/PluginCore.h"
@@ -83,14 +86,21 @@ public:
     void setup();
 
     /**
-     * @brief run the plugincore
-     * 
+     * @brief run the plugincore at the default hook point
+     *
      */
     void run();
 
     /**
+     * @brief run the plugincore at a specific hook point
+     *
+     * @param hook
+     */
+    void run(const std::string& hook);
+
+    /**
      * @brief teardown the plugincore
-     * 
+     *
      */
     void teardown();
 

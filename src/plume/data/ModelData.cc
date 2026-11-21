@@ -176,6 +176,13 @@ std::vector<std::string> ModelData::pendingWritebacks() const {
     return tracker_->pendingWritebacks();
 }
 
+bool ModelData::isWritable(const std::string& name) const {
+    if (!tracker_) {
+        return false;
+    }
+    return tracker_->isWritable(name, consumer_);
+}
+
 void ModelData::acknowledgeWriteback(const std::string& name) {
     if (!tracker_) {
         throw eckit::BadValue("ModelData::acknowledgeWriteback: write-back tracker not attached", Here());

@@ -108,6 +108,48 @@ int plume_protocol_offer_float_writable(plume_protocol_handle_t* h, const char* 
 int plume_protocol_offer_double_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
 int plume_protocol_offer_atlas_field_writable(plume_protocol_handle_t* h, const char* name, const char* avail, const char* comment);
 
+/**
+ * @brief Offer a param with a hook scope and/or an access mode (generic form of the functions above)
+ *
+ * The plume_protocol_offer_<type> and plume_protocol_offer_<type>_writable functions are shorthands for this one
+ * (unscoped, read-only or writable). Offering the same param several times merges the definitions per hook point,
+ * with "writable wins" at each hook point: e.g. offering "P" writable at "H1" and then read-only at "H2" makes it
+ * writable at H1 and read-only at H2.
+ *
+ * @param h Handle
+ * @param name Name of the param
+ * @param avail Availability ("always", "on-request")
+ * @param comment Human-readable description of the param
+ * @param writable Whether plugins may write the param back at these hook points
+ * @param hooks Comma-separated list of the hook points the param is offered at (e.g. "wam,gp-model"). NULL or an
+ *        empty string mean every hook point the model registers. Otherwise it must name at least one hook point,
+ *        and each one must be registered (plume_protocol_offer_hook) by the time negotiation happens.
+ * @return Error code
+ */
+int plume_protocol_offer_int_ext(plume_protocol_handle_t* h, const char* name, const char* avail,
+                               const char* comment, bool writable, const char* hooks);
+int plume_protocol_offer_bool_ext(plume_protocol_handle_t* h, const char* name, const char* avail,
+                               const char* comment, bool writable, const char* hooks);
+int plume_protocol_offer_float_ext(plume_protocol_handle_t* h, const char* name, const char* avail,
+                               const char* comment, bool writable, const char* hooks);
+int plume_protocol_offer_double_ext(plume_protocol_handle_t* h, const char* name, const char* avail,
+                               const char* comment, bool writable, const char* hooks);
+int plume_protocol_offer_atlas_field_ext(plume_protocol_handle_t* h, const char* name, const char* avail,
+                               const char* comment, bool writable, const char* hooks);
+
+/**
+ * @brief Register a hook point that the model is able to call Plume from
+ *
+ * The default hook point is always registered, so a model that never calls this can still be
+ * used by plugins that do not request any specific hook point.
+ *
+ * @param h Handle
+ * @param name Name of the hook point
+ * @param comment Human-readable description of the hook point
+ * @return Error code
+ */
+int plume_protocol_offer_hook(plume_protocol_handle_t* h, const char* name, const char* comment);
+
 int plume_protocol_delete_handle(plume_protocol_handle_t* h);
 
 /* --- Plume Manager --- */
@@ -210,12 +252,76 @@ int plume_manager_is_param_requested(plume_manager_handle_t* h, const char* name
 int plume_manager_is_plugin_activated(plume_manager_handle_t* h, const char* name, bool* activated);
 
 /**
- * @brief Run all plugins
+ * @brief Params requested by the active plugins bound to a specific hook point
+ *
+ * @param h Handle
+ * @param hook Name of the hook point
+ * @param derived When false, only the params that the model is expected to provide are reported
+ * @param str_in CSV string of active params
+ * @return Error code
+ */
+int plume_manager_active_params_at_hook(plume_manager_handle_t* h, const char* hook, bool derived, char** str_in);
+
+/**
+ * @brief Checks if a specific parameter has been requested at a specific hook point
+ *
+ * @param h Handle
+ * @param name Name of parameter
+ * @param hook Name of the hook point
+ * @param requested Pointer to boolean indicating if the parameter is requested at that hook point
+ * @return Error code
+ */
+int plume_manager_is_param_requested_at_hook(plume_manager_handle_t* h, const char* name, const char* hook,
+                                             bool* requested);
+
+/**
+ * @brief Check if any active plugin is bound to a hook point
+ *
+ * @param h Handle
+ * @param name Name of the hook point
+ * @param active Pointer to boolean indicating if any plugin is bound to the hook point
+ * @return Error code
+ */
+int plume_manager_is_hook_active(plume_manager_handle_t* h, const char* name, bool* active);
+
+/**
+ * @brief Get the params that the active plugins may write back at a hook point (after negotiation)
+ *
+ * Lets the model know in advance which params it may have to copy back (and acknowledge) after calling
+ * plume_manager_run_hook for this hook point.
+ *
+ * @param h Handle
+ * @param hook Name of a registered hook point
+ * @param names Output: comma-separated param names, possibly empty (caller must free with plume_free_string)
+ * @return Error code (failure if the hook point is not registered)
+ */
+int plume_manager_writable_params_at_hook(plume_manager_handle_t* h, const char* hook, char** names);
+
+/**
+ * @brief Hook points registered by the model (always includes the default one)
+ *
+ * @param h Handle
+ * @param str_in CSV string of registered hook points
+ * @return Error code
+ */
+int plume_manager_registered_hooks(plume_manager_handle_t* h, char** str_in);
+
+/**
+ * @brief Run all plugins bound to the default hook point
  *
  * @param h Handle
  * @return Error code
  */
 int plume_manager_run(plume_manager_handle_t* h);
+
+/**
+ * @brief Run the plugins bound to a specific hook point
+ *
+ * @param h Handle
+ * @param hook Name of the hook point
+ * @return Error code
+ */
+int plume_manager_run_hook(plume_manager_handle_t* h, const char* hook);
 
 /**
  * @brief Teardown plugins
@@ -578,6 +684,20 @@ int plume_data_pending_writebacks(plume_data_handle_t* h, char** names);
  * @return Error code
  */
 int plume_data_acknowledge_writeback(plume_data_handle_t* h, const char* name);
+
+/**
+ * @brief Whether the plugin owning this data handle may write a param now (plugin-side API).
+ *
+ * True only within the run of a hook point at which the plugin has been granted write access to the param (and
+ * while the write is still permitted by the write-back policy). Lets a plugin bound to several hook points find out
+ * whether a param is writable or read-only at the hook point it is being run at.
+ *
+ * @param h Handle
+ * @param name Parameter name
+ * @param writable Output: true if the param can be written now
+ * @return Error code
+ */
+int plume_data_is_writable(plume_data_handle_t* h, const char* name, bool* writable);
 
 
 #if defined(__cplusplus)

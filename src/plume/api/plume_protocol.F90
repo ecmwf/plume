@@ -23,12 +23,18 @@ module plume_protocol_module
     contains
         procedure :: initialise         => plume_protocol_create_handle
         
+        ! offer_<type>(name, avail, comment [, hooks] [, writable]): "hooks" is an optional comma-separated list
+        ! of the hook points at which the param is offered (default: at every registered hook point), "writable"
+        ! whether plugins may write it back there (default: .false.). Offering the same param several times merges
+        ! the definitions per hook point (writable wins), e.g. writable at "H1" and read-only at "H2".
         procedure :: offer_int          => plume_protocol_offer_int
         procedure :: offer_bool         => plume_protocol_offer_bool
         procedure :: offer_float        => plume_protocol_offer_float
         procedure :: offer_double       => plume_protocol_offer_double
         procedure :: offer_atlas_field  => plume_protocol_offer_atlas_field
+        procedure :: offer_hook         => plume_protocol_offer_hook
 
+        ! offer_<type>_writable(name, avail, comment [, hooks]): shorthand for offer_<type>(..., writable=.true.)
         procedure :: offer_int_writable         => plume_protocol_offer_int_writable
         procedure :: offer_bool_writable        => plume_protocol_offer_bool_writable
         procedure :: offer_float_writable       => plume_protocol_offer_float_writable
@@ -104,7 +110,76 @@ module plume_protocol_module
         character(c_char), dimension(*) :: avail
         character(c_char), dimension(*) :: comment
         integer(c_int) :: err
-    end function    
+    end function
+
+    function plume_protocol_offer_int_ext_interf( handle_impl, name, avail, comment, writable, hooks ) result(err) &
+        & bind(C,name="plume_protocol_offer_int_ext")
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
+        type(c_ptr), intent(in), value :: handle_impl
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
+        logical(c_bool), intent(in), value :: writable
+        character(c_char), dimension(*) :: hooks
+        integer(c_int) :: err
+    end function
+
+    function plume_protocol_offer_bool_ext_interf( handle_impl, name, avail, comment, writable, hooks ) result(err) &
+        & bind(C,name="plume_protocol_offer_bool_ext")
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
+        type(c_ptr), intent(in), value :: handle_impl
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
+        logical(c_bool), intent(in), value :: writable
+        character(c_char), dimension(*) :: hooks
+        integer(c_int) :: err
+    end function
+
+    function plume_protocol_offer_float_ext_interf( handle_impl, name, avail, comment, writable, hooks ) result(err) &
+        & bind(C,name="plume_protocol_offer_float_ext")
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
+        type(c_ptr), intent(in), value :: handle_impl
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
+        logical(c_bool), intent(in), value :: writable
+        character(c_char), dimension(*) :: hooks
+        integer(c_int) :: err
+    end function
+
+    function plume_protocol_offer_double_ext_interf( handle_impl, name, avail, comment, writable, hooks ) result(err) &
+        & bind(C,name="plume_protocol_offer_double_ext")
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
+        type(c_ptr), intent(in), value :: handle_impl
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
+        logical(c_bool), intent(in), value :: writable
+        character(c_char), dimension(*) :: hooks
+        integer(c_int) :: err
+    end function
+
+    function plume_protocol_offer_atlas_field_ext_interf( handle_impl, name, avail, comment, writable, hooks ) result(err) &
+        & bind(C,name="plume_protocol_offer_atlas_field_ext")
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
+        type(c_ptr), intent(in), value :: handle_impl
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: avail
+        character(c_char), dimension(*) :: comment
+        logical(c_bool), intent(in), value :: writable
+        character(c_char), dimension(*) :: hooks
+        integer(c_int) :: err
+    end function
+
+    function plume_protocol_offer_hook_interf( handle_impl, name, comment ) result(err) &
+        & bind(C,name="plume_protocol_offer_hook")
+        use iso_c_binding, only: c_ptr, c_char, c_int
+        type(c_ptr), intent(in), value :: handle_impl
+        character(c_char), dimension(*) :: name
+        character(c_char), dimension(*) :: comment
+        integer(c_int) :: err
+    end function
 
     function plume_protocol_offer_int_writable_interf( handle_impl, name, avail, comment ) result(err) &
         & bind(C,name="plume_protocol_offer_int_writable")
@@ -168,104 +243,218 @@ module plume_protocol_module
         err = plume_protocol_create_handle_interf(handle%impl)
     end function
 
-    function plume_protocol_offer_int( handle, name, avail, comment ) result(err)
-        use iso_c_binding, only: c_ptr, c_char, c_int
+    function plume_protocol_offer_int( handle, name, avail, comment, hooks, writable ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
         class(plume_protocol), intent(inout) :: handle
         character(kind=c_char,len=*), intent(in) :: name
         character(kind=c_char,len=*), intent(in) :: avail
         character(kind=c_char,len=*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in), optional :: hooks
+        logical, intent(in), optional :: writable
         integer(c_int) :: err
-        err = plume_protocol_offer_int_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+        logical(c_bool) :: writable_c
+        if (.not. present(hooks) .and. .not. present(writable)) then
+            err = plume_protocol_offer_int_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+            return
+        end if
+        writable_c = .false._c_bool
+        if (present(writable)) writable_c = logical(writable, c_bool)
+        if (present(hooks)) then
+            err = plume_protocol_offer_int_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & writable_c, c_str(hooks) )
+        else
+            err = plume_protocol_offer_int_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & writable_c, c_str("") )
+        end if
     end function
 
-    function plume_protocol_offer_bool( handle, name, avail, comment ) result(err)
-        use iso_c_binding, only: c_ptr, c_char, c_int
+    function plume_protocol_offer_bool( handle, name, avail, comment, hooks, writable ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
         class(plume_protocol), intent(inout) :: handle
         character(kind=c_char,len=*), intent(in) :: name
         character(kind=c_char,len=*), intent(in) :: avail
         character(kind=c_char,len=*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in), optional :: hooks
+        logical, intent(in), optional :: writable
         integer(c_int) :: err
-        err = plume_protocol_offer_bool_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+        logical(c_bool) :: writable_c
+        if (.not. present(hooks) .and. .not. present(writable)) then
+            err = plume_protocol_offer_bool_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+            return
+        end if
+        writable_c = .false._c_bool
+        if (present(writable)) writable_c = logical(writable, c_bool)
+        if (present(hooks)) then
+            err = plume_protocol_offer_bool_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & writable_c, c_str(hooks) )
+        else
+            err = plume_protocol_offer_bool_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & writable_c, c_str("") )
+        end if
     end function
 
-    function plume_protocol_offer_float( handle, name, avail, comment ) result(err)
-        use iso_c_binding, only: c_ptr, c_char, c_int
+    function plume_protocol_offer_float( handle, name, avail, comment, hooks, writable ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
         class(plume_protocol), intent(inout) :: handle
         character(kind=c_char,len=*), intent(in) :: name
         character(kind=c_char,len=*), intent(in) :: avail
         character(kind=c_char,len=*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in), optional :: hooks
+        logical, intent(in), optional :: writable
         integer(c_int) :: err
-        err = plume_protocol_offer_float_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+        logical(c_bool) :: writable_c
+        if (.not. present(hooks) .and. .not. present(writable)) then
+            err = plume_protocol_offer_float_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+            return
+        end if
+        writable_c = .false._c_bool
+        if (present(writable)) writable_c = logical(writable, c_bool)
+        if (present(hooks)) then
+            err = plume_protocol_offer_float_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & writable_c, c_str(hooks) )
+        else
+            err = plume_protocol_offer_float_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & writable_c, c_str("") )
+        end if
     end function
     
-    function plume_protocol_offer_double( handle, name, avail, comment ) result(err)
-        use iso_c_binding, only: c_ptr, c_char, c_int
+    function plume_protocol_offer_double( handle, name, avail, comment, hooks, writable ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
         class(plume_protocol), intent(inout) :: handle
         character(kind=c_char,len=*), intent(in) :: name
         character(kind=c_char,len=*), intent(in) :: avail
         character(kind=c_char,len=*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in), optional :: hooks
+        logical, intent(in), optional :: writable
         integer(c_int) :: err
-        err = plume_protocol_offer_double_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+        logical(c_bool) :: writable_c
+        if (.not. present(hooks) .and. .not. present(writable)) then
+            err = plume_protocol_offer_double_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+            return
+        end if
+        writable_c = .false._c_bool
+        if (present(writable)) writable_c = logical(writable, c_bool)
+        if (present(hooks)) then
+            err = plume_protocol_offer_double_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & writable_c, c_str(hooks) )
+        else
+            err = plume_protocol_offer_double_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & writable_c, c_str("") )
+        end if
     end function
     
-    function plume_protocol_offer_atlas_field( handle, name, avail, comment ) result(err)
-        use iso_c_binding, only: c_ptr, c_char, c_int
+    function plume_protocol_offer_atlas_field( handle, name, avail, comment, hooks, writable ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
         class(plume_protocol), intent(inout) :: handle
         character(kind=c_char,len=*), intent(in) :: name
         character(kind=c_char,len=*), intent(in) :: avail
         character(kind=c_char,len=*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in), optional :: hooks
+        logical, intent(in), optional :: writable
         integer(c_int) :: err
-        err = plume_protocol_offer_atlas_field_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
-    end function    
-
-    function plume_protocol_offer_int_writable( handle, name, avail, comment ) result(err)
-        use iso_c_binding, only: c_ptr, c_char, c_int
-        class(plume_protocol), intent(inout) :: handle
-        character(kind=c_char,len=*), intent(in) :: name
-        character(kind=c_char,len=*), intent(in) :: avail
-        character(kind=c_char,len=*), intent(in) :: comment
-        integer(c_int) :: err
-        err = plume_protocol_offer_int_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+        logical(c_bool) :: writable_c
+        if (.not. present(hooks) .and. .not. present(writable)) then
+            err = plume_protocol_offer_atlas_field_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+            return
+        end if
+        writable_c = .false._c_bool
+        if (present(writable)) writable_c = logical(writable, c_bool)
+        if (present(hooks)) then
+            err = plume_protocol_offer_atlas_field_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & writable_c, c_str(hooks) )
+        else
+            err = plume_protocol_offer_atlas_field_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & writable_c, c_str("") )
+        end if
     end function
 
-    function plume_protocol_offer_bool_writable( handle, name, avail, comment ) result(err)
+    function plume_protocol_offer_hook( handle, name, comment ) result(err)
         use iso_c_binding, only: c_ptr, c_char, c_int
         class(plume_protocol), intent(inout) :: handle
         character(kind=c_char,len=*), intent(in) :: name
-        character(kind=c_char,len=*), intent(in) :: avail
         character(kind=c_char,len=*), intent(in) :: comment
         integer(c_int) :: err
-        err = plume_protocol_offer_bool_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+        err = plume_protocol_offer_hook_interf(handle%impl, c_str(name), c_str(comment) )
     end function
 
-    function plume_protocol_offer_float_writable( handle, name, avail, comment ) result(err)
-        use iso_c_binding, only: c_ptr, c_char, c_int
+    function plume_protocol_offer_int_writable( handle, name, avail, comment, hooks ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
         class(plume_protocol), intent(inout) :: handle
         character(kind=c_char,len=*), intent(in) :: name
         character(kind=c_char,len=*), intent(in) :: avail
         character(kind=c_char,len=*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in), optional :: hooks
         integer(c_int) :: err
-        err = plume_protocol_offer_float_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+        if (present(hooks)) then
+            err = plume_protocol_offer_int_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & .true._c_bool, c_str(hooks) )
+        else
+            err = plume_protocol_offer_int_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+        end if
     end function
 
-    function plume_protocol_offer_double_writable( handle, name, avail, comment ) result(err)
-        use iso_c_binding, only: c_ptr, c_char, c_int
+    function plume_protocol_offer_bool_writable( handle, name, avail, comment, hooks ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
         class(plume_protocol), intent(inout) :: handle
         character(kind=c_char,len=*), intent(in) :: name
         character(kind=c_char,len=*), intent(in) :: avail
         character(kind=c_char,len=*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in), optional :: hooks
         integer(c_int) :: err
-        err = plume_protocol_offer_double_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+        if (present(hooks)) then
+            err = plume_protocol_offer_bool_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & .true._c_bool, c_str(hooks) )
+        else
+            err = plume_protocol_offer_bool_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+        end if
     end function
 
-    function plume_protocol_offer_atlas_field_writable( handle, name, avail, comment ) result(err)
-        use iso_c_binding, only: c_ptr, c_char, c_int
+    function plume_protocol_offer_float_writable( handle, name, avail, comment, hooks ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
         class(plume_protocol), intent(inout) :: handle
         character(kind=c_char,len=*), intent(in) :: name
         character(kind=c_char,len=*), intent(in) :: avail
         character(kind=c_char,len=*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in), optional :: hooks
         integer(c_int) :: err
-        err = plume_protocol_offer_atlas_field_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+        if (present(hooks)) then
+            err = plume_protocol_offer_float_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & .true._c_bool, c_str(hooks) )
+        else
+            err = plume_protocol_offer_float_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+        end if
+    end function
+
+    function plume_protocol_offer_double_writable( handle, name, avail, comment, hooks ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
+        class(plume_protocol), intent(inout) :: handle
+        character(kind=c_char,len=*), intent(in) :: name
+        character(kind=c_char,len=*), intent(in) :: avail
+        character(kind=c_char,len=*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in), optional :: hooks
+        integer(c_int) :: err
+        if (present(hooks)) then
+            err = plume_protocol_offer_double_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & .true._c_bool, c_str(hooks) )
+        else
+            err = plume_protocol_offer_double_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+        end if
+    end function
+
+    function plume_protocol_offer_atlas_field_writable( handle, name, avail, comment, hooks ) result(err)
+        use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
+        class(plume_protocol), intent(inout) :: handle
+        character(kind=c_char,len=*), intent(in) :: name
+        character(kind=c_char,len=*), intent(in) :: avail
+        character(kind=c_char,len=*), intent(in) :: comment
+        character(kind=c_char,len=*), intent(in), optional :: hooks
+        integer(c_int) :: err
+        if (present(hooks)) then
+            err = plume_protocol_offer_atlas_field_ext_interf(handle%impl, c_str(name), c_str(avail), c_str(comment), &
+                & .true._c_bool, c_str(hooks) )
+        else
+            err = plume_protocol_offer_atlas_field_writable_interf(handle%impl, c_str(name), c_str(avail), c_str(comment) )
+        end if
     end function
 
     function plume_protocol_delete_handle( handle ) result(err)

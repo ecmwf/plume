@@ -28,7 +28,41 @@ ParameterDefinition::ParameterDefinition(const eckit::Configuration& config) :
     dataType_  = typeFromString(config.getString("type").c_str());
     available_ = config.getString("available", "on-request");
     comment_   = config.getString("comment", "");
-    writable_  = config.getBool("writable", false);
+
+    // optional hook scope: when present it must be a non-empty list of hook point names (an empty list is not
+    // the same as the key being absent, and conflating the two would hide a configuration mistake)
+    if (config.has("hooks")) {
+        if (!config.isStringList("hooks") || config.getStringVector("hooks").empty()) {
+            throw eckit::BadValue("Param '" + name_ + "': hooks must be a non-empty list of hook point names", Here());
+        }
+        auto hookNames = config.getStringVector("hooks");
+        hooks_.insert(hookNames.begin(), hookNames.end());
+    }
+
+    // optional access mode: a boolean (writable at every hook point of the scope), or a non-empty list of the hook
+    // points the param is writable at (read-only at the other hook points of its scope)
+    if (config.has("writable")) {
+        if (config.isBoolean("writable")) {
+            writable_ = config.getBool("writable");
+        }
+        else if (config.isStringList("writable") && !config.getStringVector("writable").empty()) {
+            auto hookNames = config.getStringVector("writable");
+            writableHooks_.insert(hookNames.begin(), hookNames.end());
+            writable_ = true;
+            for (const auto& hook : writableHooks_) {
+                if (!hooks_.empty() && hooks_.count(hook) == 0) {
+                    throw eckit::BadValue("Param '" + name_ + "': writable at hook point '" + hook +
+                                              "', which is not in its hook scope",
+                                          Here());
+                }
+            }
+        }
+        else {
+            throw eckit::BadValue("Param '" + name_ +
+                                      "': writable must be a boolean or a non-empty list of hook point names",
+                                  Here());
+        }
+    }
 
     // determine strategy, dependencies & derived param name based on the config, if applicable
     bool hasOptions = false;
@@ -69,17 +103,21 @@ ParameterDefinition::ParameterDefinition(const eckit::Configuration& config) :
 
 // construct from params
 ParameterDefinition::ParameterDefinition(const std::string& name, const std::string& type, const std::string& available,
-                                         const std::string& comment, bool writable) :
-    ParameterDefinition{params2config(name, type, available, comment, writable)} {}
+                                         const std::string& comment, bool writable, const std::set<std::string>& hooks,
+                                         const std::set<std::string>& writableHooks) :
+    ParameterDefinition{params2config(name, type, available, comment, writable, hooks, writableHooks)} {}
 
 ParameterDefinition::ParameterDefinition(const std::string& name, const ParameterType& type,
-                                         const std::string& available, const std::string& comment, bool writable) :
-    ParameterDefinition{params2config(name, typeToString(type), available, comment, writable)} {}
+                                         const std::string& available, const std::string& comment, bool writable,
+                                         const std::set<std::string>& hooks,
+                                         const std::set<std::string>& writableHooks) :
+    ParameterDefinition{params2config(name, typeToString(type), available, comment, writable, hooks, writableHooks)} {}
 
 ParameterDefinition::ParameterDefinition(const std::string& name, const ParameterType& type,
-                                         const std::unordered_map<std::string, std::string>& options) :
-    ParameterDefinition([this, &name, &type, &options]() {
-        eckit::LocalConfiguration config = params2config(name, typeToString(type));
+                                         const std::unordered_map<std::string, std::string>& options,
+                                         const std::set<std::string>& hooks) :
+    ParameterDefinition([this, &name, &type, &options, &hooks]() {
+        eckit::LocalConfiguration config = params2config(name, typeToString(type), "", "", false, hooks);
         for (const auto& option : options) {
             config.set(option.first, option.second);
         }
@@ -126,16 +164,142 @@ bool ParameterDefinition::writable() const {
     return writable_;
 }
 
+const std::set<std::string>& ParameterDefinition::hooks() const {
+    return hooks_;
+}
+
+const std::set<std::string>& ParameterDefinition::writableHooks() const {
+    return writableHooks_;
+}
+
+bool ParameterDefinition::isWritableAt(const std::string& hook) const {
+    return writable_ && (writableHooks_.empty() || writableHooks_.count(hook) > 0);
+}
+
+void ParameterDefinition::pinWritableHooks() {
+    if (writable_ && writableHooks_.empty() && !hooks_.empty()) {
+        writableHooks_ = hooks_;
+    }
+}
+
+namespace {
+
+// writable at every hook point, whatever the scope ends up being
+bool writableEverywhere(const ParameterDefinition& param) {
+    return param.writable() && param.writableHooks().empty() && param.hooks().empty();
+}
+
+// the definition expresses per-hook-point intent: a hook scope or an explicit list of writable hook points
+bool hasPerHookIntent(const ParameterDefinition& param) {
+    return !param.hooks().empty() || !param.writableHooks().empty();
+}
+
+// read-only at (at least) one hook point of its scope (to be called on a pinned definition)
+bool hasReadOnlyHooks(const ParameterDefinition& param) {
+    if (!param.writable()) {
+        return true;
+    }
+    if (param.writableHooks().empty()) {
+        return false;
+    }
+    return param.hooks().empty() || param.writableHooks() != param.hooks();
+}
+
+}  // namespace
+
+bool ParameterDefinition::mergeAccess(const ParameterDefinition& other) {
+
+    ParameterDefinition rhs(other);
+
+    // 1. normalise: pin the writes of scoped definitions to their scope before the scopes are merged
+    pinWritableHooks();
+    rhs.pinWritableHooks();
+
+    const bool lhsEverywhere = writableEverywhere(*this);
+    const bool rhsEverywhere = writableEverywhere(rhs);
+    // only worth a warning when the overridden definition asked for read-only access at specific hook points: two
+    // unscoped definitions (one read-only, one writable) are the plain "writable wins" case
+    const bool widened = (lhsEverywhere && hasPerHookIntent(rhs) && hasReadOnlyHooks(rhs)) ||
+                         (rhsEverywhere && hasPerHookIntent(*this) && hasReadOnlyHooks(*this));
+
+    // 2. scope: unscoped wins, otherwise union
+    if (hooks_.empty() || rhs.hooks_.empty()) {
+        hooks_.clear();
+    }
+    else {
+        hooks_.insert(rhs.hooks_.begin(), rhs.hooks_.end());
+    }
+
+    // 3. access: writable wins, per hook point
+    if (lhsEverywhere || rhsEverywhere) {
+        writable_ = true;
+        writableHooks_.clear();
+    }
+    else {
+        std::set<std::string> writes = writable_ ? writableHooks_ : std::set<std::string>{};
+        if (rhs.writable_) {
+            writes.insert(rhs.writableHooks_.begin(), rhs.writableHooks_.end());
+        }
+        writable_      = !writes.empty();
+        writableHooks_ = writes;
+    }
+
+    if (writable_ && (!strategy_.empty() || !rhs.strategy_.empty())) {
+        throw eckit::BadParameter("Derived parameter '" + name_ + "' cannot be declared writable. "
+                                  "Only base (non-derived) parameters support write-back.",
+                                  Here());
+    }
+
+    // 4. normalise back: writable at the whole (scoped) scope is written as "writable: true"
+    if (writable_ && !hooks_.empty() && writableHooks_ == hooks_) {
+        writableHooks_.clear();
+    }
+
+    // 5. keep the config in sync
+    syncAccessConfig();
+
+    return widened;
+}
+
+void ParameterDefinition::syncAccessConfig() {
+    if (hooks_.empty()) {
+        if (config_.has("hooks")) {
+            config_.remove("hooks");
+        }
+    }
+    else {
+        config_.set("hooks", std::vector<std::string>(hooks_.begin(), hooks_.end()));
+    }
+
+    if (writable_ && !writableHooks_.empty()) {
+        config_.set("writable", std::vector<std::string>(writableHooks_.begin(), writableHooks_.end()));
+    }
+    else {
+        config_.set("writable", writable_);
+    }
+}
+
 // helper constructing function
 eckit::LocalConfiguration ParameterDefinition::params2config(const std::string& name, const std::string& type,
                                                              const std::string& available, const std::string& comment,
-                                                             bool writable) {
+                                                             bool writable, const std::set<std::string>& hooks,
+                                                             const std::set<std::string>& writableHooks) {
     eckit::LocalConfiguration config;
     config.set("name", name);
     config.set("type", type);
     config.set("available", available);
     config.set("comment", comment);
-    config.set("writable", writable);
+    // an empty set means unscoped: leave the key out rather than writing an (invalid) empty list
+    if (!hooks.empty()) {
+        config.set("hooks", std::vector<std::string>(hooks.begin(), hooks.end()));
+    }
+    // writable at some hook points only: list them, otherwise a plain boolean
+    if (writable && !writableHooks.empty()) {
+        config.set("writable", std::vector<std::string>(writableHooks.begin(), writableHooks.end()));
+    }
+    else {
+        config.set("writable", writable);
+    }
     return config;
 }
 
@@ -179,6 +343,16 @@ const ParameterDefinition& ParameterCatalogue::getParam(const std::string& name)
 ParameterCatalogue& ParameterCatalogue::insertParam(const ParameterDefinition& param) {
     parameters_.push_back(param);
     return *this;
+}
+
+bool ParameterCatalogue::mergeParam(const ParameterDefinition& param) {
+    const auto& name = param.name();
+    auto it          = std::find_if(parameters_.begin(), parameters_.end(),
+                                    [&name](const ParameterDefinition& obj) { return obj.name() == name; });
+    if (it == parameters_.end()) {
+        throw eckit::BadValue("Param [" + name + "] not in Catalogue, cannot merge its definition", Here());
+    }
+    return it->mergeAccess(param);
 }
 
 const std::vector<ParameterDefinition>& ParameterCatalogue::getParams() const {

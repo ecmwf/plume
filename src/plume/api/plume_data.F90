@@ -41,6 +41,9 @@ contains
     procedure :: write_atlas_field_copy  => plume_data_write_atlas_field_copy
     procedure :: write_atlas_field_scope => plume_data_write_atlas_field_scope
 
+    ! may this plugin write a param at the hook point it is being run at?
+    procedure :: is_writable             => plume_data_is_writable
+
     procedure :: print    => plume_data_print
     procedure :: finalise => plume_data_delete_handle
 end type
@@ -384,6 +387,15 @@ function plume_data_pending_writebacks_interf( handle_impl, names ) result(err) 
   use iso_c_binding, only: c_ptr, c_int
   type(c_ptr), intent(in), value :: handle_impl
   type(c_ptr), intent(out) :: names
+  integer(c_int) :: err
+end function
+
+function plume_data_is_writable_interf( handle_impl, name, writable ) result(err) &
+  & bind(C,name="plume_data_is_writable")
+  use iso_c_binding, only: c_ptr, c_char, c_int, c_bool
+  type(c_ptr), intent(in), value :: handle_impl
+  character(c_char), dimension(*) :: name
+  logical(c_bool), intent(out) :: writable
   integer(c_int) :: err
 end function
 
@@ -758,6 +770,21 @@ function plume_data_acknowledge_writeback( handle, name ) result(err)
   character(kind=c_char,len=*), intent(in) :: name
   integer(c_int) :: err
   err = plume_data_acknowledge_writeback_interf(handle%impl, c_str(name))
+end function
+
+
+! True if the plugin owning this view may write the param now, i.e. within the run of a hook point at which it
+! has been granted write access to it (false on error).
+function plume_data_is_writable( handle, name ) result(writable)
+  use iso_c_binding, only: c_int, c_bool, c_char
+  class(plume_data_view), intent(inout) :: handle
+  character(kind=c_char,len=*), intent(in) :: name
+  logical :: writable
+  logical(c_bool) :: writable_c
+  integer(c_int) :: err
+  writable_c = .false._c_bool
+  err = plume_data_is_writable_interf(handle%impl, c_str(name), writable_c)
+  writable = (err == 0) .and. logical(writable_c)
 end function
 
 

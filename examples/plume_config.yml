@@ -1,3 +1,6 @@
+# Neither plugin declares a hook point, so both are bound to the implicit "default" hook point
+# and run wherever the model calls plume::Manager::run().
+# See plume_config_hooks.yml for a configuration that re-targets a plugin onto a named hook point.
 verbose: true
 plugins:
   - name: PluginFoo

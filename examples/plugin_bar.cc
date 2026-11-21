@@ -31,6 +31,7 @@ static plume::PluginCoreBuilder<PluginCoreBar> runnable_plugincore_BarBuilder_;
 PluginCoreBar::PluginCoreBar(const eckit::Configuration& conf) : PluginCore(conf) {}
 
 void PluginCoreBar::run() {
+    eckit::Log::info() << "Plugin Bar running at hook point: " << currentHook() << std::endl;
 
     eckit::Log::info() << "Plugin Bar running..." << std::endl;
 

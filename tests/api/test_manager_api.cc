@@ -9,6 +9,8 @@
  * does it submit to any jurisdiction.
  */
 
+#include <string>
+
 #include "eckit/testing/Test.h"
 #include "eckit/runtime/Main.h"
 #include "plume/api/plume.h"
@@ -45,6 +47,28 @@ CASE("test_manager_api") {
     EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_float(protocol_handle, "FORT_FF1", "always", "this is param FORT_FF1"));
     EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_double(protocol_handle, "FORT_DD1", "always", "this is param FORT_DD1"));
 
+    // register an additional hook point (the default one is always registered)
+    EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_hook(protocol_handle, "api-hook", "an extra hook point"));
+
+    // offer params only at some hook points (hook scope): comma-separated hook point names
+    EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_int_ext(protocol_handle, "SCOPED_I", "always",
+                                                            "offered at api-hook only", false, "api-hook"));
+    EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_double_ext(protocol_handle, "SCOPED_DD", "always",
+                                                               "offered at both", false, " api-hook , default "));
+    // NULL or "" mean unscoped
+    EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_float_ext(protocol_handle, "UNSCOPED_F", "always",
+                                                              "offered everywhere", false, nullptr));
+    EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_float_ext(protocol_handle, "UNSCOPED_G", "always",
+                                                              "offered everywhere", false, ""));
+    // per-hook access: writable at api-hook, read-only at the default hook point
+    EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_int_ext(protocol_handle, "RW_I", "always",
+                                                            "writable at api-hook", true, "api-hook"));
+    EXPECT_PLUME_CODE_SUCCESS( plume_protocol_offer_int_ext(protocol_handle, "RW_I", "always",
+                                                            "read-only at default", false, "default"));
+    // a hook scope without any hook point name is an error
+    EXPECT_PLUME_CODE_FAILURE( plume_protocol_offer_int_ext(protocol_handle, "SCOPED_BAD", "always",
+                                                            "empty scope", false, " , "));
+
     // configure and Negotiate
     std::string mgr_conf_str = 
     R"YAML(
@@ -76,6 +100,7 @@ CASE("test_manager_api") {
           core-config: {}
         - lib: plume_plugin_test_fapi
           name: PluginTestFAPI
+          hooks: [api-hook]
           parameters:
             -
               - name: FORT_I
@@ -107,6 +132,55 @@ CASE("test_manager_api") {
     EXPECT_PLUME_CODE_SUCCESS( plume_manager_is_plugin_activated(mgr_handle, "NonExistentPlugin", &plugin_activated));
     EXPECT(!plugin_activated);
 
+    // --- hook points -------------------------------------------------------------------------
+    // the Fortran plugin has been re-targeted onto "api-hook" through its configuration, the C++
+    // one declares no hook point and is therefore bound to the default one
+    bool hook_active = false;
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_is_hook_active(mgr_handle, "api-hook", &hook_active));
+    EXPECT(hook_active);
+
+    // an unregistered hook point is an error
+    EXPECT_PLUME_CODE_FAILURE( plume_manager_is_hook_active(mgr_handle, "not-a-hook", &hook_active));
+
+    // the registered hook points: the one offered above plus the implicit default
+    char* registered_hooks = nullptr;
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_registered_hooks(mgr_handle, &registered_hooks));
+    EXPECT(registered_hooks != nullptr);
+    EXPECT(std::string(registered_hooks).find("api-hook") != std::string::npos);
+    EXPECT(std::string(registered_hooks).find("default") != std::string::npos);
+    delete[] registered_hooks;
+
+    // params requested at "api-hook" are the Fortran plugin's, not the C++ plugin's
+    bool param_at_hook = false;
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_is_param_requested_at_hook(mgr_handle, "FORT_I", "api-hook", &param_at_hook));
+    EXPECT(param_at_hook);
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_is_param_requested_at_hook(mgr_handle, "I", "api-hook", &param_at_hook));
+    EXPECT(!param_at_hook);
+
+    // ... and the other way round at the default hook point
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_is_param_requested_at_hook(mgr_handle, "I", "default", &param_at_hook));
+    EXPECT(param_at_hook);
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_is_param_requested_at_hook(mgr_handle, "FORT_I", "default", &param_at_hook));
+    EXPECT(!param_at_hook);
+
+    // the CSV listing of the params requested at a hook point
+    char* hook_params = nullptr;
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_active_params_at_hook(mgr_handle, "api-hook", true, &hook_params));
+    EXPECT(hook_params != nullptr);
+    EXPECT(std::string(hook_params).find("FORT_I") != std::string::npos);
+    EXPECT(std::string(hook_params).find(",I,") == std::string::npos);
+    delete[] hook_params;
+
+    EXPECT_PLUME_CODE_FAILURE( plume_manager_active_params_at_hook(mgr_handle, "not-a-hook", true, &hook_params));
+
+    // no plugin writes anything (write-back is disabled): nothing to copy back at any hook point
+    char* writable_params = nullptr;
+    EXPECT_PLUME_CODE_SUCCESS( plume_manager_writable_params_at_hook(mgr_handle, "api-hook", &writable_params));
+    EXPECT(writable_params != nullptr);
+    EXPECT(std::string(writable_params).empty());
+    plume_free_string(writable_params);
+    EXPECT_PLUME_CODE_FAILURE( plume_manager_writable_params_at_hook(mgr_handle, "not-a-hook", &writable_params));
+
     // Provide data as needed
     int param_i = 111;
     int param_j = 222;
@@ -134,10 +208,15 @@ CASE("test_manager_api") {
     // Feed the plugins (i.e. each plugin grabs its own share of data)
     EXPECT_PLUME_CODE_SUCCESS( plume_manager_feed_plugins(mgr_handle, data_handle) );
 
-    // run the plugin for 2 iterations
+    // run the plugin for 2 iterations: the default hook point runs the C++ plugin, "api-hook"
+    // runs the Fortran one
     for (int i = 0; i < 2; ++i) {
         EXPECT_PLUME_CODE_SUCCESS( plume_manager_run(mgr_handle));
+        EXPECT_PLUME_CODE_SUCCESS( plume_manager_run_hook(mgr_handle, "api-hook"));
     }
+
+    // running an unregistered hook point is an error, not a silent no-op
+    EXPECT_PLUME_CODE_FAILURE( plume_manager_run_hook(mgr_handle, "not-a-hook"));
 
     // finalise plume
     EXPECT_PLUME_CODE_SUCCESS( plume_data_delete_handle(data_handle));

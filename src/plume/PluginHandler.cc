@@ -51,6 +51,13 @@ void PluginHandler::setup() {
 
 
 void PluginHandler::run() {
+    run(DEFAULT_HOOK);
+}
+
+
+void PluginHandler::run(const std::string& hook) {
+    // let the plugincore know where it is being called from, then run it
+    plugincorePtr_->setCurrentHook(hook);
     plugincorePtr_->run();
 }
 

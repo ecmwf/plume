@@ -14,6 +14,7 @@ use iso_c_binding, only : c_ptr, c_null_char, c_loc
 use fckit_configuration_module, only : fckit_configuration
 use plume_module, only : plume_check
 use plume_data_module, only : plume_data
+use plume_utils_module, only : fortranise_cstr
 
 ! this module contains the user-methods
 ! that will be executed by the plugin
@@ -47,13 +48,21 @@ bind(C, name="plugincore_setup__@PLUGIN_NAME@__@PLUGINCORE_NAME@")
     call plugincore_setup__@PLUGIN_NAME@(@PLUGIN_NAME@_configuration, @PLUGIN_NAME@_data)
 end subroutine
 
-subroutine internal_plugincore_run__@PLUGINCORE_NAME@() &
+subroutine internal_plugincore_run__@PLUGINCORE_NAME@(conf_cptr, data_cptr, hook_cptr) &
 bind(C, name="plugincore_run__@PLUGIN_NAME@__@PLUGINCORE_NAME@")
-    call plugincore_run__@PLUGIN_NAME@(@PLUGIN_NAME@_configuration, @PLUGIN_NAME@_data)
+    type(c_ptr), intent(in), value :: conf_cptr
+    type(c_ptr), intent(in), value :: data_cptr
+    type(c_ptr), intent(in), value :: hook_cptr
+
+    ! the hook point name is only forwarded to plugins that declare PLUGIN_REQUIRED_HOOKS
+    @PLUGINCORE_RUN_FORWARD@
 end subroutine
 
-subroutine internal_plugincore_teardown__@PLUGINCORE_NAME@() &
+subroutine internal_plugincore_teardown__@PLUGINCORE_NAME@(conf_cptr, data_cptr) &
 bind(C, name="plugincore_teardown__@PLUGIN_NAME@__@PLUGINCORE_NAME@")
+    type(c_ptr), intent(in), value :: conf_cptr
+    type(c_ptr), intent(in), value :: data_cptr
+
     call plugincore_teardown__@PLUGIN_NAME@(@PLUGIN_NAME@_configuration, @PLUGIN_NAME@_data)
 
     ! finalise the data structure

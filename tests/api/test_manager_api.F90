@@ -41,6 +41,10 @@ real(c_float) :: param_ff1_fort = 777.7
 real(c_double) :: param_dd1_fort = 888.8
 
 logical(c_bool) :: is_plugin_activated
+logical(c_bool) :: is_hook_active
+logical(c_bool) :: requested_at_hook
+character(:), allocatable :: hook_params
+character(:), allocatable :: registered
 
 integer :: iter
 
@@ -65,6 +69,16 @@ call plume_check(offers%offer_int("FORT_I", "always", "this is param FORT_I"))
 call plume_check(offers%offer_int("FORT_J", "always", "this is param FORT_J"))
 call plume_check(offers%offer_float("FORT_FF1", "always", "this is param FORT_FF1"))
 call plume_check(offers%offer_double("FORT_DD1", "always", "this is param FORT_DD1"))
+
+! register an additional hook point (the default one is always registered)
+call plume_check(offers%offer_hook("fapi-hook", "an extra hook point"))
+
+! offer a param only at some hook points (hook scope: comma-separated hook point names)
+call plume_check(offers%offer_int("SCOPED_I", "always", "offered at fapi-hook only", hooks="fapi-hook"))
+! per-hook access: writable at fapi-hook, read-only at the default hook point
+call plume_check(offers%offer_int("RW_I", "always", "writable at fapi-hook", hooks="fapi-hook", writable=.true.))
+call plume_check(offers%offer_int_writable("RW_J", "always", "writable at fapi-hook only", hooks="fapi-hook"))
+call plume_check(offers%offer_int("RW_I", "always", "read-only at default", hooks="default"))
 
 
 ! negotiate
@@ -96,6 +110,7 @@ mgr_conf_str = '{' // &
 '    { ' // &
 '        "lib": "plume_plugin_test_fapi", ' // &
 '        "name": "PluginTestFAPI", ' // &
+'        "hooks": ["fapi-hook"], ' // &
 '        "parameters": [ ' // &
 '            [ ' // &
 '                {"name":"FORT_I", "type":"INT"}, ' // &
@@ -127,6 +142,31 @@ FCTEST_CHECK(is_plugin_activated)
 call plume_check(manager%is_plugin_activated("NonExistentPlugin", is_plugin_activated))
 FCTEST_CHECK(.not. is_plugin_activated)
 
+! hook points: the Fortran plugin has been re-targeted onto "fapi-hook" through its configuration,
+! while the C++ plugin declares no hook point and stays on the default one
+is_hook_active = .false.
+call plume_check(manager%is_hook_active("fapi-hook", is_hook_active))
+FCTEST_CHECK(is_hook_active)
+
+call plume_check(manager%is_hook_active("default", is_hook_active))
+FCTEST_CHECK(is_hook_active)
+
+! params requested at a specific hook point
+requested_at_hook = .false.
+call plume_check(manager%is_param_requested_at_hook("FORT_I", "fapi-hook", requested_at_hook))
+FCTEST_CHECK(requested_at_hook)
+
+call plume_check(manager%is_param_requested_at_hook("I", "fapi-hook", requested_at_hook))
+FCTEST_CHECK(.not. requested_at_hook)
+
+hook_params = manager%active_params_at_hook("fapi-hook")
+write(*,*) "Params requested at fapi-hook: ", hook_params
+
+registered = manager%registered_hooks()
+write(*,*) "Registered hook points: ", registered
+FCTEST_CHECK(index(registered, "fapi-hook") > 0)
+FCTEST_CHECK(index(registered, "default") > 0)
+
 
 ! data
 field = atlas_Field("AA1", atlas_integer(), (/0,10/))
@@ -146,9 +186,11 @@ call plume_check(data%provide_double("FORT_DD1", param_dd1) )
 ! feed plugins
 call plume_check(manager%feed_plugins(data))
 
-! run the model for 2 iterations
+! run the model for 2 iterations: the argument-less run() targets the default hook point, exactly
+! as it did before hook points existed
 do iter=1,2
   call plume_check(manager%run())
+  call plume_check(manager%run("fapi-hook"))
 enddo
 
 ! finalise

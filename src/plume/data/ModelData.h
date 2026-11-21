@@ -423,6 +423,15 @@ public:
     /// Returns the name of the plugin this ModelData view was filtered for.
     const std::string& consumer() const { return consumer_; }
 
+    /**
+     * @brief Whether the consumer of this view (a plugin) may write @p name now, i.e. within the current
+     *        Manager::run(hook) cycle: write access granted at that hook point and the slot still writable.
+     *
+     * Returns false when no write-back tracker is attached or outside a run cycle. Lets a plugin bound to several
+     * hook points find out whether a param is writable or read-only at the hook point it is being run at.
+     */
+    bool isWritable(const std::string& name) const;
+
     // -------------------------------------------------------------------------
     // Write-back interface — Model-facing (called by the model after each run())
     // -------------------------------------------------------------------------
@@ -438,7 +447,7 @@ public:
      * @brief Acknowledge that the model has ingested the written value for @p name.
      *
      * Advances the slot from PENDING → ACKNOWLEDGED. Must be called for every parameter returned by
-     * pendingWritebacks() before the next run() cycle.
+     * pendingWritebacks() before the param can be written again (in a later run(hook) cycle).
      *
      * @throws eckit::BadValue if the tracker is not attached.
      */
